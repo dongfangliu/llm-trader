@@ -1,0 +1,49 @@
+# LLM Trading System - Python Dependencies
+# Core trading system dependencies
+
+# ========== Data Processing ==========
+numpy>=1.24.0
+pandas>=2.0.0
+# talib>=0.4.0  # Requires manual installation on Windows - see below
+
+# ========== Market Data ==========
+tqsdk>=3.5.0
+
+# ========== LLM Clients ==========
+anthropic>=0.18.0
+openai>=1.10.0
+
+# ========== Configuration & Logging ==========
+pyyaml>=6.0.1
+loguru>=0.7.2
+python-dotenv>=1.0.0
+
+# ========== Task Scheduling ==========
+apscheduler>=3.10.4
+
+# ========== Web Backend ==========
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+pydantic-settings>=2.0.0
+python-multipart>=0.0.6
+websockets>=12.0
+
+# ========== Data Visualization ==========
+matplotlib>=3.7.0
+
+# ========== Progress Bars ==========
+tqdm>=4.65.0
+
+# ========== System Monitoring ==========
+psutil>=5.9.0
+
+# ========== Testing ==========
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# ========== Installation Notes ==========
+# TA-Lib manual installation (Windows):
+#   1. Download wheel from: https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+#   2. For Python 3.13: TA_Lib-0.4.28-cp313-cp313-win_amd64.whl
+#   3. pip install TA_Lib-0.4.28-cp313-cp313-win_amd64.whl

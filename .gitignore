@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Data & Database
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# API Keys (security)
+config/api_keys.yaml
+
+# Test & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Node modules (for web frontend)
+node_modules/
+web_v2/frontend/node_modules/
+web_v2/frontend/dist/
+package-lock.json
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Claude
+.claude/
