@@ -13,38 +13,19 @@ import {
   ClockCircleOutlined
 } from '@ant-design/icons';
 import { 
-  getCurrentRegime, 
-  getRegimeHistory, 
-  getMultiTimeframeTrend 
+  getCurrentRegime,
+  getRegimeHistory,
+  getTrendAlignment,
+  type MarketRegime as RegimeData,
+  type RegimeHistoryItem,
+  type MultiTimeframeTrend
 } from '../api/marketRegime';
 
-interface RegimeData {
-  regime: string;
-  confidence: number;
-  duration_minutes: number;
-  features: {
-    adx: number;
-    volatility: number;
-    volume_ratio: number;
-  };
-  activated_strategy: string;
+interface MarketRegimeProps {
+  wsMessage?: any;
 }
 
-interface RegimeHistoryItem {
-  timestamp: string;
-  regime: string;
-  duration_minutes: number;
-  switch_reason: string;
-}
-
-interface MultiTimeframeTrend {
-  period: string;
-  trend: string;
-  adx: number;
-  ma_deviation: number;
-}
-
-const MarketRegime: React.FC = () => {
+const MarketRegime: React.FC<MarketRegimeProps> = () => {
   const [loading, setLoading] = useState(true);
   const [currentRegime, setCurrentRegime] = useState<RegimeData | null>(null);
   const [regimeHistory, setRegimeHistory] = useState<RegimeHistoryItem[]>([]);
@@ -53,15 +34,17 @@ const MarketRegime: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [currentRes, historyRes, multiRes] = await Promise.all([
+      
+      // 并行获取所有数据
+      const [currentRes, historyRes, alignmentRes] = await Promise.all([
         getCurrentRegime(),
-        getRegimeHistory(10),
-        getMultiTimeframeTrend()
+        getRegimeHistory(24),
+        getTrendAlignment()
       ]);
 
       setCurrentRegime(currentRes as any);
-      setRegimeHistory((historyRes as any).items || []);
-      setMultiTimeframe((multiRes as any).timeframes || []);
+      setRegimeHistory(historyRes.history || []);
+      setMultiTimeframe(alignmentRes.timeframes || []);
     } catch (error) {
       console.error('Failed to fetch market regime data:', error);
     } finally {
@@ -195,10 +178,10 @@ const MarketRegime: React.FC = () => {
 
                 <Statistic
                   title="置信度"
-                  value={currentRegime.confidence}
+                  value={currentRegime.confidence * 100}
                   precision={1}
                   suffix="%"
-                  valueStyle={{ color: currentRegime.confidence >= 80 ? '#52c41a' : '#faad14' }}
+                  valueStyle={{ color: currentRegime.confidence * 100 >= 80 ? '#52c41a' : '#faad14' }}
                 />
 
                 <Statistic
@@ -218,7 +201,7 @@ const MarketRegime: React.FC = () => {
 
                 <Statistic
                   title="波动率"
-                  value={currentRegime.features.volatility}
+                  value={currentRegime.features.volatility * 100}
                   precision={2}
                   suffix="%"
                 />
@@ -231,7 +214,7 @@ const MarketRegime: React.FC = () => {
                   置信度
                 </div>
                 <Progress 
-                  percent={currentRegime.confidence} 
+                  percent={currentRegime.confidence * 100} 
                   strokeColor={{
                     '0%': '#108ee9',
                     '100%': '#87d068',
@@ -244,12 +227,12 @@ const MarketRegime: React.FC = () => {
               <Card 
                 size="small" 
                 title="激活策略" 
-                style={{ background: '#f5f5f5' }}
+                style={{ background: 'rgba(255, 255, 255, 0.08)' }}
               >
                 <Space>
                   <CheckCircleOutlined style={{ color: '#52c41a', fontSize: '20px' }} />
                   <span style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                    {currentRegime.activated_strategy}
+                    {currentRegime.active_strategy}
                   </span>
                 </Space>
               </Card>
@@ -318,7 +301,7 @@ const MarketRegime: React.FC = () => {
 
       {/* 策略切换逻辑 */}
       <Card title="策略切换逻辑图">
-        <div style={{ padding: '24px', background: '#fafafa', borderRadius: '8px' }}>
+        <div style={{ padding: '24px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '8px' }}>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ 

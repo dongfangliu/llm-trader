@@ -190,6 +190,7 @@ class StrategyBacktester:
         self.kline_manager = MultiTimeframeKline(None)  # 回测模式不需要实时客户端
         self.indicators_calculator = IndicatorsCalculator()
         self.order_flow_toxicity = OrderFlowToxicity()
+        self.history_df = pd.DataFrame()
         
         # 初始化成本模型
         self.cost_model = CostModel(CostConfig())
@@ -268,14 +269,32 @@ class StrategyBacktester:
         Returns:
             pd.DataFrame: K线数据
         """
-        logger.info("加载市场数据...")
-        
-        # TODO: 实现从数据源加载K线数据
-        # 这里应该调用 TqSDK 或数据库获取历史数据
-        # 暂时返回空DataFrame
-        
-        logger.warning("市场数据加载未实现，返回空数据")
-        return pd.DataFrame()
+        logger.info("通过TqSDK获取K线数据...")
+        try:
+            from data_fetcher.tqsdk_client import TqSdkClient
+            # 计算需要的15m根数，并仅拉取当前品种
+            symbol = self.config.symbol or "CZCE.SA0"
+            start_ts = pd.to_datetime(f"{self.config.start_date} 00:00:00")
+            end_ts = pd.to_datetime(f"{self.config.end_date} 23:59:59")
+
+            total_minutes = max(1, int((end_ts - start_ts).total_seconds() // 60))
+            period_min = 15
+            count = int(total_minutes // period_min) + 10
+
+            client = TqSdkClient(symbol=symbol, use_sim=True)
+            df = client.get_minute_kline(period="15", count=count)
+            if df is None or df.empty:
+                logger.warning("TqSDK未返回K线数据")
+                client.close()
+                return pd.DataFrame()
+
+            df = df[(df['timestamp'] >= start_ts) & (df['timestamp'] <= end_ts)].reset_index(drop=True)
+            logger.info(f"加载到 {len(df)} 条15m K线")
+            client.close()
+            return df
+        except Exception as e:
+            logger.error(f"通过TqSDK加载市场数据失败: {e}")
+            return pd.DataFrame()
     
     def _process_bar(self, bar: pd.Series):
         """
@@ -329,26 +348,140 @@ class StrategyBacktester:
         Returns:
             Dict: 市场数据
         """
-        # TODO: 实现多周期数据准备
-        # 这里应该从历史数据中提取多周期K线和指标
+        # 维护历史15m数据，计算多周期指标并组装给策略/状态机使用
+        ts = bar.get('timestamp', datetime.now())
+        row = {
+            'timestamp': ts,
+            'open': bar.get('open', 0),
+            'high': bar.get('high', 0),
+            'low': bar.get('low', 0),
+            'close': bar.get('close', 0),
+            'volume': bar.get('volume', 0),
+        }
+        if self.history_df is None or self.history_df.empty:
+            self.history_df = pd.DataFrame([row]).set_index('timestamp')
+        else:
+            self.history_df.loc[ts] = [row['open'], row['high'], row['low'], row['close'], row['volume']]
+        hist = self.history_df.sort_index().tail(1500)
         
-        # 简化版本：只返回当前K线数据
-        return {
-            '15m': {
+        def _calc_all(df: pd.DataFrame) -> pd.DataFrame:
+            if df is None or df.empty:
+                return df
+            dfx = df.copy()
+            dfx = IndicatorsCalculator.calculate_all(dfx.reset_index().rename(columns={'index': 'timestamp'}))
+            dfx = dfx.set_index('timestamp')
+            # 额外字段：成交量比率、ATR百分比、趋势方向
+            dfx['vol_ratio'] = (dfx['volume'] / dfx['volume'].rolling(20).mean()).fillna(1.0)
+            if 'atr' in dfx.columns and 'close' in dfx.columns:
+                dfx['atr_pct'] = (dfx['atr'] / dfx['close'] * 100).fillna(0)
+            def _trend_dir(val: float) -> str:
+                if val > 10:
+                    return 'uptrend'
+                if val < -10:
+                    return 'downtrend'
+                return 'neutral'
+            if 'trend_score' in dfx.columns:
+                dfx['trend_dir'] = dfx['trend_score'].apply(_trend_dir)
+            else:
+                dfx['trend_dir'] = 'neutral'
+            return dfx
+        
+        df15 = _calc_all(hist)
+        def _resample(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+            ohlc = df[['open','high','low','close','volume']].resample(rule).agg({
+                'open':'first','high':'max','low':'min','close':'last','volume':'sum'
+            }).dropna()
+            return _calc_all(ohlc)
+        df1h = _resample(hist, '1H')
+        df4h = _resample(hist, '4H')
+        df1d = _resample(hist, '1D')
+        
+        def _latest(df: pd.DataFrame, t):
+            if df is None or df.empty:
+                return None
+            sub = df[df.index <= t]
+            if sub.empty:
+                return None
+            return sub.iloc[-1]
+        r15 = _latest(df15, ts)
+        r1h = _latest(df1h, ts)
+        r4h = _latest(df4h, ts)
+        r1d = _latest(df1d, ts)
+        
+        def _pack(row: pd.Series) -> dict:
+            if row is None:
+                return {'indicators': {}, 'trend': {'direction': 'neutral'}}
+            close = float(row.get('close', 0) or 0)
+            bb_upper = float(row.get('bb_upper', 0) or 0)
+            bb_lower = float(row.get('bb_lower', 0) or 0)
+            adx_val = row.get('adx')
+            # 若无ADX（可能未安装TA-Lib），用trend_score近似
+            try:
+                import math
+                is_nan_adx = pd.isna(adx_val)
+            except Exception:
+                is_nan_adx = False
+            if is_nan_adx:
+                adx_val = 35 if abs(float(row.get('trend_score', 0) or 0)) > 50 else 18
+            return {
                 'basic': {
-                    'current_price': bar.get('close', 0),
-                    'high': bar.get('high', 0),
-                    'low': bar.get('low', 0),
-                    'open': bar.get('open', 0),
-                    'volume': bar.get('volume', 0),
+                    'current_price': close,
+                    'high': float(row.get('high', 0) or 0),
+                    'low': float(row.get('low', 0) or 0),
+                    'open': float(row.get('open', 0) or 0),
+                    'volume': float(row.get('volume', 0) or 0),
                 },
-                'indicators': {},
-                'trend': {'direction': 'neutral'},
+                'indicators': {
+                    'ma': {
+                        'ma20': float(row.get('ma20', close) or close),
+                        'ma60': float(row.get('ma60', close) or close),
+                    },
+                    'rsi': {
+                        'rsi': float(row.get('rsi', 50) or 50),
+                    },
+                    'atr': {
+                        'atr': float(row.get('atr', close * 0.02) or close * 0.02),
+                        'atr_pct': float(row.get('atr_pct', 2.0) or 2.0),
+                    },
+                    'bollinger': {
+                        'upper': bb_upper,
+                        'middle': float(row.get('bb_middle', close) or close),
+                        'lower': bb_lower,
+                        'width': float(bb_upper - bb_lower),
+                    },
+                    'volume': {
+                        'ratio': float(row.get('vol_ratio', 1.0) or 1.0),
+                    },
+                    'macd': {
+                        'histogram': float(row.get('macd_hist', 0) or 0),
+                    },
+                    'adx': {
+                        'adx': float(adx_val if adx_val is not None else 20),
+                    },
+                },
+                'trend': {
+                    'direction': str(row.get('trend_dir', 'neutral')),
+                },
+            }
+        
+        packed_15 = _pack(r15)
+        # 构造一个简单的订单流代理：用15m MACD柱体方向近似买压
+        macd_hist = 0.0
+        try:
+            macd_hist = float(r15.get('macd_hist', 0)) if r15 is not None else 0.0
+        except Exception:
+            macd_hist = 0.0
+        buying_pressure = 0.65 if macd_hist > 0 else (0.35 if macd_hist < 0 else 0.5)
+        
+        return {
+            '15m': packed_15,
+            '1h': _pack(r1h),
+            '4h': _pack(r4h),
+            '1d': _pack(r1d),
+            'order_flow': {
+                'flow': {'buying_pressure': buying_pressure},
+                'depth': {'total_depth': 0}
             },
-            '1h': {'indicators': {}, 'trend': {'direction': 'neutral'}},
-            '4h': {'indicators': {}, 'trend': {'direction': 'neutral'}},
-            '1d': {'indicators': {}, 'trend': {'direction': 'neutral'}},
-            'order_flow': {},
         }
     
     def _generate_signal(self, market_data: Dict[str, Any]) -> Optional[Dict]:

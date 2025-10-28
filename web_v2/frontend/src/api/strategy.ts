@@ -44,7 +44,7 @@ export interface SignalSourceDistribution {
  */
 export const getStrategySummary = async (): Promise<StrategySummary> => {
   const response = await axios.get('/strategy/summary');
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -54,7 +54,7 @@ export const getStrategyPerformance = async (strategy: string, days: number = 7)
   const response = await axios.get(`/strategy/${strategy}/performance`, {
     params: { days }
   });
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -64,7 +64,7 @@ export const getSignalSourceDistribution = async (days: number = 30): Promise<Si
   const response = await axios.get('/strategy/signal-source-distribution', {
     params: { days }
   });
-  return response.data.data;
+  return response.data;
 };
 
 // 别名供页面使用

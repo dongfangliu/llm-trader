@@ -54,15 +54,15 @@ async def get_strategy_summary() -> StandardResponse:
             win_result = db.execute_query(win_rate_query, (strategy,))
             
             if not result or not result[0][0]:
-                # Mock data
+                # 数据库无数据时返回空结构
                 summary[strategy] = {
-                    "status": "active" if strategy == "trend_following" else "standby",
-                    "today_signals": 12 if strategy == "trend_following" else 3,
-                    "executed_signals": 9 if strategy == "trend_following" else 2,
-                    "win_rate": 0.75 if strategy == "trend_following" else 0.67,
-                    "profit_loss_ratio": 2.8 if strategy == "trend_following" else 1.2,
-                    "avg_confidence": 0.82 if strategy == "trend_following" else 0.71,
-                    "total_pnl": 1250.0 if strategy == "trend_following" else 340.0
+                    "status": "standby",
+                    "today_signals": 0,
+                    "executed_signals": 0,
+                    "win_rate": 0.0,
+                    "profit_loss_ratio": 0.0,
+                    "avg_confidence": 0.0,
+                    "total_pnl": 0.0
                 }
             else:
                 row = result[0]
@@ -121,23 +121,9 @@ async def get_strategy_signals(
         results = db.execute_query(query, (strategy, limit))
 
         if not results:
-            # Mock data for testing
-            from datetime import datetime, timedelta
-            signals = [
-                {
-                    "action": "open_long" if i % 3 != 2 else "close",
-                    "confidence": 0.75 + (i % 10) * 0.02,
-                    "entry_price": 1835.0 + i * 2,
-                    "stop_loss": 1810.0 + i * 2,
-                    "take_profit": 1898.0 + i * 2,
-                    "reasoning": ["趋势强劲", "多周期共振"] if i % 2 == 0 else ["回调到位", "支撑有效"],
-                    "timestamp": (datetime.now() - timedelta(minutes=i*15)).isoformat(),
-                    "executed": i % 3 != 0,
-                    "source": "quant" if i % 5 != 0 else "llm"
-                }
-                for i in range(min(limit, 20))
-            ]
-            total = len(signals)
+            # 数据库无数据时返回空数组
+            signals = []
+            total = 0
         else:
             signals = [
                 {
@@ -214,29 +200,9 @@ async def get_strategy_performance(
         recent_results = db.execute_query(recent_query, (strategy,))
         
         if not daily_results:
-            # Mock data
-            daily_performance = [
-                {
-                    "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-                    "signal_count": 3,
-                    "avg_confidence": 0.78,
-                    "executed_count": 2,
-                    "pnl": 250.0 if i % 2 == 0 else -80.0
-                }
-                for i in range(days)
-            ]
-            recent_signals = [
-                {
-                    "action": "open_long",
-                    "confidence": 0.85,
-                    "entry_price": 1835.0,
-                    "stop_loss": 1810.0,
-                    "take_profit": 1898.0,
-                    "reasoning": ["强趋势", "多周期一致", "成交量确认"],
-                    "timestamp": datetime.now().isoformat(),
-                    "executed": True
-                }
-            ]
+            # 数据库无数据时返回空数组
+            daily_performance = []
+            recent_signals = []
         else:
             daily_performance = [
                 {
@@ -307,21 +273,12 @@ async def get_signal_source_distribution(
         results = db.execute_query(query, (start_date.isoformat(),))
         
         if not results:
-            # Mock data - 符合80/20原则
+            # 数据库无数据时返回空数组
             daily = []
-            for i in range(days):
-                date = (datetime.now() - timedelta(days=days-i-1)).strftime("%Y-%m-%d")
-                daily.append({
-                    "date": date,
-                    "quant": 18 + (i % 5),
-                    "llm": 4 + (i % 2),
-                    "quant_llm": 1
-                })
-            
             total = {
-                "quant": sum(d["quant"] for d in daily),
-                "llm": sum(d["llm"] for d in daily),
-                "quant_llm": sum(d["quant_llm"] for d in daily)
+                "quant": 0,
+                "llm": 0,
+                "quant_llm": 0
             }
         else:
             # 处理查询结果

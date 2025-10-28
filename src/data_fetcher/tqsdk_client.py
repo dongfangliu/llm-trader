@@ -1,6 +1,7 @@
 """
 TqSDK数据客户端封装
 负责从TqSDK获取纯碱期货数据
+使用单例模式，维护长连接
 """
 
 import pandas as pd
@@ -11,6 +12,11 @@ import os
 import asyncio
 import threading
 import time
+
+
+# 全局单例
+_client_instance = None
+_client_lock = threading.Lock()
 
 
 class TqSdkClient:
@@ -89,7 +95,7 @@ class TqSdkClient:
 
     def get_realtime_price(self) -> Optional[Dict]:
         """
-        获取实时行情
+        获取实时行情（包含盘口数据）
 
         Returns:
             dict: {
@@ -99,7 +105,14 @@ class TqSdkClient:
                 'high': 1855.0,
                 'low': 1840.0,
                 'volume': 12000,
-                'timestamp': datetime
+                'timestamp': datetime,
+
+                # 新增：五档买卖盘口
+                'bid_price1': 1849.5,
+                'bid_volume1': 100,
+                'ask_price1': 1850.5,
+                'ask_volume1': 80,
+                # ... bid_price2~5, ask_price2~5
             }
         """
         try:
@@ -134,10 +147,33 @@ class TqSdkClient:
                 'high': float(self._quote.highest),
                 'low': float(self._quote.lowest),
                 'volume': int(self._quote.volume),
-                'timestamp': timestamp
+                'timestamp': timestamp,
+
+                # 新增：五档买卖盘口
+                'bid_price1': float(self._quote.bid_price1) if hasattr(self._quote, 'bid_price1') else 0.0,
+                'bid_volume1': int(self._quote.bid_volume1) if hasattr(self._quote, 'bid_volume1') else 0,
+                'bid_price2': float(self._quote.bid_price2) if hasattr(self._quote, 'bid_price2') else 0.0,
+                'bid_volume2': int(self._quote.bid_volume2) if hasattr(self._quote, 'bid_volume2') else 0,
+                'bid_price3': float(self._quote.bid_price3) if hasattr(self._quote, 'bid_price3') else 0.0,
+                'bid_volume3': int(self._quote.bid_volume3) if hasattr(self._quote, 'bid_volume3') else 0,
+                'bid_price4': float(self._quote.bid_price4) if hasattr(self._quote, 'bid_price4') else 0.0,
+                'bid_volume4': int(self._quote.bid_volume4) if hasattr(self._quote, 'bid_volume4') else 0,
+                'bid_price5': float(self._quote.bid_price5) if hasattr(self._quote, 'bid_price5') else 0.0,
+                'bid_volume5': int(self._quote.bid_volume5) if hasattr(self._quote, 'bid_volume5') else 0,
+
+                'ask_price1': float(self._quote.ask_price1) if hasattr(self._quote, 'ask_price1') else 0.0,
+                'ask_volume1': int(self._quote.ask_volume1) if hasattr(self._quote, 'ask_volume1') else 0,
+                'ask_price2': float(self._quote.ask_price2) if hasattr(self._quote, 'ask_price2') else 0.0,
+                'ask_volume2': int(self._quote.ask_volume2) if hasattr(self._quote, 'ask_volume2') else 0,
+                'ask_price3': float(self._quote.ask_price3) if hasattr(self._quote, 'ask_price3') else 0.0,
+                'ask_volume3': int(self._quote.ask_volume3) if hasattr(self._quote, 'ask_volume3') else 0,
+                'ask_price4': float(self._quote.ask_price4) if hasattr(self._quote, 'ask_price4') else 0.0,
+                'ask_volume4': int(self._quote.ask_volume4) if hasattr(self._quote, 'ask_volume4') else 0,
+                'ask_price5': float(self._quote.ask_price5) if hasattr(self._quote, 'ask_price5') else 0.0,
+                'ask_volume5': int(self._quote.ask_volume5) if hasattr(self._quote, 'ask_volume5') else 0,
             }
 
-            logger.debug(f"实时价格: {data['price']}")
+            logger.debug(f"实时价格: {data['price']}, 买一: {data['bid_price1']}, 卖一: {data['ask_price1']}")
             return data
 
         except Exception as e:
@@ -238,6 +274,48 @@ class TqSdkClient:
             logger.debug(traceback.format_exc())
             return None
 
+    def get_tick_serial(self, count: int = 1000) -> Optional[pd.DataFrame]:
+        """
+        获取tick序列数据（用于分时图）
+
+        Args:
+            count: 获取tick数量（默认1000条）
+
+        Returns:
+            DataFrame: 包含 timestamp, last_price, volume, bid_price1, ask_price1
+        """
+        try:
+            if not self._connected and not self._init_api():
+                return None
+
+            # 获取tick序列
+            ticks = self._api.get_tick_serial(self.symbol, data_length=count)
+
+            # 等待数据更新
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                import time
+                self._api.wait_update(deadline=time.time() + 2)
+
+            # 转换为DataFrame
+            df = pd.DataFrame({
+                'datetime': pd.to_datetime(ticks['datetime']),
+                'last_price': ticks['last_price'],
+                'volume': ticks['volume'],
+                'bid_price1': ticks['bid_price1'],
+                'ask_price1': ticks['ask_price1'],
+            })
+
+            logger.debug(f"获取到 {len(df)} 条tick数据")
+            return df
+
+        except Exception as e:
+            logger.error(f"获取tick序列失败: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return None
+
     def test_connection(self) -> bool:
         """
         测试连接是否正常（轻量级检查，不获取数据）
@@ -250,7 +328,7 @@ class TqSdkClient:
             if self._connected and self._api is not None:
                 logger.debug(f"TqSDK连接已建立（合约: {self.symbol}）")
                 return True
-            
+
             # 如果未连接，尝试初始化
             logger.info(f"初始化TqSDK连接，合约: {self.symbol}")
             if self._init_api():
@@ -277,6 +355,64 @@ class TqSdkClient:
             finally:
                 self._api = None
                 self._connected = False
+
+    def get_api(self):
+        """获取TqApi实例（供外部wait_update使用）"""
+        if not self._connected:
+            self._init_api()
+        return self._api
+
+    def get_quote_obj(self):
+        """获取quote对象（供外部is_changing使用）"""
+        if not self._connected:
+            self._init_api()
+        return self._quote
+
+
+def get_tqsdk_client(
+    symbol: str = "KQ.m@CZCE.SA",
+    auth_username: Optional[str] = None,
+    auth_password: Optional[str] = None,
+    use_sim: bool = True
+) -> TqSdkClient:
+    """
+    获取TqSDK客户端单例
+
+    Args:
+        symbol: 期货合约代码
+        auth_username: 认证用户名
+        auth_password: 认证密码
+        use_sim: 是否使用模拟账户
+
+    Returns:
+        TqSdkClient单例
+    """
+    global _client_instance
+
+    with _client_lock:
+        if _client_instance is None:
+            logger.info("创建TqSDK客户端单例...")
+            _client_instance = TqSdkClient(
+                symbol=symbol,
+                auth_username=auth_username,
+                auth_password=auth_password,
+                use_sim=use_sim
+            )
+            # 立即初始化连接
+            _client_instance._init_api()
+
+        return _client_instance
+
+
+def close_tqsdk_client():
+    """关闭TqSDK客户端单例"""
+    global _client_instance
+
+    with _client_lock:
+        if _client_instance is not None:
+            _client_instance.close()
+            _client_instance = None
+            logger.info("TqSDK客户端单例已关闭")
 
 
 if __name__ == "__main__":

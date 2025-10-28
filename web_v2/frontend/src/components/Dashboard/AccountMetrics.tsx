@@ -8,6 +8,7 @@ import { Card, Row, Col, Statistic, Progress, Space, Tag } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, TrophyOutlined, RiseOutlined } from '@ant-design/icons';
 import { getAccount } from '../../api/trading';
 import { getStrategyPerformance } from '../../api/strategy';
+import { safeToFixed, safeNumber } from '../../utils/format';
 
 interface AccountMetricsData {
   equity: number;
@@ -45,20 +46,20 @@ const AccountMetrics: React.FC = () => {
         getStrategyPerformance('all')
       ]);
 
-      const account = accountRes.data;
-      const perf = perfRes.data;
+      const account = accountRes.data || {};
+      const perf = perfRes.data || {};
 
       setData({
-        equity: account.equity || 50000,
-        equityChange: account.pnl || 0,
-        equityChangePercent: account.pnl_percent || 0,
-        todayPnl: account.today_pnl || 0,
-        todayPnlPercent: account.today_pnl_percent || 0,
-        winRate: perf.win_rate || 0,
-        totalTrades: perf.total_trades || 0,
-        winTrades: perf.win_trades || 0,
-        sharpeRatio: perf.sharpe_ratio || 0,
-        maxDrawdown: perf.max_drawdown || 0,
+        equity: safeNumber(account.equity, 50000),
+        equityChange: safeNumber(account.pnl, 0),
+        equityChangePercent: safeNumber(account.pnl_percent, 0),
+        todayPnl: safeNumber(account.today_pnl, 0),
+        todayPnlPercent: safeNumber(account.today_pnl_percent, 0),
+        winRate: safeNumber(perf.win_rate, 0),
+        totalTrades: safeNumber(perf.total_trades, 0),
+        winTrades: safeNumber(perf.win_trades, 0),
+        sharpeRatio: safeNumber(perf.sharpe_ratio, 0),
+        maxDrawdown: safeNumber(perf.max_drawdown, 0),
       });
     } catch (error) {
       console.error('Failed to fetch account metrics:', error);
@@ -118,7 +119,7 @@ const AccountMetrics: React.FC = () => {
                 )}
                 <span style={{ color: getPercentColor(data.equityChangePercent) }}>
                   {data.equityChangePercent >= 0 ? '+' : ''}
-                  {data.equityChangePercent.toFixed(2)}%
+                  {safeToFixed(data.equityChangePercent, 2)}%
                 </span>
               </Space>
             </div>
@@ -141,7 +142,7 @@ const AccountMetrics: React.FC = () => {
               </Tag>
               <span style={{ color: getPercentColor(data.todayPnlPercent) }}>
                 {data.todayPnlPercent >= 0 ? '+' : ''}
-                {data.todayPnlPercent.toFixed(2)}%
+                {safeToFixed(data.todayPnlPercent, 2)}%
               </span>
             </div>
           </Card>
@@ -208,7 +209,7 @@ const AccountMetrics: React.FC = () => {
                   fontSize: '16px',
                   fontWeight: 'bold'
                 }}>
-                  {data.maxDrawdown.toFixed(2)}%
+                  {safeToFixed(data.maxDrawdown, 2)}%
                 </span>
               </div>
               <Progress 

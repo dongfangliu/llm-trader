@@ -177,9 +177,9 @@ def create_v4_tables(db_path):
     for i, sql in enumerate(tables):
         try:
             cursor.execute(sql)
-            print(f"✅ 创建表: {table_names[i]}")
+            print(f"[OK] 创建表: {table_names[i]}")
         except Exception as e:
-            print(f"❌ 创建表 {table_names[i]} 失败: {e}")
+            print(f"[ERROR] 创建表 {table_names[i]} 失败: {e}")
     
     # 创建索引
     print("\n创建索引...")
@@ -200,15 +200,15 @@ def create_v4_tables(db_path):
     for idx_sql in indexes:
         try:
             cursor.execute(idx_sql)
-            print(f"✅ 创建索引")
+            print(f"[OK] 创建索引")
         except Exception as e:
-            print(f"❌ 创建索引失败: {e}")
+            print(f"[ERROR] 创建索引失败: {e}")
     
     conn.commit()
     conn.close()
     
     print("\n" + "=" * 60)
-    print("✅ V4架构数据库表创建完成!")
+    print("[SUCCESS] V4架构数据库表创建完成!")
     print("=" * 60)
 
 
@@ -269,8 +269,8 @@ def insert_sample_data(db_path):
     
     conn.commit()
     conn.close()
-    
-    print("✅ 示例数据插入完成")
+
+    print("[OK] 示例数据插入完成")
 
 
 def check_existing_tables(db_path):
@@ -303,11 +303,11 @@ if __name__ == "__main__":
     
     # 创建新表
     create_v4_tables(db_path)
-    
-    # 插入示例数据
-    insert_sample_data(db_path)
-    
+
+    # 不插入示例数据，保持数据库干净
+    # insert_sample_data(db_path)
+
     # 再次检查
     check_existing_tables(db_path)
-    
-    print("\n✅ 数据库扩展完成!")
+
+    print("\n[SUCCESS] 数据库扩展完成!")

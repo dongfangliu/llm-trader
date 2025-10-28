@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Row, Col, Table, Space, Tag, Statistic, Select, Progress } from 'antd';
+import { Card, Row, Col, Table, Space, Tag, Statistic, Select, Progress, message } from 'antd';
 import { 
   TrophyOutlined, 
   RiseOutlined, 
@@ -65,11 +65,98 @@ const StrategyPerformance: React.FC = () => {
         getStrategySignals(selectedStrategy, 50)
       ]);
 
-      setPerformance(perfRes as any);
-      setComparison((compRes as any).strategies || []);
-      setSignals((signalsRes as any).signals || []);
+      // 处理策略表现数据
+      const perfData = (perfRes as any).data;
+      if (perfData && perfData.metrics) {
+        // 从API数据构造页面需要的数据结构
+        setPerformance({
+          strategy_name: selectedStrategy,
+          total_trades: perfData.metrics.total_signals || 0,
+          win_trades: perfData.metrics.total_executed || 0,
+          lose_trades: 0,
+          win_rate: perfData.metrics.execution_rate * 100 || 0,
+          avg_profit: 0,
+          avg_loss: 0,
+          profit_loss_ratio: 0,
+          total_pnl: 0,
+          sharpe_ratio: 0,
+          max_drawdown: 0,
+          avg_holding_time: 0,
+        });
+      } else {
+        setPerformance({
+          strategy_name: selectedStrategy,
+          total_trades: 0,
+          win_trades: 0,
+          lose_trades: 0,
+          win_rate: 0,
+          avg_profit: 0,
+          avg_loss: 0,
+          profit_loss_ratio: 0,
+          total_pnl: 0,
+          sharpe_ratio: 0,
+          max_drawdown: 0,
+          avg_holding_time: 0,
+        });
+      }
+
+      // 处理对比数据 - 从摘要API提取
+      const compData = (compRes as any).data;
+      if (compData && compData.strategies) {
+        const strategies = Object.keys(compData.strategies).map(key => ({
+          strategy_name: key,
+          total_trades: compData.strategies[key].today_signals || 0,
+          win_trades: compData.strategies[key].executed_signals || 0,
+          lose_trades: 0,
+          win_rate: compData.strategies[key].win_rate * 100 || 0,
+          avg_profit: 0,
+          avg_loss: 0,
+          profit_loss_ratio: compData.strategies[key].profit_loss_ratio || 0,
+          total_pnl: compData.strategies[key].total_pnl || 0,
+          sharpe_ratio: 0,
+          max_drawdown: 0,
+          avg_holding_time: 0,
+        }));
+        setComparison(strategies);
+      } else {
+        setComparison([]);
+      }
+
+      // 处理信号数据
+      const signalsData = (signalsRes as any).data;
+      if (signalsData && signalsData.signals) {
+        const formattedSignals = signalsData.signals.map((s: any) => ({
+          timestamp: s.timestamp,
+          action: s.action,
+          confidence: s.confidence * 100,
+          price: s.entry_price || 0,
+          result: s.executed ? 'pending' : 'pending',
+          pnl: 0,
+        }));
+        setSignals(formattedSignals);
+      } else {
+        setSignals([]);
+      }
     } catch (error) {
       console.error('Failed to fetch strategy performance:', error);
+      message.error('获取策略数据失败');
+      // 设置空数据
+      setPerformance({
+        strategy_name: selectedStrategy,
+        total_trades: 0,
+        win_trades: 0,
+        lose_trades: 0,
+        win_rate: 0,
+        avg_profit: 0,
+        avg_loss: 0,
+        profit_loss_ratio: 0,
+        total_pnl: 0,
+        sharpe_ratio: 0,
+        max_drawdown: 0,
+        avg_holding_time: 0,
+      });
+      setComparison([]);
+      setSignals([]);
     } finally {
       setLoading(false);
     }
@@ -184,7 +271,8 @@ const StrategyPerformance: React.FC = () => {
         trigger: 'axis',
         formatter: (params: any) => {
           const data = params[0];
-          return `${data.name}<br/>累计盈亏: ¥${data.value.toFixed(2)}`;
+          const value = data.value ?? 0;
+          return `${data.name}<br/>累计盈亏: ¥${value.toFixed(2)}`;
         }
       },
       grid: {
@@ -285,18 +373,21 @@ const StrategyPerformance: React.FC = () => {
       dataIndex: 'confidence',
       key: 'confidence',
       width: 100,
-      render: (conf: number) => (
-        <span style={{ color: conf >= 80 ? '#52c41a' : conf >= 60 ? '#faad14' : '#ff4d4f' }}>
-          {conf.toFixed(0)}%
-        </span>
-      )
+      render: (conf: number) => {
+        const confidence = conf ?? 0;
+        return (
+          <span style={{ color: confidence >= 80 ? '#52c41a' : confidence >= 60 ? '#faad14' : '#ff4d4f' }}>
+            {confidence.toFixed(0)}%
+          </span>
+        );
+      }
     },
     {
       title: '价格',
       dataIndex: 'price',
       key: 'price',
       width: 100,
-      render: (price: number) => `¥${price.toFixed(2)}`
+      render: (price: number) => `¥${(price ?? 0).toFixed(2)}`
     },
     {
       title: '结果',
@@ -314,14 +405,17 @@ const StrategyPerformance: React.FC = () => {
       dataIndex: 'pnl',
       key: 'pnl',
       width: 100,
-      render: (pnl: number) => (
-        <span style={{ 
-          color: pnl > 0 ? '#52c41a' : pnl < 0 ? '#ff4d4f' : '#8c8c8c',
-          fontWeight: 'bold'
-        }}>
-          {pnl >= 0 ? '+' : ''}¥{pnl.toFixed(2)}
-        </span>
-      )
+      render: (pnl: number) => {
+        const pnlValue = pnl ?? 0;
+        return (
+          <span style={{
+            color: pnlValue > 0 ? '#52c41a' : pnlValue < 0 ? '#ff4d4f' : '#8c8c8c',
+            fontWeight: 'bold'
+          }}>
+            {pnlValue >= 0 ? '+' : ''}¥{pnlValue.toFixed(2)}
+          </span>
+        );
+      }
     }
   ];
 
@@ -348,7 +442,7 @@ const StrategyPerformance: React.FC = () => {
         {performance && (
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="总交易次数"
                   value={performance.total_trades}
@@ -359,7 +453,7 @@ const StrategyPerformance: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="胜率"
                   value={performance.win_rate}
@@ -377,7 +471,7 @@ const StrategyPerformance: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="盈亏比"
                   value={performance.profit_loss_ratio}
@@ -387,15 +481,15 @@ const StrategyPerformance: React.FC = () => {
                   }}
                 />
                 <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
-                  平均盈: ¥{performance.avg_profit.toFixed(2)}
+                  平均盈: ¥{(performance.avg_profit ?? 0).toFixed(2)}
                   <br />
-                  平均亏: ¥{Math.abs(performance.avg_loss).toFixed(2)}
+                  平均亏: ¥{Math.abs(performance.avg_loss ?? 0).toFixed(2)}
                 </div>
               </Card>
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="总盈亏"
                   value={performance.total_pnl}
@@ -419,10 +513,10 @@ const StrategyPerformance: React.FC = () => {
                   }}
                 />
                 <Progress
-                  percent={Math.min(performance.sharpe_ratio / 2 * 100, 100)}
+                  percent={Math.min((performance.sharpe_ratio ?? 0) / 2 * 100, 100)}
                   strokeColor={
-                    performance.sharpe_ratio >= 1.5 ? '#52c41a' : 
-                    performance.sharpe_ratio >= 1 ? '#faad14' : '#ff4d4f'
+                    (performance.sharpe_ratio ?? 0) >= 1.5 ? '#52c41a' :
+                    (performance.sharpe_ratio ?? 0) >= 1 ? '#faad14' : '#ff4d4f'
                   }
                   showInfo={false}
                   style={{ marginTop: '8px' }}
@@ -447,16 +541,16 @@ const StrategyPerformance: React.FC = () => {
                   }}
                 />
                 <Progress
-                  percent={Math.min(Math.abs(performance.max_drawdown) / 20 * 100, 100)}
+                  percent={Math.min(Math.abs(performance.max_drawdown ?? 0) / 20 * 100, 100)}
                   strokeColor={
-                    Math.abs(performance.max_drawdown) <= 5 ? '#52c41a' : 
-                    Math.abs(performance.max_drawdown) <= 10 ? '#faad14' : '#ff4d4f'
+                    Math.abs(performance.max_drawdown ?? 0) <= 5 ? '#52c41a' :
+                    Math.abs(performance.max_drawdown ?? 0) <= 10 ? '#faad14' : '#ff4d4f'
                   }
                   showInfo={false}
                   style={{ marginTop: '8px' }}
                 />
                 <div style={{ marginTop: '8px', fontSize: '12px', color: '#8c8c8c' }}>
-                  平均持仓: {performance.avg_holding_time.toFixed(0)} 分钟
+                  平均持仓: {(performance.avg_holding_time ?? 0).toFixed(0)} 分钟
                 </div>
               </Card>
             </Col>

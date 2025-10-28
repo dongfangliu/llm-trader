@@ -31,9 +31,10 @@ class MeanReversionStrategy:
             交易信号字典
         """
         
-        # 只在震荡市工作
+        # 优先在震荡市工作，但也可以在其他状态下工作（降低置信度）
+        regime_penalty = 0.0
         if market_regime['regime'] != 'range':
-            return self._hold_signal(['非震荡市场'])
+            regime_penalty = 0.10  # 非震荡市降低置信度10%
         
         kline_1h = market_data.get('1h', {})
         kline_15m = market_data.get('15m', {})
@@ -63,22 +64,22 @@ class MeanReversionStrategy:
         
         action = 'hold'
         
-        # 规则1: 价格触及下轨 + RSI超卖 -> 做多 (均值回归)
+        # 规则1: 价格触及下轨 + RSI超卖 -> 做多 (均值回归，放宽条件)
         distance_to_lower = (current_price - lower_band) / lower_band * 100
-        if distance_to_lower < 0.5 and rsi < 35:  # 接近下轨且超卖
-            if buying_pressure > 0.55:  # 订单流开始转多
+        if distance_to_lower < 1.0 and rsi < 40:  # 放宽：1%范围内，RSI<40
+            if buying_pressure > 0.52:  # 订单流开始转多
                 action = 'open_long'
-                reasoning.append(f'价格触及下轨 (距离: {distance_to_lower:.2f}%)')
-                reasoning.append(f'RSI超卖 (RSI: {rsi:.1f})')
+                reasoning.append(f'价格接近下轨 (距离: {distance_to_lower:.2f}%)')
+                reasoning.append(f'RSI偏低 (RSI: {rsi:.1f})')
                 reasoning.append(f'订单流转多 (买压: {buying_pressure:.2f})')
         
-        # 规则2: 价格触及上轨 + RSI超买 -> 做空 (均值回归)
+        # 规则2: 价格触及上轨 + RSI超买 -> 做空 (均值回归，放宽条件)
         distance_to_upper = (upper_band - current_price) / upper_band * 100
-        if distance_to_upper < 0.5 and rsi > 65:  # 接近上轨且超买
-            if buying_pressure < 0.45:  # 订单流开始转空
+        if distance_to_upper < 1.0 and rsi > 60:  # 放宽：1%范围内，RSI>60
+            if buying_pressure < 0.48:  # 订单流开始转空
                 action = 'open_short'
-                reasoning.append(f'价格触及上轨 (距离: {distance_to_upper:.2f}%)')
-                reasoning.append(f'RSI超买 (RSI: {rsi:.1f})')
+                reasoning.append(f'价格接近上轨 (距离: {distance_to_upper:.2f}%)')
+                reasoning.append(f'RSI偏高 (RSI: {rsi:.1f})')
                 reasoning.append(f'订单流转空 (买压: {buying_pressure:.2f})')
         
         if action == 'hold':
@@ -86,10 +87,13 @@ class MeanReversionStrategy:
         
         # 计算置信度
         confidence = self._calculate_confidence(
-            price_extreme=(distance_to_lower < 0.5 or distance_to_upper < 0.5),
-            rsi_extreme=(rsi < 35 or rsi > 65),
-            order_flow_reversal=abs(buying_pressure - 0.5) > 0.05
+            price_extreme=(distance_to_lower < 1.0 or distance_to_upper < 1.0),
+            rsi_extreme=(rsi < 40 or rsi > 60),
+            order_flow_reversal=abs(buying_pressure - 0.5) > 0.02
         )
+        
+        # 应用市场状态惩罚
+        confidence = max(confidence - regime_penalty, 0.0)
         
         # 止损止盈 (震荡市紧止损, 目标中轨)
         atr = kline_1h.get('indicators', {}).get('atr', {}).get('atr', current_price * 0.015)

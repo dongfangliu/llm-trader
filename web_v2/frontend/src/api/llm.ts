@@ -44,7 +44,7 @@ export const getRecentTriggers = async (limit: number = 20) => {
   const response = await axios.get('/llm/triggers/recent', {
     params: { limit }
   });
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -54,7 +54,7 @@ export const getTriggerStatistics = async (days: number = 30) => {
   const response = await axios.get('/llm/triggers/statistics', {
     params: { days }
   });
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -62,7 +62,7 @@ export const getTriggerStatistics = async (days: number = 30) => {
  */
 export const getTriggerDetail = async (triggerId: string) => {
   const response = await axios.get(`/llm/triggers/${triggerId}`);
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -72,7 +72,7 @@ export const getCostTrend = async (days: number = 30): Promise<CostTrend> => {
   const response = await axios.get('/llm/cost/trend', {
     params: { days }
   });
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -80,7 +80,7 @@ export const getCostTrend = async (days: number = 30): Promise<CostTrend> => {
  */
 export const getLatestDailyReview = async () => {
   const response = await axios.get('/llm/daily-review/latest');
-  return response.data.data;
+  return response.data;
 };
 
 // 别名函数供页面使用

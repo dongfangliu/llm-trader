@@ -78,6 +78,25 @@ class Database:
             )
         ''')
 
+        # 回测与优化任务表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS backtest_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL UNIQUE,
+                name TEXT,
+                strategy TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                parameters TEXT,
+                optimization_mode TEXT,
+                status TEXT DEFAULT 'pending',
+                progress INTEGER DEFAULT 0,
+                result TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                completed_at DATETIME
+            )
+        ''')
+
         # 交易记录表
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS trades (
@@ -135,8 +154,147 @@ class Database:
             )
         ''')
 
+        # 策略信号表（V2系统）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                strategy TEXT NOT NULL,        -- 策略名称（trend_following/mean_reversion/breakout）
+                action TEXT NOT NULL,          -- 信号类型（open_long/open_short/close_long/close_short/hold）
+                confidence REAL NOT NULL,      -- 置信度（0-100）
+                reason TEXT,                   -- 信号原因
+                market_regime TEXT,            -- 市场态势
+                indicators TEXT,               -- 技术指标（JSON格式）
+                executed BOOLEAN DEFAULT 0,    -- 是否已执行
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 策略信号表（别名，与API保持一致）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS strategy_signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                strategy TEXT NOT NULL,        -- 策略名称（trend_following/mean_reversion/breakout）
+                action TEXT NOT NULL,          -- 信号类型（open_long/open_short/close_long/close_short/hold）
+                confidence REAL NOT NULL,      -- 置信度（0-100）
+                reasoning TEXT,                -- 信号推理（JSON格式，列表）
+                entry_price REAL,              -- 入场价格
+                stop_loss REAL,                -- 止损价格
+                take_profit REAL,              -- 止盈价格
+                market_regime TEXT,            -- 市场态势
+                indicators TEXT,               -- 技术指标（JSON格式）
+                executed BOOLEAN DEFAULT 0,    -- 是否已执行
+                source TEXT DEFAULT 'quant',   -- 信号来源（quant/llm/quant_llm）
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 市场状态历史表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_regime_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                regime TEXT NOT NULL,          -- 市场状态（trend/ranging/breakout/abnormal）
+                confidence REAL NOT NULL,      -- 置信度
+                adx REAL,                      -- ADX指标
+                atr REAL,                      -- ATR指标
+                volatility REAL,               -- 波动率
+                bollinger_width REAL,          -- 布林带宽度
+                trend_alignment REAL,          -- 趋势一致性
+                switch_reason TEXT,            -- 状态切换原因
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 多周期趋势一致性表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trend_alignment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                period TEXT NOT NULL,          -- 周期（1d/4h/1h/15m）
+                trend_direction TEXT NOT NULL, -- 趋势方向（up/down/neutral）
+                adx REAL,                      -- ADX值
+                ma_deviation REAL,             -- MA偏离度
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 账户信息表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                balance REAL NOT NULL,         -- 账户余额
+                equity REAL NOT NULL,          -- 账户权益
+                available REAL NOT NULL,       -- 可用资金
+                frozen REAL DEFAULT 0,         -- 冻结资金
+                pnl REAL DEFAULT 0,            -- 当日盈亏
+                pnl_ratio REAL DEFAULT 0,      -- 盈亏比率
+                positions_count INTEGER DEFAULT 0,  -- 持仓数量
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # 持仓信息表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,          -- 合约代码
+                direction TEXT NOT NULL,       -- 持仓方向（long/short）
+                volume INTEGER NOT NULL,       -- 持仓量
+                open_price REAL NOT NULL,      -- 开仓价格
+                current_price REAL,            -- 当前价格
+                pnl REAL DEFAULT 0,            -- 持仓盈亏
+                pnl_ratio REAL DEFAULT 0,      -- 盈亏比率
+                open_time DATETIME NOT NULL,   -- 开仓时间
+                holding_time TEXT,             -- 持仓时长
+                status TEXT DEFAULT 'open',    -- 持仓状态（open/closed）
+                close_time DATETIME,           -- 平仓时间
+                close_price REAL,              -- 平仓价格
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         self.conn.commit()
         logger.info("数据表创建/检查完成")
+
+    def save_kline(self, timestamp: str, open_price: float, high: float, low: float,
+                   close: float, volume: int, period: str = "1"):
+        """
+        保存单根K线数据（支持分钟和日线）
+
+        Args:
+            timestamp: 时间戳字符串
+            open_price: 开盘价
+            high: 最高价
+            low: 最低价
+            close: 收盘价
+            volume: 成交量
+            period: K线周期 ('1', '5', '15', '60', 'daily')
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            if period == 'daily':
+                # 保存到日K线表
+                cursor.execute('''
+                    INSERT OR REPLACE INTO kline_daily (timestamp, open, high, low, close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (timestamp, open_price, high, low, close, volume))
+            else:
+                # 保存到分钟K线表
+                cursor.execute('''
+                    INSERT OR REPLACE INTO kline_minute (timestamp, open, high, low, close, volume, period)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (timestamp, open_price, high, low, close, volume, period))
+
+            self.conn.commit()
+
+        except Exception as e:
+            logger.error(f"保存K线数据失败: {e}")
+            self.conn.rollback()
 
     def save_kline_minute(self, df: pd.DataFrame, period: str = "15"):
         """

@@ -32,9 +32,10 @@ class BreakoutStrategy:
             交易信号字典
         """
         
-        # 只在突破市工作
+        # 优先在突破市工作，但也可以在其他状态下工作（降低置信度）
+        regime_penalty = 0.0
         if market_regime['regime'] != 'breakout':
-            return self._hold_signal(['非突破市场'])
+            regime_penalty = 0.10  # 非突破市降低置信度10%
         
         kline_4h = market_data.get('4h', {})
         kline_1h = market_data.get('1h', {})
@@ -50,10 +51,20 @@ class BreakoutStrategy:
         
         reasoning = []
         
-        # 获取关键位
+        # 获取关键位（如果没有，使用布林带作为替代）
         key_levels = kline_1h.get('key_levels', {})
         support_levels = key_levels.get('support', [])
         resistance_levels = key_levels.get('resistance', [])
+        
+        # 如果没有关键位数据，使用布林带作为支撑阻力位
+        if not support_levels and not resistance_levels:
+            bb_data = kline_1h.get('indicators', {}).get('bollinger', {})
+            upper_band = bb_data.get('upper', 0)
+            lower_band = bb_data.get('lower', 0)
+            if upper_band > 0 and lower_band > 0:
+                resistance_levels = [upper_band]
+                support_levels = [lower_band]
+                reasoning.append('使用布林带作为支撑阻力位')
         
         # 获取成交量数据
         volume_ratio = kline_15m.get('indicators', {}).get('volume', {}).get('ratio', 1.0)
@@ -67,31 +78,31 @@ class BreakoutStrategy:
         nearest_level = None
         level_type = None
         
-        # 检查是否接近阻力位 (向上突破)
+        # 检查是否接近阻力位 (向上突破，放宽范围)
         for resistance in resistance_levels:
             distance_pct = (resistance - current_price) / current_price * 100
-            if -0.5 < distance_pct < 1.0:  # 接近或刚突破
+            if -1.0 < distance_pct < 2.0:  # 放宽：接近或刚突破2%范围内
                 nearest_level = resistance
                 level_type = 'resistance'
                 
-                # 突破确认条件
-                if current_price > resistance and volume_ratio > 1.5 and buying_pressure > 0.6:
+                # 突破确认条件（放宽）
+                if current_price > resistance * 0.998 and volume_ratio > 1.3 and buying_pressure > 0.55:
                     action = 'open_long'
                     reasoning.append(f'向上突破阻力位 {resistance:.2f}')
                     reasoning.append(f'成交量放大 {volume_ratio:.2f}x')
                     reasoning.append(f'订单流确认 (买压: {buying_pressure:.2f})')
                     break
         
-        # 检查是否接近支撑位 (向下突破)
+        # 检查是否接近支撑位 (向下突破，放宽范围)
         if action == 'hold':
             for support in support_levels:
                 distance_pct = (current_price - support) / support * 100
-                if -0.5 < distance_pct < 1.0:  # 接近或刚突破
+                if -1.0 < distance_pct < 2.0:  # 放宽：接近或刚突破2%范围内
                     nearest_level = support
                     level_type = 'support'
                     
-                    # 突破确认条件
-                    if current_price < support and volume_ratio > 1.5 and buying_pressure < 0.4:
+                    # 突破确认条件（放宽）
+                    if current_price < support * 1.002 and volume_ratio > 1.3 and buying_pressure < 0.45:
                         action = 'open_short'
                         reasoning.append(f'向下突破支撑位 {support:.2f}')
                         reasoning.append(f'成交量放大 {volume_ratio:.2f}x')
@@ -101,11 +112,10 @@ class BreakoutStrategy:
         if action == 'hold':
             return self._hold_signal(['未触发突破条件'])
         
-        # 假突破过滤
-        if not self._validate_breakout(kline_15m, action, nearest_level):
-            return self._hold_signal(['疑似假突破'])
-        
-        reasoning.append('假突破过滤通过')
+        # 假突破过滤 (可选，降低要求)
+        # if not self._validate_breakout(kline_15m, action, nearest_level):
+        #     return self._hold_signal(['疑似假突破'])
+        # reasoning.append('假突破过滤通过')
         
         # 计算置信度
         confidence = self._calculate_confidence(
@@ -113,6 +123,9 @@ class BreakoutStrategy:
             order_flow_strength=abs(buying_pressure - 0.5) * 2,
             price_momentum=self._calculate_momentum(kline_15m)
         )
+        
+        # 应用市场状态惩罚
+        confidence = max(confidence - regime_penalty, 0.0)
         
         # 止损止盈 (突破成功后大空间)
         atr = kline_1h.get('indicators', {}).get('atr', {}).get('atr', current_price * 0.02)

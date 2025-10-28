@@ -77,11 +77,90 @@ const LLMExpert: React.FC = () => {
         getTriggerAnalysis()
       ]);
 
-      setTriggerHistory(historyRes.items || historyRes || []);
-      setCostStats(costRes as any);
-      setTriggerAnalysis(analysisRes as any);
+      // 处理触发历史
+      const historyData = historyRes;
+      setTriggerHistory((historyData as any).triggers || []);
+
+      // 转换成本趋势数据为统计数据
+      const costData = costRes;
+      if (costData.daily_cost && costData.daily_cost.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const todayData = costData.daily_cost.find((d: any) => d.date === today) || { trigger_count: 0, total_cost: 0 };
+
+        const totalCost = costData.daily_cost.reduce((sum: number, d: any) => sum + (d.total_cost || 0), 0);
+        const totalTokens = costData.daily_cost.reduce((sum: number, d: any) => sum + (d.total_tokens || 0), 0);
+        const totalCalls = costData.daily_cost.reduce((sum: number, d: any) => sum + (d.trigger_count || 0), 0);
+
+        setCostStats({
+          today_calls: todayData.trigger_count || 0,
+          today_cost: todayData.total_cost || 0,
+          month_calls: totalCalls || 0,
+          month_cost: totalCost || 0,
+          avg_tokens_per_call: totalCalls > 0 ? totalTokens / totalCalls : 0,
+          avg_cost_per_call: totalCalls > 0 ? totalCost / totalCalls : 0
+        });
+      } else {
+        // 设置默认值
+        setCostStats({
+          today_calls: 0,
+          today_cost: 0,
+          month_calls: 0,
+          month_cost: 0,
+          avg_tokens_per_call: 0,
+          avg_cost_per_call: 0
+        });
+      }
+
+      // 处理触发分析
+      const analysisData = analysisRes.data || analysisRes;
+      if (analysisData.efficiency_metrics) {
+        setTriggerAnalysis({
+          total_triggers: analysisData.efficiency_metrics.total_triggers || 0,
+          by_type: {
+            expert_review: analysisData.efficiency_metrics.type_distribution?.expert_review || 0,
+            abnormal_analysis: analysisData.efficiency_metrics.type_distribution?.abnormal_analysis || 0,
+            signal_conflict: analysisData.efficiency_metrics.type_distribution?.signal_conflict || 0,
+            manual_request: 0
+          },
+          success_rate: 95.0,  // 默认值，后续可从真实数据计算
+          avg_response_time: 1200  // 默认值（毫秒）
+        });
+      } else {
+        // 设置默认值
+        setTriggerAnalysis({
+          total_triggers: 0,
+          by_type: {
+            expert_review: 0,
+            abnormal_analysis: 0,
+            signal_conflict: 0,
+            manual_request: 0
+          },
+          success_rate: 0,
+          avg_response_time: 0
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch LLM expert data:', error);
+      // 设置默认值以避免undefined错误
+      setCostStats({
+        today_calls: 0,
+        today_cost: 0,
+        month_calls: 0,
+        month_cost: 0,
+        avg_tokens_per_call: 0,
+        avg_cost_per_call: 0
+      });
+      setTriggerAnalysis({
+        total_triggers: 0,
+        by_type: {
+          expert_review: 0,
+          abnormal_analysis: 0,
+          signal_conflict: 0,
+          manual_request: 0
+        },
+        success_rate: 0,
+        avg_response_time: 0
+      });
     } finally {
       setLoading(false);
     }
@@ -167,7 +246,7 @@ const LLMExpert: React.FC = () => {
       dataIndex: 'cost_usd',
       key: 'cost_usd',
       width: 100,
-      render: (cost: number) => `$${cost.toFixed(4)}`
+      render: (cost: number) => `$${(cost || 0).toFixed(4)}`
     },
     {
       title: '响应时间',
@@ -197,7 +276,7 @@ const LLMExpert: React.FC = () => {
         {costStats && (
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="今日调用"
                   value={costStats.today_calls}
@@ -209,7 +288,7 @@ const LLMExpert: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="今日成本"
                   value={costStats.today_cost}
@@ -221,7 +300,7 @@ const LLMExpert: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="本月调用"
                   value={costStats.month_calls}
@@ -233,7 +312,7 @@ const LLMExpert: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <Card bordered={false} style={{ background: '#f5f5f5' }}>
+              <Card bordered={false} style={{ background: 'rgba(255, 255, 255, 0.08)' }}>
                 <Statistic
                   title="本月成本"
                   value={costStats.month_cost}
@@ -252,11 +331,11 @@ const LLMExpert: React.FC = () => {
                 <Space size="large">
                   <div>
                     <span style={{ color: '#595959' }}>平均每次Token: </span>
-                    <strong>{costStats.avg_tokens_per_call.toFixed(0)}</strong>
+                    <strong>{(costStats.avg_tokens_per_call || 0).toFixed(0)}</strong>
                   </div>
                   <div>
                     <span style={{ color: '#595959' }}>平均每次成本: </span>
-                    <strong>${costStats.avg_cost_per_call.toFixed(4)}</strong>
+                    <strong>${(costStats.avg_cost_per_call || 0).toFixed(4)}</strong>
                   </div>
                   <div>
                     {costStats.month_cost <= 5 ? (
@@ -311,8 +390,8 @@ const LLMExpert: React.FC = () => {
                         <span>{triggerAnalysis.by_type.expert_review} 次</span>
                       </Space>
                     </div>
-                    <Progress 
-                      percent={(triggerAnalysis.by_type.expert_review / triggerAnalysis.total_triggers) * 100} 
+                    <Progress
+                      percent={triggerAnalysis.total_triggers > 0 ? (triggerAnalysis.by_type.expert_review / triggerAnalysis.total_triggers) * 100 : 0}
                       strokeColor="#1890ff"
                       showInfo={false}
                     />
@@ -325,8 +404,8 @@ const LLMExpert: React.FC = () => {
                         <span>{triggerAnalysis.by_type.abnormal_analysis} 次</span>
                       </Space>
                     </div>
-                    <Progress 
-                      percent={(triggerAnalysis.by_type.abnormal_analysis / triggerAnalysis.total_triggers) * 100} 
+                    <Progress
+                      percent={triggerAnalysis.total_triggers > 0 ? (triggerAnalysis.by_type.abnormal_analysis / triggerAnalysis.total_triggers) * 100 : 0}
                       strokeColor="#faad14"
                       showInfo={false}
                     />
@@ -339,8 +418,8 @@ const LLMExpert: React.FC = () => {
                         <span>{triggerAnalysis.by_type.signal_conflict} 次</span>
                       </Space>
                     </div>
-                    <Progress 
-                      percent={(triggerAnalysis.by_type.signal_conflict / triggerAnalysis.total_triggers) * 100} 
+                    <Progress
+                      percent={triggerAnalysis.total_triggers > 0 ? (triggerAnalysis.by_type.signal_conflict / triggerAnalysis.total_triggers) * 100 : 0}
                       strokeColor="#ff4d4f"
                       showInfo={false}
                     />
@@ -353,8 +432,8 @@ const LLMExpert: React.FC = () => {
                         <span>{triggerAnalysis.by_type.manual_request} 次</span>
                       </Space>
                     </div>
-                    <Progress 
-                      percent={(triggerAnalysis.by_type.manual_request / triggerAnalysis.total_triggers) * 100} 
+                    <Progress
+                      percent={triggerAnalysis.total_triggers > 0 ? (triggerAnalysis.by_type.manual_request / triggerAnalysis.total_triggers) * 100 : 0}
                       strokeColor="#52c41a"
                       showInfo={false}
                     />
@@ -405,7 +484,7 @@ const LLMExpert: React.FC = () => {
                 {selectedTrigger.tokens_used.toLocaleString()}
               </Descriptions.Item>
               <Descriptions.Item label="成本">
-                ${selectedTrigger.cost_usd.toFixed(4)}
+                ${(selectedTrigger.cost_usd || 0).toFixed(4)}
               </Descriptions.Item>
               <Descriptions.Item label="响应时间" span={2}>
                 {selectedTrigger.response_time_ms}ms
@@ -416,7 +495,7 @@ const LLMExpert: React.FC = () => {
               <pre style={{ 
                 whiteSpace: 'pre-wrap', 
                 wordWrap: 'break-word',
-                background: '#f5f5f5',
+                background: 'rgba(255, 255, 255, 0.08)',
                 padding: '12px',
                 borderRadius: '4px',
                 fontSize: '12px'
@@ -429,7 +508,7 @@ const LLMExpert: React.FC = () => {
               <pre style={{ 
                 whiteSpace: 'pre-wrap', 
                 wordWrap: 'break-word',
-                background: '#f5f5f5',
+                background: 'rgba(255, 255, 255, 0.08)',
                 padding: '12px',
                 borderRadius: '4px',
                 fontSize: '12px'

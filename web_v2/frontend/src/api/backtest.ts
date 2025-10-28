@@ -41,7 +41,7 @@ export interface BacktestTask {
  */
 export const runBacktest = async (request: BacktestRequest) => {
   const response = await axios.post('/backtest/run', request);
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -49,7 +49,7 @@ export const runBacktest = async (request: BacktestRequest) => {
  */
 export const runOptimization = async (request: OptimizationRequest) => {
   const response = await axios.post('/backtest/optimize', request);
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -67,7 +67,7 @@ export const getBacktestTasks = async (status?: string, limit: number = 50) => {
  */
 export const getTaskDetail = async (taskId: string) => {
   const response = await axios.get(`/backtest/tasks/${taskId}`);
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -83,7 +83,7 @@ export const deleteTask = async (taskId: string) => {
  */
 export const getStrategyTemplates = async () => {
   const response = await axios.get('/backtest/templates');
-  return response.data.data;
+  return response.data;
 };
 
 /**
@@ -93,7 +93,7 @@ export const compareBacktests = async (taskIds: string[]) => {
   const response = await axios.get('/backtest/compare', {
     params: { task_ids: taskIds.join(',') }
   });
-  return response.data.data;
+  return response.data;
 };
 
 // 别名供页面使用

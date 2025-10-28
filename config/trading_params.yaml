@@ -11,27 +11,51 @@ decision:
   min_trade_gap: 30
   strategic_interval: 240
   tactical_interval: 15
+  llm_direct_enabled: true
+  llm_direct_interval: 240
+  llm_allow_reverse: true
+market_regime:
+  # 定时触发（秒）
+  periodic_interval: 900  # 15分钟
+  # 事件触发阈值
+  triggers:
+    price_change_threshold: 0.005  # 0.5% 价格变动
+    volume_spike_threshold: 2.0    # 2倍成交量突增
+    adx_change_threshold: 5.0      # 5点 ADX变化
+  # 技术指标计算周期
+  lookback_periods:
+    adx_period: 14
+    atr_period: 14
+    ma_periods: [5, 20, 60]
+  # 状态切换防抖（秒）
+  regime_switch_cooldown: 300  # 5分钟
 llm:
   max_tokens: 2000
   model: deepseek-chat
   temperature: 0.7
   timeout: 30
 risk:
-  daily_max_loss: -1000
+  daily_max_loss: -1000.0
   max_drawdown: 0.1
   max_hold_hours: 8
-  stop_loss: -500
+  stop_loss: -500.0
   volatility_threshold: 0.03
 system:
   log_level: INFO
   review_time: '21:00'
   timezone: Asia/Shanghai
 trading:
-  initial_capital: 50000
+  initial_capital: 50000.0
   max_position: 2
   single_trade: 1
   symbol: SA0
-  # TqSDK合约代码格式说明：
-  # 主力合约（推荐）: KQ.m@CZCE.SA - 自动跟踪成交量最大的合约
-  # 具体月份合约: CZCE.SA501 (2025年1月), CZCE.SA505 (2025年5月), CZCE.SA601 (2026年1月)
   tqsdk_symbol: KQ.m@CZCE.SA
+# 订单流分析配置
+order_flow:
+  vpin:
+    bucket_size: 50  # VPIN桶大小（手）
+  large_order:
+    lookback: 100  # 大单检测回看窗口（笔）
+    threshold_multiplier: 2.5  # 大单阈值倍数
+  orderbook:
+    max_history: 1000  # 订单簿历史记录数

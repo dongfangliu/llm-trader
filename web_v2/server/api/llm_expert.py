@@ -39,30 +39,9 @@ async def get_recent_triggers(
             LIMIT ?
         """
         results = db.execute_query(query, (limit,))
-        
+
         if not results:
-            # Mock data
-            triggers = [
-                {
-                    "trigger_id": f"trigger_{i}",
-                    "timestamp": (datetime.now() - timedelta(hours=i*2)).isoformat(),
-                    "trigger_type": ["expert_review", "abnormal_analysis", "signal_conflict"][i % 3],
-                    "quant_signal": {
-                        "action": "open_long",
-                        "confidence": 0.78
-                    },
-                    "llm_decision": {
-                        "action": "approve",
-                        "confidence_adjustment": 0.05,
-                        "reasoning": "市场趋势清晰，支持开仓"
-                    },
-                    "tokens_used": 450 + i * 10,
-                    "cost": 0.0023,
-                    "response_time": 1.2 + i * 0.1,
-                    "final_action": "open_long"
-                }
-                for i in range(min(limit, 10))
-            ]
+            triggers = []
         else:
             import json
             triggers = [
@@ -133,27 +112,13 @@ async def get_trigger_statistics(
             ORDER BY date ASC
         """
         daily_results = db.execute_query(daily_query, (start_date.isoformat(),))
-        
+
         if not daily_results:
-            # Mock data - 符合V4设计的低频触发（3-5次/天）
             daily_triggers = []
-            for i in range(days):
-                date = (datetime.now() - timedelta(days=days-i-1)).strftime("%Y-%m-%d")
-                daily_triggers.append({
-                    "date": date,
-                    "expert_review": 2 + (i % 2),
-                    "abnormal_analysis": 1 if i % 3 == 0 else 0,
-                    "signal_conflict": 1 if i % 5 == 0 else 0,
-                    "daily_review": 1,
-                    "total": 4 + (i % 2),
-                    "total_tokens": 2200 + i * 100,
-                    "total_cost": 0.011 + i * 0.001
-                })
-            
             cost_analysis = {
-                "total_cost": sum(d["total_cost"] for d in daily_triggers),
-                "avg_daily_cost": round(sum(d["total_cost"] for d in daily_triggers) / days, 4),
-                "projected_monthly_cost": round(sum(d["total_cost"] for d in daily_triggers) / days * 30, 2)
+                "total_cost": 0,
+                "avg_daily_cost": 0,
+                "projected_monthly_cost": 0
             }
         else:
             # 处理查询结果
@@ -286,18 +251,9 @@ async def get_cost_trend(
             ORDER BY date ASC
         """
         results = db.execute_query(query, (start_date.isoformat(),))
-        
+
         if not results:
-            # Mock data - V4目标：<$5/月
-            daily_cost = [
-                {
-                    "date": (datetime.now() - timedelta(days=days-i-1)).strftime("%Y-%m-%d"),
-                    "trigger_count": 4 + (i % 2),
-                    "total_tokens": 2200 + i * 50,
-                    "total_cost": round(0.011 + (i % 3) * 0.002, 4)
-                }
-                for i in range(days)
-            ]
+            daily_cost = []
         else:
             daily_cost = [
                 {
@@ -311,15 +267,15 @@ async def get_cost_trend(
         
         # 趋势分析
         trend_analysis = _analyze_cost_trend(daily_cost)
-        
+
         # 预算状态
-        monthly_projection = trend_analysis["avg_daily_cost"] * 30
+        monthly_projection = trend_analysis.get("avg_daily_cost", 0) * 30
         budget_target = 5.0  # V4目标：$5/月
         budget_status = {
             "monthly_projection": round(monthly_projection, 2),
             "budget_target": budget_target,
             "within_budget": monthly_projection <= budget_target,
-            "utilization_percent": round(monthly_projection / budget_target * 100, 1)
+            "utilization_percent": round(monthly_projection / budget_target * 100, 1) if budget_target > 0 else 0
         }
         
         return StandardResponse(data={
@@ -355,24 +311,13 @@ async def get_latest_daily_review() -> StandardResponse:
             LIMIT 1
         """
         result = db.execute_query(query)
-        
+
         if not result:
-            # Mock data
             review = {
-                "review_content": "今日市场呈现强势上涨趋势，趋势跟踪策略表现优异，成功捕捉主要趋势波段。",
-                "lessons_extracted": [
-                    "强趋势市场中应提高仓位利用率",
-                    "多周期趋势一致时可以增加信心",
-                    "回调时的加仓时机把握较好"
-                ],
-                "performance_analysis": {
-                    "win_rate": 0.75,
-                    "profit_loss_ratio": 2.8,
-                    "total_pnl": 1250.0,
-                    "best_trade": "开仓1835，止盈1898，+3.4%",
-                    "worst_trade": "开仓1842，止损1825，-0.9%"
-                },
-                "timestamp": datetime.now().replace(hour=21, minute=0).isoformat()
+                "review_content": "",
+                "lessons_extracted": [],
+                "performance_analysis": {},
+                "timestamp": None
             }
         else:
             import json

@@ -86,10 +86,10 @@ class MarketRegimeDetector:
         characteristics = {}
         strategy_params = {}
         
-        # 规则1: 趋势市识别
-        if adx > 25 and distance_pct > 3:
+        # 规则1: 趋势市识别 (降低阈值)
+        if adx > 20 and distance_pct > 2:
             regime = 'trend'
-            confidence = min((adx - 25) / 25, 1.0)
+            confidence = min((adx - 20) / 30, 1.0)
             characteristics = {
                 'trend_strength': 'strong' if adx > 35 else 'moderate',
                 'direction': 'up' if price > ma20 else 'down',
@@ -97,16 +97,16 @@ class MarketRegimeDetector:
             }
             strategy_params = {
                 'primary_strategy': 'trend_following',
-                'signal_threshold': 0.65,
+                'signal_threshold': 0.60,  # 降低阈值
                 'stop_loss_atr_multiplier': 2.5,
                 'take_profit_ratio': 2.5,
                 'position_sizing': 'aggressive'
             }
         
-        # 规则2: 震荡市识别
-        elif adx < 20 and bb_width < 3 and distance_pct < 2:
+        # 规则2: 震荡市识别 (放宽条件)
+        elif adx < 25 and distance_pct < 3:
             regime = 'range'
-            confidence = (20 - adx) / 20
+            confidence = max((25 - adx) / 25, 0.5)
             characteristics = {
                 'range_tight': bb_width < 2,
                 'center': ma20,
@@ -114,7 +114,7 @@ class MarketRegimeDetector:
             }
             strategy_params = {
                 'primary_strategy': 'mean_reversion',
-                'signal_threshold': 0.75,
+                'signal_threshold': 0.60,  # 降低阈值
                 'stop_loss_atr_multiplier': 1.5,
                 'take_profit_ratio': 1.2,
                 'position_sizing': 'conservative'
@@ -133,7 +133,7 @@ class MarketRegimeDetector:
             }
             strategy_params = {
                 'primary_strategy': 'breakout',
-                'signal_threshold': 0.80,
+                'signal_threshold': 0.65,  # 降低阈值
                 'stop_loss_atr_multiplier': 1.8,
                 'take_profit_ratio': 3.0,
                 'position_sizing': 'moderate'

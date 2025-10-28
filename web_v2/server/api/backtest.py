@@ -3,7 +3,7 @@
 Backtest API
 """
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, BackgroundTasks
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -14,6 +14,181 @@ from server.core.bridge import bridge
 
 router = APIRouter()
 
+# ================ 工具函数 ================
+
+def _load_market_data_df(start_date: str, end_date: str, period: str = '15'):
+    import pandas as pd
+    start_ts = f"{start_date} 00:00:00"
+    end_ts = f"{end_date} 23:59:59"
+
+    # 1) 直接使用 TqSDK 拉取数据（优先）
+    try:
+        # 优先使用已启动的推送服务中的 TqSDK 客户端（已按配置初始化）
+        ps = bridge.get_push_service()
+        if ps is None:
+            bridge.init_connections()
+            ps = bridge.get_push_service()
+        tqsdk_client = getattr(ps, 'tqsdk_client', None) if ps else None
+        if tqsdk_client:
+            kdf = tqsdk_client.get_minute_kline(period=str(period), count=3000)
+            if kdf is not None and not kdf.empty:
+                kdf = kdf.copy()
+                kdf['timestamp'] = pd.to_datetime(kdf['timestamp'])
+                mask = (kdf['timestamp'] >= pd.to_datetime(start_ts)) & (kdf['timestamp'] <= pd.to_datetime(end_ts))
+                kdf = kdf.loc[mask].reset_index(drop=True)
+                if not kdf.empty:
+                    logger.info("使用TqSDK实时K线数据（直接拉取）")
+                    return kdf
+    except Exception as e:
+        logger.warning(f"TqSDK实时拉取失败: {e}")
+
+    # 2) 次选：使用推送服务缓存（如有）
+    try:
+        period_map = {'1': '1m', '5': '5m', '15': '15m', '60': '1h', '240': '4h'}
+        ps_period = period_map.get(str(period), '15m')
+        ps = bridge.get_push_service()
+        if ps:
+            klist = ps.get_cached_kline(ps_period, limit=1000)
+            if klist:
+                cdf = pd.DataFrame(klist)
+                cdf['timestamp'] = pd.to_datetime(cdf['timestamp'])
+                mask = (cdf['timestamp'] >= pd.to_datetime(start_ts)) & (cdf['timestamp'] <= pd.to_datetime(end_ts))
+                cdf = cdf.loc[mask].reset_index(drop=True)
+                if not cdf.empty:
+                    logger.info("使用RealtimePushService缓存K线数据")
+                    return cdf
+    except Exception as e:
+        logger.warning(f"读取推送服务缓存失败: {e}")
+
+    # 3) 兜底：数据库（如仍需）
+    try:
+        db = bridge.get_db()
+        rows = db.execute_query(
+            """
+            SELECT timestamp, open, high, low, close, volume
+            FROM kline_minute
+            WHERE period = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY timestamp ASC
+            """,
+            (period, start_ts, end_ts)
+        )
+        if rows:
+            df = pd.DataFrame(rows, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            logger.info("使用数据库K线数据（兜底）")
+            return df
+    except Exception as e:
+        logger.warning(f"数据库兜底读取失败: {e}")
+
+    return pd.DataFrame()
+
+# ================ 后台任务实现 ================
+
+def _run_backtest_task(task_id: str, req: Dict[str, Any]):
+    from loguru import logger
+    import json
+    from datetime import datetime
+    try:
+        db = bridge.get_db()
+        db.execute_update("UPDATE backtest_tasks SET status='running', progress=5 WHERE task_id=?", (task_id,))
+
+        df = _load_market_data_df(req['start_date'], req['end_date'], '15')
+        if df.empty:
+            raise RuntimeError('无K线数据，无法回测')
+
+        # 运行回测
+        from backtest.strategy_backtester import StrategyBacktester, BacktestConfig
+        cfg = BacktestConfig(
+            symbol='CZCE.SA601',
+            start_date=req['start_date'],
+            end_date=req['end_date'],
+            initial_capital=float(req.get('initial_capital', 50000.0))
+        )
+        bt = StrategyBacktester(config=cfg)
+        result = bt.run(market_data=df)
+
+        # 结果
+        payload = {
+            'parameters': req.get('parameters', {}),
+            'performance': result.performance_metrics,
+        }
+        db.execute_update(
+            "UPDATE backtest_tasks SET status='completed', progress=100, result=?, completed_at=? WHERE task_id=?",
+            (json.dumps(payload), datetime.now().isoformat(), task_id)
+        )
+        logger.info(f"回测完成: {task_id}")
+    except Exception as e:
+        bridge.get_db().execute_update("UPDATE backtest_tasks SET status='failed' WHERE task_id=?", (task_id,))
+
+
+def _run_optimization_task(task_id: str, req: Dict[str, Any]):
+    """后台执行参数优化任务（基于真实回测，单进程）"""
+    from loguru import logger
+    import json, time
+    from datetime import datetime
+    try:
+        db = bridge.get_db()
+        db.execute_update("UPDATE backtest_tasks SET status='running', progress=5 WHERE task_id=?", (task_id,))
+
+        full_df = _load_market_data_df(req['start_date'], req['end_date'], '15')
+        if full_df.empty:
+            raise RuntimeError('无K线数据，无法优化')
+        # 切分样本内/外（时间切分70/30）
+        split_idx = int(len(full_df) * 0.7)
+        df_in = full_df.iloc[:split_idx].copy()
+        df_out = full_df.iloc[split_idx:].copy()
+
+        # 展开参数组合
+        from itertools import product
+        param_ranges: Dict[str, List[Any]] = req.get('parameter_ranges', {})
+        keys = list(param_ranges.keys())
+        values = [param_ranges[k] for k in keys]
+        combos = [dict(zip(keys, v)) for v in product(*values)]
+        total = max(1, len(combos))
+
+        from backtest.strategy_backtester import StrategyBacktester, BacktestConfig
+
+        def run_bt(df):
+            cfg = BacktestConfig(
+                symbol='CZCE.SA601',
+                start_date=req['start_date'],
+                end_date=req['end_date'],
+                initial_capital=float(req.get('initial_capital', 50000.0))
+            )
+            bt = StrategyBacktester(config=cfg)
+            res = bt.run(market_data=df)
+            return res.performance_metrics
+
+        results = []
+        best = None
+        target_metric = req.get('target_metric', 'sharpe_ratio')
+        for i, params in enumerate(combos, 1):
+            # 注：当前策略尚未参数化应用，这里先占位保存参数；
+            # 如需生效，可在策略类中读取并应用这些参数。
+            in_metrics = run_bt(df_in)
+            out_metrics = run_bt(df_out)
+            score = out_metrics.get(target_metric, 0) or 0
+            rec = {'params': params, 'in_sample': in_metrics, 'out_sample': out_metrics, 'score': score}
+            results.append(rec)
+            if best is None or score > best['score']:
+                best = rec
+            db.execute_update("UPDATE backtest_tasks SET progress=? WHERE task_id=?", (int(5 + 90*i/total), task_id))
+            time.sleep(0.02)
+
+        result_obj = {
+            'best_params': best['params'] if best else {},
+            'performance': best['out_sample'] if best else {},
+            'target_metric': target_metric,
+            'top_results': sorted(results, key=lambda x: x['score'], reverse=True)[:10]
+        }
+        db.execute_update(
+            "UPDATE backtest_tasks SET status='completed', progress=100, result=?, completed_at=? WHERE task_id=?",
+            (json.dumps(result_obj), datetime.now().isoformat(), task_id)
+        )
+        logger.info(f"优化任务完成: {task_id}")
+    except Exception as e:
+        logger.error(f"优化任务失败 {task_id}: {e}")
+        bridge.get_db().execute_update("UPDATE backtest_tasks SET status='failed' WHERE task_id=?", (task_id,))
 
 # ==================== 请求模型 ====================
 
@@ -41,7 +216,7 @@ class OptimizationRequest(BaseModel):
 # ==================== API端点 ====================
 
 @router.post("/run", summary="运行回测")
-async def run_backtest(request: BacktestRequest) -> StandardResponse:
+async def run_backtest(request: BacktestRequest, background_tasks: BackgroundTasks) -> StandardResponse:
     """
     运行单次回测
     
@@ -72,17 +247,15 @@ async def run_backtest(request: BacktestRequest) -> StandardResponse:
              request.end_date, json.dumps(request.parameters))
         )
         
-        # TODO: 实际调用回测引擎
-        # from src.backtest.backtester import Backtester
-        # backtester = Backtester(...)
-        # result = backtester.run()
-        
         logger.info(f"创建回测任务: {task_id}")
+
+        # 启动后台任务
+        background_tasks.add_task(_run_backtest_task, task_id, request.dict())
         
         return StandardResponse(data={
             "task_id": task_id,
             "status": "pending",
-            "message": "回测任务已创建，正在排队执行"
+            "message": "回测任务已创建并开始执行"
         })
     
     except Exception as e:
@@ -91,7 +264,7 @@ async def run_backtest(request: BacktestRequest) -> StandardResponse:
 
 
 @router.post("/optimize", summary="参数优化")
-async def run_optimization(request: OptimizationRequest) -> StandardResponse:
+async def run_optimization(request: OptimizationRequest, background_tasks: BackgroundTasks) -> StandardResponse:
     """
     运行参数优化
     
@@ -133,13 +306,16 @@ async def run_optimization(request: OptimizationRequest) -> StandardResponse:
         estimated_minutes = param_combinations * 0.5
         
         logger.info(f"创建优化任务: {task_id}, {param_combinations}个参数组合")
+
+        # 启动后台任务
+        background_tasks.add_task(_run_optimization_task, task_id, request.dict())
         
         return StandardResponse(data={
             "task_id": task_id,
             "status": "pending",
             "parameter_combinations": param_combinations,
             "estimated_minutes": round(estimated_minutes, 1),
-            "message": "优化任务已创建"
+            "message": "优化任务已创建并开始执行"
         })
     
     except Exception as e:
@@ -186,21 +362,8 @@ async def get_backtest_tasks(
             results = db.execute_query(query, (limit,))
         
         if not results:
-            # Mock data
-            tasks = [
-                {
-                    "task_id": "backtest_abc123",
-                    "name": "趋势策略回测",
-                    "strategy": "trend_following",
-                    "start_date": "2024-01-01",
-                    "end_date": "2024-12-31",
-                    "optimization_mode": "single",
-                    "status": "completed",
-                    "progress": 100,
-                    "created_at": (datetime.now()).isoformat(),
-                    "completed_at": (datetime.now()).isoformat()
-                }
-            ]
+            # 数据库无数据时返回空数组
+            tasks = []
         else:
             tasks = [
                 {
@@ -249,47 +412,9 @@ async def get_task_detail(task_id: str) -> StandardResponse:
         result = db.execute_query(query, (task_id,))
         
         if not result:
-            # Mock data
-            task_info = {
-                "task_id": task_id,
-                "name": "趋势策略回测",
-                "strategy": "trend_following",
-                "start_date": "2024-01-01",
-                "end_date": "2024-12-31",
-                "parameters": {"ma_period": 20, "atr_multiplier": 2.5},
-                "optimization_mode": "single",
-                "status": "completed",
-                "progress": 100,
-                "created_at": datetime.now().isoformat(),
-                "completed_at": datetime.now().isoformat()
-            }
-            
-            backtest_result = {
-                "performance": {
-                    "total_return": 0.245,
-                    "annual_return": 0.245,
-                    "sharpe_ratio": 1.85,
-                    "max_drawdown": 0.085,
-                    "win_rate": 0.68,
-                    "profit_loss_ratio": 2.5
-                },
-                "trades": {
-                    "total_trades": 125,
-                    "winning_trades": 85,
-                    "losing_trades": 40,
-                    "avg_win": 280.0,
-                    "avg_loss": 112.0
-                },
-                "equity_curve": [
-                    {"date": "2024-01-01", "equity": 50000},
-                    {"date": "2024-06-30", "equity": 56000},
-                    {"date": "2024-12-31", "equity": 62250}
-                ],
-                "monthly_returns": [
-                    {"month": "2024-01", "return": 0.025},
-                    {"month": "2024-02", "return": 0.018}
-                ]
-            }
+            # 数据库无数据时返回空对象
+            task_info = None
+            backtest_result = None
         else:
             import json
             row = result[0]

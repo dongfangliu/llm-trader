@@ -5,6 +5,8 @@ interface UseWebSocketOptions {
   onOpen?: (event: Event) => void
   onClose?: (event: CloseEvent) => void
   onMessage?: (data: any) => void
+  onKlineUpdate?: (period: string, data: any[]) => void
+  onTickUpdate?: (data: any) => void
   onError?: (event: Event) => void
   reconnectInterval?: number
   maxReconnectAttempts?: number
@@ -16,6 +18,8 @@ export const useWebSocket = (options: UseWebSocketOptions) => {
     onOpen,
     onClose,
     onMessage,
+    onKlineUpdate,
+    onTickUpdate,
     onError,
     reconnectInterval = 3000,
   } = options
@@ -32,16 +36,26 @@ export const useWebSocket = (options: UseWebSocketOptions) => {
   const onOpenRef = useRef(onOpen)
   const onCloseRef = useRef(onClose)
   const onMessageRef = useRef(onMessage)
+  const onKlineUpdateRef = useRef(onKlineUpdate)
+  const onTickUpdateRef = useRef(onTickUpdate)
   const onErrorRef = useRef(onError)
 
   // 更新ref
   onOpenRef.current = onOpen
   onCloseRef.current = onClose
   onMessageRef.current = onMessage
+  onKlineUpdateRef.current = onKlineUpdate
+  onTickUpdateRef.current = onTickUpdate
   onErrorRef.current = onError
 
   const connect = useCallback(() => {
     try {
+      // 如果已经有连接且状态为OPEN或CONNECTING，不重复创建
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        console.log('WebSocket已连接或正在连接中，跳过')
+        return
+      }
+
       // 清理旧连接
       if (wsRef.current) {
         wsRef.current.close()
@@ -99,6 +113,13 @@ export const useWebSocket = (options: UseWebSocketOptions) => {
             return
           }
 
+          // 处理特定类型的消息
+          if (data.type === 'kline' && onKlineUpdateRef.current) {
+            onKlineUpdateRef.current(data.period, data.data)
+          } else if (data.type === 'tick' && onTickUpdateRef.current) {
+            onTickUpdateRef.current(data.data)
+          }
+
           setLastMessage(data)
           onMessageRef.current?.(data)
         } catch (error) {
@@ -145,19 +166,33 @@ export const useWebSocket = (options: UseWebSocketOptions) => {
   }, [])
 
   useEffect(() => {
-    // 组件挂载时自动连接（只在第一次挂载时）
-    if (!wsRef.current) {
-      shouldReconnectRef.current = true
-      connect()
-    }
+    // 组件挂载时自动连接
+    shouldReconnectRef.current = true
+    connect()
 
-    // 组件卸载时不断开连接，让WebSocket持续运行
-    // 这样可以避免HMR或组件重渲染导致的断开
+    // 组件卸载时断开连接
     return () => {
-      // 不调用disconnect()，保持连接
+      shouldReconnectRef.current = false
+
+      // 清理定时器
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = undefined
+      }
+
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current)
+        heartbeatIntervalRef.current = undefined
+      }
+
+      // 关闭WebSocket连接
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // 只在组件挂载时检查一次
+  }, []) // 只在组件挂载/卸载时执行
 
   return {
     lastMessage,

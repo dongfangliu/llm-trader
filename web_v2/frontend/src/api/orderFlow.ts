@@ -36,46 +36,46 @@ export interface LargeOrder {
  * 获取当前VPIN值
  */
 export const getCurrentVPIN = async (): Promise<VPINData> => {
-  const response = await axios.get('/order-flow/vpin/current');
-  return response.data.data;
+  const response = await axios.get('/v1/order-flow/vpin/current');
+  return response.data;
 };
 
 /**
  * 获取VPIN历史
  */
 export const getVPINHistory = async (minutes: number = 60) => {
-  const response = await axios.get('/order-flow/vpin/history', {
+  const response = await axios.get('/v1/order-flow/vpin/history', {
     params: { minutes }
   });
-  return response.data.data;
+  return response.data;
 };
 
 /**
  * 获取订单簿快照
  */
 export const getOrderBookSnapshot = async (): Promise<OrderBookSnapshot> => {
-  const response = await axios.get('/order-flow/orderbook/snapshot');
-  return response.data.data;
+  const response = await axios.get('/v1/order-flow/orderbook/snapshot');
+  return response.data;
 };
 
 /**
  * 获取订单簿动态
  */
 export const getOrderBookDynamics = async (minutes: number = 30) => {
-  const response = await axios.get('/order-flow/orderbook/dynamics', {
+  const response = await axios.get('/v1/order-flow/orderbook/dynamics', {
     params: { minutes }
   });
-  return response.data.data;
+  return response.data;
 };
 
 /**
  * 获取大单追踪
  */
 export const getLargeOrdersData = async (minutes: number = 60) => {
-  const response = await axios.get('/order-flow/large-orders', {
+  const response = await axios.get('/v1/order-flow/large-orders', {
     params: { minutes }
   });
-  return response.data.data;
+  return response.data;
 };
 
 // 别名供页面使用

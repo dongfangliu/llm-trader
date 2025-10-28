@@ -1,9 +1,11 @@
 """
 市场态势与策略API
 Market Regime & Strategy Performance API
+
+✅ V2重构：实时计算，WebSocket推送，无数据库依赖
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from loguru import logger
@@ -19,6 +21,11 @@ async def get_current_regime() -> StandardResponse:
     """
     获取当前市场状态（趋势/震荡/突破/异常）
     
+    ✅ V2改进：
+    - 从内存实时计算（无数据库）
+    - 纯量化算法（无LLM）
+    - <100ms响应
+    
     Returns:
         - regime: 市场状态类型
         - confidence: 置信度
@@ -27,56 +34,99 @@ async def get_current_regime() -> StandardResponse:
         - duration: 状态持续时间
     """
     try:
-        db = bridge.get_db()
+        regime_service = bridge.get_regime_service()
         
-        # 获取最新市场状态数据
-        query = """
-            SELECT regime, confidence, adx, atr, volatility, 
-                   bollinger_width, trend_alignment, timestamp
-            FROM market_regime_history 
-            ORDER BY timestamp DESC 
-            LIMIT 1
-        """
-        result = db.execute_query(query)
+        # 从内存获取当前状态（无I/O）
+        current_regime = regime_service.current_regime
         
-        if not result:
-            # Mock data for development
-            data = {
-                "regime": "trend",
-                "confidence": 0.87,
-                "features": {
-                    "adx": 32.5,
-                    "volatility": 0.023,
-                    "bollinger_width": 0.045,
-                    "trend_alignment": 1.0,
-                    "atr": 15.8
-                },
-                "active_strategy": "trend_following",
-                "duration_minutes": 125,
-                "timestamp": datetime.now().isoformat()
-            }
-        else:
-            row = result[0]
-            data = {
-                "regime": row[0],
-                "confidence": row[1],
-                "features": {
-                    "adx": row[2],
-                    "atr": row[3],
-                    "volatility": row[4],
-                    "bollinger_width": row[5],
-                    "trend_alignment": row[6]
-                },
-                "active_strategy": _get_active_strategy(row[0]),
-                "duration_minutes": _calculate_duration(row[7]),
-                "timestamp": row[7]
-            }
+        if not current_regime:
+            # 尚未计算过，立即计算一次
+            logger.info("首次请求，立即计算市场状态")
+            current_regime = await regime_service.calculate_now(force=True, reason="first_request")
         
-        return StandardResponse(data=data)
+        return StandardResponse(data=current_regime)
     
     except Exception as e:
         logger.error(f"获取市场状态失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recalculate", summary="强制重新计算市场状态")
+async def force_recalculate(force: bool = Query(False, description="是否忽略冷却期")) -> StandardResponse:
+    """
+    用户手动触发重算
+    
+    Args:
+        force: 是否忽略冷却期强制计算
+    
+    Returns:
+        最新的市场状态
+    """
+    try:
+        regime_service = bridge.get_regime_service()
+        
+        logger.info(f"🔄 手动触发市场状态重算 (force={force})")
+        new_regime = await regime_service.calculate_now(force=force, reason="manual_trigger")
+        
+        return StandardResponse(
+            data=new_regime,
+            message="市场状态已刷新" if force or new_regime else "处于冷却期，未重新计算"
+        )
+    
+    except Exception as e:
+        logger.error(f"强制重算失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/config", summary="获取市场态势配置")
+async def get_regime_config() -> StandardResponse:
+    """
+    获取当前配置参数
+    
+    Returns:
+        配置对象
+    """
+    try:
+        regime_service = bridge.get_regime_service()
+        config = regime_service.get_config()
+        
+        return StandardResponse(data=config)
+    
+    except Exception as e:
+        logger.error(f"获取配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/config", summary="更新市场态势配置")
+async def update_regime_config(config_update: Dict[str, Any] = Body(...)) -> StandardResponse:
+    """
+    更新配置参数（支持部分更新）
+    
+    Args:
+        config_update: 要更新的配置项
+    
+    Returns:
+        更新后的完整配置
+    """
+    try:
+        regime_service = bridge.get_regime_service()
+        
+        logger.info(f"📝 更新市场态势配置: {config_update}")
+        new_config = regime_service.update_config(config_update)
+        
+        return StandardResponse(
+            data=new_config,
+            message="配置已更新"
+        )
+    
+    except Exception as e:
+        logger.error(f"更新配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 移除旧的数据库依赖代码，保持API简洁
 
 
 @router.get("/history", summary="获取市场状态历史")
@@ -94,55 +144,24 @@ async def get_regime_history(
         - statistics: 各状态占比
     """
     try:
-        db = bridge.get_db()
+        regime_service = bridge.get_regime_service()
         
-        start_time = datetime.now() - timedelta(hours=hours)
-        query = """
-            SELECT regime, confidence, timestamp, switch_reason
-            FROM market_regime_history 
-            WHERE timestamp >= ?
-            ORDER BY timestamp ASC
-        """
-        results = db.execute_query(query, (start_time.isoformat(),))
-        
-        if not results:
-            # Mock data
-            history = [
-                {
-                    "regime": "ranging",
-                    "confidence": 0.75,
-                    "timestamp": (datetime.now() - timedelta(hours=5)).isoformat(),
-                    "switch_reason": "ADX下降至20以下"
-                },
-                {
-                    "regime": "trend",
-                    "confidence": 0.87,
-                    "timestamp": (datetime.now() - timedelta(hours=2)).isoformat(),
-                    "switch_reason": "ADX突破25，多周期趋势一致"
-                }
-            ]
-        else:
-            history = [
-                {
-                    "regime": row[0],
-                    "confidence": row[1],
-                    "timestamp": row[2],
-                    "switch_reason": row[3]
-                }
-                for row in results
-            ]
+        # V2: 从服务的内存历史记录获取（而非数据库）
+        history_records = regime_service.get_history(hours=hours)
         
         # 计算统计信息
-        stats = _calculate_regime_stats(history)
+        stats = _calculate_regime_stats(history_records)
         
         return StandardResponse(data={
-            "history": history,
+            "history": history_records,
             "statistics": stats,
-            "total_switches": len(history) - 1
+            "total_switches": max(0, len(history_records) - 1)
         })
     
     except Exception as e:
         logger.error(f"获取市场状态历史失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -156,46 +175,60 @@ async def get_trend_alignment() -> StandardResponse:
         - consistency: 一致性百分比
     """
     try:
-        db = bridge.get_db()
+        # V2: 从TqSDK缓存实时计算多周期趋势
+        periods = ['1m', '5m', '15m', '1h', '4h']
+        alignment = {}
         
-        # 获取各周期趋势数据
-        query = """
-            SELECT period, trend_direction, adx, ma_deviation
-            FROM trend_alignment
-            WHERE timestamp = (SELECT MAX(timestamp) FROM trend_alignment)
-        """
-        results = db.execute_query(query)
-        
-        if not results:
-            # Mock data
-            alignment = {
-                "1d": {"direction": "up", "adx": 28.3, "ma_deviation": 3.2},
-                "4h": {"direction": "up", "adx": 30.1, "ma_deviation": 2.8},
-                "1h": {"direction": "up", "adx": 32.5, "ma_deviation": 1.5},
-                "15m": {"direction": "up", "adx": 25.8, "ma_deviation": 0.8}
-            }
-        else:
-            alignment = {
-                row[0]: {
-                    "direction": row[1],
-                    "adx": row[2],
-                    "ma_deviation": row[3]
-                }
-                for row in results
+        for period in periods:
+            klines = bridge.get_kline_data(period=period, limit=100)
+            if not klines or len(klines) < 20:
+                continue
+            
+            # 计算该周期的趋势
+            closes = [k['close'] for k in klines]
+            ma20 = sum(closes[-20:]) / 20
+            ma5 = sum(closes[-5:]) / 5
+            current_price = closes[-1]
+            
+            # 判断趋势方向
+            if current_price > ma5 > ma20:
+                direction = "up"
+            elif current_price < ma5 < ma20:
+                direction = "down"
+            else:
+                direction = "sideways"
+            
+            # 计算ADX（简化版）
+            adx = _calculate_simple_adx_from_klines(klines[-20:])
+            
+            # MA偏离度
+            ma_deviation = ((current_price - ma20) / ma20) * 100 if ma20 > 0 else 0
+            
+            alignment[period] = {
+                "period": period,
+                "trend": direction,
+                "adx": round(adx, 1),
+                "ma_deviation": round(ma_deviation, 2)
             }
         
         # 计算一致性
-        directions = [v["direction"] for v in alignment.values()]
-        consistency = sum(1 for d in directions if d == directions[0]) / len(directions)
+        if alignment:
+            directions = [v["trend"] for v in alignment.values()]
+            most_common = max(set(directions), key=directions.count)
+            consistency = (directions.count(most_common) / len(directions)) * 100
+        else:
+            consistency = 0
         
         return StandardResponse(data={
-            "alignment": alignment,
-            "consistency": consistency,
-            "is_aligned": consistency >= 0.75
+            "timeframes": list(alignment.values()),
+            "consistency": round(consistency, 1),
+            "is_aligned": consistency >= 75
         })
     
     except Exception as e:
         logger.error(f"获取趋势一致性失败: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -246,7 +279,39 @@ def _calculate_regime_stats(history: List[Dict]) -> Dict[str, float]:
         total_duration += duration
     
     # 计算百分比
+    if total_duration == 0:
+        return {}
+    
     return {
         regime: round(duration / total_duration * 100, 1)
         for regime, duration in regime_durations.items()
     }
+
+
+def _calculate_simple_adx_from_klines(klines: List[Dict], period: int = 14) -> float:
+    """从K线数据计算简化版ADX"""
+    if len(klines) < period:
+        return 20.0  # 返回中性值
+    
+    import numpy as np
+    
+    closes = np.array([k['close'] for k in klines])
+    
+    # 计算方向运动
+    price_changes = np.diff(closes)
+    
+    # 上涨和下跌的平均幅度
+    up_moves = np.maximum(price_changes, 0)
+    down_moves = np.abs(np.minimum(price_changes, 0))
+    
+    avg_up = np.mean(up_moves[-period:])
+    avg_down = np.mean(down_moves[-period:])
+    
+    # 简化的ADX：基于方向运动的比例
+    if avg_up + avg_down == 0:
+        return 20.0
+    
+    directional_ratio = abs(avg_up - avg_down) / (avg_up + avg_down)
+    adx = directional_ratio * 50  # 归一化到0-50范围
+    
+    return float(adx)

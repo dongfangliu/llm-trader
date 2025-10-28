@@ -69,35 +69,18 @@ if ($port3000) {
 # 启动后端
 Write-Host "[5/5] 启动服务..." -ForegroundColor Yellow
 Write-Host "正在启动后端服务 (端口8000)..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot'; python start_web_v2.py"
-Write-Host "等待后端启动..." -ForegroundColor Gray
-Start-Sleep -Seconds 5
+Write-Host "⚠️  重要: 请勿关闭即将打开的后端窗口！" -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot'; python start_web_v2.py; Write-Host ''; Write-Host '按任意键关闭后端服务...' -ForegroundColor Yellow; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
 
-# 验证后端是否启动
-$backendReady = $false
-for ($i = 1; $i -le 6; $i++) {
-    try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8000/docs" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
-        $backendReady = $true
-        break
-    } catch {
-        if ($i -lt 6) {
-            Write-Host "等待后端启动... ($i/6)" -ForegroundColor Gray
-            Start-Sleep -Seconds 2
-        }
-    }
-}
 
-if ($backendReady) {
-    Write-Host "✅ 后端服务已启动" -ForegroundColor Green
-} else {
-    Write-Host "⚠️  后端服务可能未完全启动，请检查后端窗口" -ForegroundColor Yellow
-}
 
 # 启动前端
+Write-Host ""
 Write-Host "正在启动前端服务 (端口3000)..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd $PSScriptRoot\web_v2\frontend; npm run dev"
-Start-Sleep -Seconds 2
+Write-Host "⚠️  重要: 请勿关闭即将打开的前端窗口！" -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd $PSScriptRoot\web_v2\frontend; npm run dev; Write-Host ''; Write-Host '按任意键关闭前端服务...' -ForegroundColor Yellow; `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')"
+Start-Sleep -Seconds 3
+Start-Process "http://localhost:3000"
 Write-Host "✅ 前端服务已启动" -ForegroundColor Green
 
 Write-Host ""
@@ -117,4 +100,4 @@ Write-Host ""
 Write-Host "💡 提示: 关闭此窗口不会停止服务，请手动关闭后端和前端窗口" -ForegroundColor Gray
 Write-Host ""
 Write-Host "按任意键关闭..." -ForegroundColor Gray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')

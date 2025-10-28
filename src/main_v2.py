@@ -34,6 +34,8 @@ from llm_engine.daily_review_agent import DailyReviewAgent
 from llm_engine.prompts.expert_review import ExpertReviewPrompt
 from llm_engine.prompts.abnormal_analysis import AbnormalAnalysisPrompt
 from llm_engine.prompts.signal_conflict import SignalConflictPrompt
+from llm_engine.strategic_agent import StrategicAgent
+from llm_engine.tactical_agent import TacticalAgent
 
 # 风控
 from risk_control.risk_rules import RiskController, RiskConfig
@@ -217,6 +219,15 @@ class TradingSystemV2:
                 hour=21,
                 minute=0,
                 id='daily_review'
+            )
+
+        # LLM 直接决策 调度
+        if self.llm_client and self.config['decision'].get('llm_direct_enabled', True):
+            self.scheduler.add_job(
+                self._llm_direct_decision,
+                'interval',
+                minutes=self.config['decision'].get('llm_direct_interval', 240),
+                id='llm_direct_decision'
             )
 
         logger.info("定时任务设置完成")
@@ -407,14 +418,36 @@ class TradingSystemV2:
         
         # 执行动作
         if action == 'open_long':
+            quantity = signal.get('quantity', 1)
             if not self.account.positions:
-                quantity = signal.get('quantity', 1)
                 self._execute_open('long', current_price, quantity)
+            else:
+                pos = self.account.positions[0]
+                if pos.direction == 'short':
+                    if self.config['decision'].get('llm_allow_reverse', True):
+                        logger.info("反手: 平空后开多")
+                        self._execute_close_all(current_price)
+                        self._execute_open('long', current_price, quantity)
+                    else:
+                        logger.info("反手被禁用，保持当前仓位")
+                else:
+                    logger.info("已持有多单，保持/忽略")
         
         elif action == 'open_short':
+            quantity = signal.get('quantity', 1)
             if not self.account.positions:
-                quantity = signal.get('quantity', 1)
                 self._execute_open('short', current_price, quantity)
+            else:
+                pos = self.account.positions[0]
+                if pos.direction == 'long':
+                    if self.config['decision'].get('llm_allow_reverse', True):
+                        logger.info("反手: 平多后开空")
+                        self._execute_close_all(current_price)
+                        self._execute_open('short', current_price, quantity)
+                    else:
+                        logger.info("反手被禁用，保持当前仓位")
+                else:
+                    logger.info("已持有空单，保持/忽略")
         
         elif action == 'close':
             if self.account.positions:
@@ -495,6 +528,156 @@ class TradingSystemV2:
                 
         except Exception as e:
             logger.error(f"风控检查异常: {e}", exc_info=True)
+
+    def _format_kline_text(self, kline, rows: int = 100) -> str:
+        """K线转文本，供LLM阅读"""
+        try:
+            tail = kline.tail(rows)
+            lines = ["时间 | 开 | 高 | 低 | 收 | 量"]
+            for _, row in tail.iterrows():
+                ts = str(row.get('timestamp') or row.name)
+                lines.append(f"{ts} | {row['open']:.2f} | {row['high']:.2f} | {row['low']:.2f} | {row['close']:.2f} | {int(row.get('volume', 0))}")
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def _llm_direct_decision(self):
+        """LLM 直接决策：战略+战术合成信号并自动执行（模拟账户）"""
+        try:
+            logger.info("\n" + "=" * 80)
+            logger.info("执行LLM直接决策")
+            logger.info("=" * 80)
+
+            kline = self.database.get_latest_kline(
+                period=str(self.config['data']['kline_period']),
+                count=200
+            )
+            if kline is None or kline.empty:
+                logger.warning("无法获取K线数据，跳过LLM决策")
+                return
+
+            kline = self.data_processor.calculate_all_indicators(kline)
+            market_data = self.data_processor.get_market_summary(kline)
+            kline_text = self._format_kline_text(kline, rows=100)
+
+            # 持仓/账户信息
+            if self.account.positions:
+                pos = self.account.positions[0]
+                position_info = f"持仓: {pos.direction} {pos.quantity}手, 开仓价 {pos.open_price}, 浮动盈亏 {pos.unrealized_pnl}"
+            else:
+                position_info = "当前空仓"
+            account_info = {
+                'balance': getattr(self.account, 'balance', 0),
+                'equity': getattr(self.account, 'equity', 0),
+                'today_pnl': getattr(self.account, 'today_pnl', 0)
+            }
+
+            # 战略层分析 + 战术层决策
+            strategic = self.strategic_agent.analyze(market_data, kline_text)
+            if not strategic:
+                return
+            tactical = self.tactical_agent.decide(
+                market_data=market_data,
+                kline_text=kline_text,
+                strategic_result=strategic,
+                position_info=position_info,
+                account_info=account_info,
+                recent_lessons=[]
+            )
+            if not tactical:
+                return
+
+            action_map = {
+                'open_long': 'open_long',
+                'open_short': 'open_short',
+                'close_position': 'close',
+                'hold': 'hold'
+            }
+            final_signal = {
+                'action': action_map.get(tactical.get('action', 'hold'), 'hold'),
+                'quantity': tactical.get('quantity', 1),
+                'confidence': tactical.get('confidence', 0)
+            }
+
+            current_price = kline['close'].iloc[-1]
+            self._execute_signal(final_signal, current_price)
+        except Exception as e:
+            logger.error(f"LLM直接决策异常: {e}", exc_info=True)
+
+    def _format_kline_text(self, kline, rows: int = 100) -> str:
+        """K线转文本，供LLM阅读"""
+        try:
+            tail = kline.tail(rows)
+            lines = ["时间 | 开 | 高 | 低 | 收 | 量"]
+            for _, row in tail.iterrows():
+                ts = str(row.get('timestamp') or row.name)
+                lines.append(f"{ts} | {row['open']:.2f} | {row['high']:.2f} | {row['low']:.2f} | {row['close']:.2f} | {int(row.get('volume', 0))}")
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def _llm_direct_decision(self):
+        """LLM 直接决策：战略+战术合成信号并自动执行（模拟账户）"""
+        try:
+            logger.info("\n" + "=" * 80)
+            logger.info("执行LLM直接决策")
+            logger.info("=" * 80)
+
+            kline = self.database.get_latest_kline(
+                period=str(self.config['data']['kline_period']),
+                count=200
+            )
+            if kline is None or kline.empty:
+                logger.warning("无法获取K线数据，跳过LLM决策")
+                return
+
+            kline = self.data_processor.calculate_all_indicators(kline)
+            market_data = self.data_processor.get_market_summary(kline)
+            kline_text = self._format_kline_text(kline, rows=100)
+
+            # 持仓/账户信息
+            if self.account.positions:
+                pos = self.account.positions[0]
+                position_info = f"持仓: {pos.direction} {pos.quantity}手, 开仓价 {pos.open_price}, 浮动盈亏 {pos.unrealized_pnl}"
+            else:
+                position_info = "当前空仓"
+            account_info = {
+                'balance': getattr(self.account, 'balance', 0),
+                'equity': getattr(self.account, 'equity', 0),
+                'today_pnl': getattr(self.account, 'today_pnl', 0)
+            }
+
+            # 战略层分析 + 战术层决策
+            strategic = self.strategic_agent.analyze(market_data, kline_text)
+            if not strategic:
+                return
+            tactical = self.tactical_agent.decide(
+                market_data=market_data,
+                kline_text=kline_text,
+                strategic_result=strategic,
+                position_info=position_info,
+                account_info=account_info,
+                recent_lessons=[]
+            )
+            if not tactical:
+                return
+
+            action_map = {
+                'open_long': 'open_long',
+                'open_short': 'open_short',
+                'close_position': 'close',
+                'hold': 'hold'
+            }
+            final_signal = {
+                'action': action_map.get(tactical.get('action', 'hold'), 'hold'),
+                'quantity': tactical.get('quantity', 1),
+                'confidence': tactical.get('confidence', 0)
+            }
+
+            current_price = kline['close'].iloc[-1]
+            self._execute_signal(final_signal, current_price)
+        except Exception as e:
+            logger.error(f"LLM直接决策异常: {e}", exc_info=True)
 
     def _daily_review_job(self):
         """每日复盘任务"""

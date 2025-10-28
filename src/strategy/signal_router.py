@@ -122,8 +122,8 @@ class SignalRouter:
         3. 异常市场额外检查
         """
         
-        # 获取阈值
-        threshold = market_regime.get('strategy_params', {}).get('signal_threshold', 0.70)
+        # 获取阈值（降低默认阈值）
+        threshold = market_regime.get('strategy_params', {}).get('signal_threshold', 0.60)
         
         # 检查1: 置信度阈值
         if signal['confidence'] < threshold:
@@ -161,8 +161,8 @@ class SignalRouter:
         4. 市场状态强制要求 (abnormal)
         """
         
-        # 条件1: 置信度不足
-        if signal['confidence'] < 0.85:
+        # 条件1: 置信度不足（降低阈值）
+        if signal['confidence'] < 0.75:
             logger.info(f"触发LLM复核: 置信度不足 ({signal['confidence']:.2f})")
             return True
         

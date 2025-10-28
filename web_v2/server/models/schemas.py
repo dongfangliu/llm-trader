@@ -3,7 +3,7 @@ Pydantic数据模型
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 
@@ -116,3 +116,113 @@ class TradingPauseRequest(BaseModel):
     """交易暂停"""
     paused: bool
     reason: Optional[str] = None
+
+
+class ManualTradeRequest(BaseModel):
+    """手动交易请求"""
+    action: str = Field(..., description="操作类型: open 或 close")
+    direction: str = Field(..., description="方向: long 或 short")
+    volume: int = Field(..., gt=0, description="交易手数")
+
+
+# ==================== 配置管理模型 ====================
+
+class TradingConfigModel(BaseModel):
+    """交易配置"""
+    initial_capital: Optional[float] = None
+    max_position: Optional[int] = None
+    single_trade: Optional[int] = None
+    symbol: Optional[str] = None
+    tqsdk_symbol: Optional[str] = None
+
+
+class RiskConfigModel(BaseModel):
+    """风控配置"""
+    stop_loss: Optional[float] = None
+    daily_max_loss: Optional[float] = None
+    max_drawdown: Optional[float] = None
+    max_hold_hours: Optional[int] = None
+    volatility_threshold: Optional[float] = None
+
+
+class DecisionConfigModel(BaseModel):
+    """决策配置"""
+    confidence_threshold: Optional[int] = None
+    max_daily_trades: Optional[int] = None
+    min_trade_gap: Optional[int] = None
+    tactical_interval: Optional[int] = None
+    strategic_interval: Optional[int] = None
+    llm_direct_enabled: Optional[bool] = None
+    llm_direct_interval: Optional[int] = None
+    llm_allow_reverse: Optional[bool] = None
+
+
+class LLMConfigModel(BaseModel):
+    """LLM配置"""
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    timeout: Optional[int] = None
+
+
+class DataConfigModel(BaseModel):
+    """数据配置"""
+    fetch_interval: Optional[int] = None
+    history_days: Optional[int] = None
+    kline_period: Optional[str] = None
+
+
+class SystemConfigModel(BaseModel):
+    """系统配置"""
+    log_level: Optional[str] = None
+    review_time: Optional[str] = None
+    timezone: Optional[str] = None
+
+
+class BacktestConfigModel(BaseModel):
+    """回测配置"""
+    commission_rate: Optional[float] = None
+    slippage_ticks: Optional[int] = None
+
+
+class TradingParamsModel(BaseModel):
+    """trading_params.yaml配置"""
+    trading: Optional[TradingConfigModel] = None
+    risk: Optional[RiskConfigModel] = None
+    decision: Optional[DecisionConfigModel] = None
+    llm: Optional[LLMConfigModel] = None
+    data: Optional[DataConfigModel] = None
+    system: Optional[SystemConfigModel] = None
+    backtest: Optional[BacktestConfigModel] = None
+
+
+class ProviderConfigModel(BaseModel):
+    """LLM提供商配置"""
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+class TqSDKConfigModel(BaseModel):
+    """TqSDK配置"""
+    username: Optional[str] = None
+    password: Optional[str] = None
+    use_sim: Optional[bool] = None
+
+
+class APIKeysModel(BaseModel):
+    """api_keys.yaml配置"""
+    provider: Optional[str] = None
+    providers: Optional[Dict[str, ProviderConfigModel]] = None
+    tqsdk: Optional[TqSDKConfigModel] = None
+
+
+class ConfigUpdateRequest(BaseModel):
+    """配置更新请求"""
+    trading_params: Optional[TradingParamsModel] = None
+    api_keys: Optional[APIKeysModel] = None
+
+
+class ConfigResponse(BaseModel):
+    """配置响应"""
+    trading_params: Optional[dict] = None
+    api_keys: Optional[dict] = None

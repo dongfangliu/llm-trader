@@ -40,9 +40,10 @@ class TrendFollowingStrategy:
             }
         """
         
-        # 只在趋势市工作
+        # 优先在趋势市工作，但也可以在其他状态下工作（降低置信度）
+        regime_penalty = 0.0
         if market_regime['regime'] != 'trend':
-            return self._hold_signal(['非趋势市场'])
+            regime_penalty = 0.15  # 非趋势市降低置信度15%
         
         # 提取数据
         kline_1d = market_data.get('1d', {})
@@ -65,9 +66,17 @@ class TrendFollowingStrategy:
         trend_4h = kline_4h.get('trend', {}).get('direction', 'neutral')
         trend_1h = kline_1h.get('trend', {}).get('direction', 'neutral')
         
-        if trend_1d == trend_4h == trend_1h and trend_1d != 'neutral':
-            reasoning.append(f'多周期趋势一致: {trend_1d}')
-            direction = trend_1d
+        # 放宽要求：至少2个周期同向即可
+        trend_directions = [trend_1d, trend_4h, trend_1h]
+        uptrend_count = trend_directions.count('uptrend')
+        downtrend_count = trend_directions.count('downtrend')
+        
+        if uptrend_count >= 2:
+            reasoning.append(f'多周期偏向上涨 (上涨:{uptrend_count}/3)')
+            direction = 'uptrend'
+        elif downtrend_count >= 2:
+            reasoning.append(f'多周期偏向下跌 (下跌:{downtrend_count}/3)')
+            direction = 'downtrend'
         else:
             return self._hold_signal(['多周期趋势不一致'])
         
@@ -78,46 +87,46 @@ class TrendFollowingStrategy:
         
         if direction == 'uptrend':
             # 做多: 回调至MA20附近, 但在MA60上方
-            pullback_to_ma20 = abs(current_price - ma20) / ma20 * 100 < 1.0
-            above_ma60 = current_price > ma60
+            pullback_to_ma20 = abs(current_price - ma20) / ma20 * 100 < 2.0  # 放宽到2%
+            above_ma60 = current_price > ma60 * 0.98  # 允许略低于MA60
             
             if not (pullback_to_ma20 and above_ma60):
                 return self._hold_signal(['未回调至买点'])
             
-            reasoning.append('价格回调至MA20附近且在MA60上方')
+            reasoning.append('价格回调至MA20附近且接近MA60上方')
             action = 'open_long'
             
         elif direction == 'downtrend':
             # 做空: 反弹至MA20附近, 但在MA60下方
-            pullback_to_ma20 = abs(current_price - ma20) / ma20 * 100 < 1.0
-            below_ma60 = current_price < ma60
+            pullback_to_ma20 = abs(current_price - ma20) / ma20 * 100 < 2.0  # 放宽到2%
+            below_ma60 = current_price < ma60 * 1.02  # 允许略高于MA60
             
             if not (pullback_to_ma20 and below_ma60):
                 return self._hold_signal(['未回调至卖点'])
             
-            reasoning.append('价格反弹至MA20附近且在MA60下方')
+            reasoning.append('价格反弹至MA20附近且接近MA60下方')
             action = 'open_short'
         else:
             return self._hold_signal(['趋势方向不明确'])
         
-        # 步骤3: 订单流确认
+        # 步骤3: 订单流确认 (放宽要求)
         flow_data = order_flow.get('flow', {})
         buying_pressure = flow_data.get('buying_pressure', 0.5)
         
-        if action == 'open_long' and buying_pressure < 0.6:
+        if action == 'open_long' and buying_pressure < 0.52:
             return self._hold_signal(['订单流未确认多头'])
         
-        if action == 'open_short' and buying_pressure > 0.4:
+        if action == 'open_short' and buying_pressure > 0.48:
             return self._hold_signal(['订单流未确认空头'])
         
         reasoning.append(f'订单流确认 (买压: {buying_pressure:.2f})')
         
-        # 步骤4: RSI过滤 (避免追高杀跌)
+        # 步骤4: RSI过滤 (避免追高杀跌，放宽范围)
         rsi = indicators_1h.get('rsi', {}).get('rsi', 50)
-        if action == 'open_long' and rsi > 70:
+        if action == 'open_long' and rsi > 75:
             return self._hold_signal(['RSI超买，避免追高'])
         
-        if action == 'open_short' and rsi < 30:
+        if action == 'open_short' and rsi < 25:
             return self._hold_signal(['RSI超卖，避免杀跌'])
         
         reasoning.append(f'RSI过滤通过 (RSI: {rsi:.1f})')
@@ -129,6 +138,9 @@ class TrendFollowingStrategy:
             order_flow_score=abs(buying_pressure - 0.5) * 2,
             rsi_ok=True
         )
+        
+        # 应用市场状态惩罚
+        confidence = max(confidence - regime_penalty, 0.0)
         
         # 计算止损止盈
         atr = indicators_1h.get('atr', {}).get('atr', current_price * 0.02)

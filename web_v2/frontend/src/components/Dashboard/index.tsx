@@ -1,38 +1,82 @@
 /**
- * 总览仪表盘
- * V4架构核心页面 - 一屏掌握系统全貌
+ * 总览仪表盘 - 专业炒股软件风格
+ * 实时交易监控与快速下单界面
  */
 
 import React from 'react';
-import { Space } from 'antd';
+import { Row, Col } from 'antd';
+import RealTimePricePanel from './RealTimePricePanel';
+import QuickTradePanel from './QuickTradePanel';
+import PositionPanel from './PositionPanel';
 import AccountMetrics from './AccountMetrics';
+import KlineChart from './KlineChart';
 import MarketRegimePanel from './MarketRegimePanel';
 import SignalSourcePanel from './SignalSourcePanel';
-import StrategyCards from './StrategyCards';
-import KlineChart from './KlineChart';
+import './Dashboard.css';
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+  klineUpdates?: Map<string, any[]>;  // 新增
+  latestTick?: any;                   // 新增
+}
+
+const Dashboard: React.FC<DashboardProps> = ({
+  klineUpdates,
+  latestTick
+}) => {
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size="large">
-      {/* 第一行：账户权益和关键指标 */}
-      <AccountMetrics />
+    <div className="professional-trading-layout">
+      {/* 主体区域：左右分栏 */}
+      <Row gutter={[12, 12]} style={{ height: '100%' }}>
+        {/* 左侧主图表区 (70%) */}
+        <Col xs={24} xl={17} style={{ height: '100%' }}>
+          <div className="left-main-area">
+            {/* K线图表/分时图 - 占主要空间 */}
+            <div className="chart-section">
+              {/* 传递klineUpdates，图表内已集成分时图切换 */}
+              <KlineChart klineUpdates={klineUpdates} />
+            </div>
 
-      {/* 第二行：市场状态和信号分布 */}
-      <div style={{ display: 'flex', gap: '16px' }}>
-        <div style={{ flex: 1 }}>
-          <MarketRegimePanel />
-        </div>
-        <div style={{ flex: 1 }}>
-          <SignalSourcePanel />
-        </div>
-      </div>
+            {/* 底部信息面板 - 市场态势 + 信号分布 */}
+            <div className="bottom-info-section">
+              <Row gutter={12}>
+                <Col xs={24} md={12}>
+                  <MarketRegimePanel />
+                </Col>
+                <Col xs={24} md={12}>
+                  <SignalSourcePanel />
+                </Col>
+              </Row>
+            </div>
+          </div>
+        </Col>
 
-      {/* 第三行：三大策略状态卡片 */}
-      <StrategyCards />
+        {/* 右侧交易控制区 (30%) */}
+        <Col xs={24} xl={7} style={{ height: '100%' }}>
+          <div className="right-trading-area">
+            {/* 实时报价 */}
+            <div className="price-ticker-section">
+              {/* 传递latestTick */}
+              <RealTimePricePanel latestTick={latestTick} />
+            </div>
 
-      {/* 第四行：K线图表和持仓 */}
-      <KlineChart />
-    </Space>
+            {/* 快速交易面板 */}
+            <div className="quick-trade-section">
+              <QuickTradePanel />
+            </div>
+
+            {/* 持仓明细 */}
+            <div className="position-section">
+              <PositionPanel />
+            </div>
+
+            {/* 账户信息 */}
+            <div className="account-section">
+              <AccountMetrics />
+            </div>
+          </div>
+        </Col>
+      </Row>
+    </div>
   );
 };
 

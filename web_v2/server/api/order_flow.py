@@ -1,11 +1,12 @@
 """
 订单流分析API
 Order Flow Analysis API
+基于实时Tick数据计算，WebSocket推送
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from fastapi import APIRouter, HTTPException, Query, Body
+from datetime import datetime
+from typing import Dict
 from loguru import logger
 
 from server.models.schemas import StandardResponse
@@ -18,195 +19,69 @@ router = APIRouter()
 async def get_current_vpin() -> StandardResponse:
     """
     获取当前VPIN（Volume-Synchronized Probability of Informed Trading）值
+    从实时推送服务获取数据
     
     Returns:
         - vpin: 当前VPIN值
         - level: 毒性水平（low/medium/high）
-        - trend: 趋势（rising/falling/stable）
+        - buy_volume: 买入成交量
+        - sell_volume: 卖出成交量
+        - imbalance: 买卖不平衡度
         - timestamp: 时间戳
     """
     try:
-        db = bridge.get_db()
+        push_service = bridge.get_push_service()
+        if not push_service:
+            return StandardResponse(data={
+                "vpin": 0.0,
+                "level": "unknown",
+                "buy_volume": 0,
+                "sell_volume": 0,
+                "imbalance": 0.0,
+                "timestamp": datetime.now().isoformat(),
+                "description": "推送服务未启动"
+            })
         
-        # 获取最新VPIN数据
-        query = """
-            SELECT vpin, timestamp
-            FROM vpin_history
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """
-        result = db.execute_query(query)
-        
-        if not result:
-            # Mock data
-            vpin_value = 0.35
-            timestamp = datetime.now().isoformat()
-        else:
-            vpin_value = result[0][0]
-            timestamp = result[0][1]
-        
-        # 判断毒性水平
-        if vpin_value < 0.3:
-            level = "low"
-        elif vpin_value < 0.5:
-            level = "medium"
-        else:
-            level = "high"
-        
-        # 获取趋势（对比5分钟前）
-        trend = await _get_vpin_trend(db, vpin_value)
-        
-        return StandardResponse(data={
-            "vpin": round(vpin_value, 3),
-            "level": level,
-            "trend": trend,
-            "timestamp": timestamp,
-            "interpretation": _interpret_vpin(vpin_value, level)
-        })
+        vpin_data = push_service.get_order_flow_vpin()
+        return StandardResponse(data=vpin_data)
     
     except Exception as e:
         logger.error(f"获取VPIN失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/vpin/history", summary="获取VPIN历史")
-async def get_vpin_history(
-    minutes: int = Query(60, description="查询分钟数", ge=10, le=1440)
-) -> StandardResponse:
-    """
-    获取VPIN历史数据
-    
-    Args:
-        minutes: 查询分钟数（10-1440）
-    
-    Returns:
-        - history: VPIN时间序列
-        - statistics: 统计信息
-    """
-    try:
-        db = bridge.get_db()
-        
-        start_time = datetime.now() - timedelta(minutes=minutes)
-        query = """
-            SELECT vpin, buy_volume, sell_volume, imbalance, timestamp
-            FROM vpin_history
-            WHERE timestamp >= ?
-            ORDER BY timestamp ASC
-        """
-        results = db.execute_query(query, (start_time.isoformat(),))
-        
-        if not results:
-            # Mock data
-            history = [
-                {
-                    "vpin": 0.30 + (i % 20) * 0.01,
-                    "buy_volume": 5000 + i * 100,
-                    "sell_volume": 4800 + i * 95,
-                    "imbalance": 0.02,
-                    "timestamp": (datetime.now() - timedelta(minutes=minutes-i)).isoformat()
-                }
-                for i in range(0, minutes, 5)
-            ]
-        else:
-            history = [
-                {
-                    "vpin": row[0],
-                    "buy_volume": row[1],
-                    "sell_volume": row[2],
-                    "imbalance": row[3],
-                    "timestamp": row[4]
-                }
-                for row in results
-            ]
-        
-        # 计算统计信息
-        vpin_values = [h["vpin"] for h in history]
-        statistics = {
-            "avg": round(sum(vpin_values) / len(vpin_values), 3) if vpin_values else 0,
-            "max": round(max(vpin_values), 3) if vpin_values else 0,
-            "min": round(min(vpin_values), 3) if vpin_values else 0,
-            "current": vpin_values[-1] if vpin_values else 0
-        }
-        
-        return StandardResponse(data={
-            "history": history,
-            "statistics": statistics
-        })
-    
-    except Exception as e:
-        logger.error(f"获取VPIN历史失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# VPIN历史数据已弃用 - 现在使用实时WebSocket推送
 
 
 @router.get("/orderbook/snapshot", summary="获取订单簿快照")
 async def get_orderbook_snapshot() -> StandardResponse:
     """
     获取当前订单簿快照（5档盘口）
+    从实时推送服务获取数据
     
     Returns:
         - bids: 买盘5档
         - asks: 卖盘5档
+        - bid_depth: 买盘深度
+        - ask_depth: 卖盘深度
         - imbalance: 买卖失衡度
         - depth_ratio: 深度比率
     """
     try:
-        db = bridge.get_db()
+        push_service = bridge.get_push_service()
+        if not push_service:
+            return StandardResponse(data={
+                "bids": [],
+                "asks": [],
+                "bid_depth": 0,
+                "ask_depth": 0,
+                "imbalance": 0.0,
+                "depth_ratio": 0.0,
+                "timestamp": datetime.now().isoformat()
+            })
         
-        # 获取最新订单簿数据
-        query = """
-            SELECT book_data, bid_depth, ask_depth, imbalance, timestamp
-            FROM order_book_snapshots
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """
-        result = db.execute_query(query)
-        
-        if not result:
-            # Mock data
-            bids = [
-                {"price": 1835.0, "volume": 120},
-                {"price": 1834.0, "volume": 95},
-                {"price": 1833.0, "volume": 88},
-                {"price": 1832.0, "volume": 102},
-                {"price": 1831.0, "volume": 76}
-            ]
-            asks = [
-                {"price": 1836.0, "volume": 85},
-                {"price": 1837.0, "volume": 92},
-                {"price": 1838.0, "volume": 78},
-                {"price": 1839.0, "volume": 110},
-                {"price": 1840.0, "volume": 95}
-            ]
-            bid_depth = sum(b["volume"] for b in bids)
-            ask_depth = sum(a["volume"] for a in asks)
-            imbalance = 0.15
-            timestamp = datetime.now().isoformat()
-        else:
-            import json
-            book_data = json.loads(result[0][0])
-            bids = book_data.get("bids", [])
-            asks = book_data.get("asks", [])
-            bid_depth = result[0][1]
-            ask_depth = result[0][2]
-            imbalance = result[0][3]
-            timestamp = result[0][4]
-        
-        # 计算深度比率
-        depth_ratio = bid_depth / ask_depth if ask_depth > 0 else 0
-        
-        # 判断盘口状态
-        status = _interpret_orderbook(imbalance, depth_ratio)
-        
-        return StandardResponse(data={
-            "bids": bids,
-            "asks": asks,
-            "bid_depth": bid_depth,
-            "ask_depth": ask_depth,
-            "imbalance": round(imbalance, 3),
-            "depth_ratio": round(depth_ratio, 2),
-            "status": status,
-            "timestamp": timestamp
-        })
+        orderbook_data = push_service.get_order_flow_orderbook()
+        return StandardResponse(data=orderbook_data)
     
     except Exception as e:
         logger.error(f"获取订单簿快照失败: {e}")
@@ -214,231 +89,218 @@ async def get_orderbook_snapshot() -> StandardResponse:
 
 
 @router.get("/orderbook/dynamics", summary="获取订单簿动态")
-async def get_orderbook_dynamics(
-    minutes: int = Query(30, description="查询分钟数", ge=5, le=240)
-) -> StandardResponse:
+async def get_orderbook_dynamics() -> StandardResponse:
     """
     获取订单簿动态变化
-    
-    Args:
-        minutes: 查询分钟数
+    从实时推送服务获取数据
     
     Returns:
-        - imbalance_history: 失衡度历史
-        - depth_changes: 深度变化率
-        - pressure_zones: 压力区域识别
+        - bid_depth_change_rate: 买盘深度变化率
+        - ask_depth_change_rate: 卖盘深度变化率
+        - imbalance_acceleration: 失衡加速度
+        - interpretation: 解读
     """
     try:
-        db = bridge.get_db()
+        push_service = bridge.get_push_service()
+        if not push_service:
+            return StandardResponse(data={
+                "bid_depth_change_rate": 0.0,
+                "ask_depth_change_rate": 0.0,
+                "imbalance_acceleration": 0.0,
+                "interpretation": "推送服务未启动"
+            })
         
-        start_time = datetime.now() - timedelta(minutes=minutes)
-        query = """
-            SELECT imbalance, imbalance_acceleration, 
-                   bid_depth_change_rate, ask_depth_change_rate, timestamp
-            FROM order_book_snapshots
-            WHERE timestamp >= ?
-            ORDER BY timestamp ASC
-        """
-        results = db.execute_query(query, (start_time.isoformat(),))
-        
-        if not results:
-            # Mock data
-            imbalance_history = [
-                {
-                    "timestamp": (datetime.now() - timedelta(minutes=minutes-i)).isoformat(),
-                    "imbalance": 0.1 + (i % 10) * 0.02,
-                    "acceleration": 0.001 * (i % 3 - 1)
-                }
-                for i in range(0, minutes, 2)
-            ]
-            depth_changes = [
-                {
-                    "timestamp": (datetime.now() - timedelta(minutes=minutes-i)).isoformat(),
-                    "bid_change_rate": 0.05 * (i % 5 - 2),
-                    "ask_change_rate": 0.04 * (i % 4 - 1)
-                }
-                for i in range(0, minutes, 2)
-            ]
-        else:
-            imbalance_history = [
-                {
-                    "timestamp": row[4],
-                    "imbalance": row[0],
-                    "acceleration": row[1]
-                }
-                for row in results
-            ]
-            depth_changes = [
-                {
-                    "timestamp": row[4],
-                    "bid_change_rate": row[2],
-                    "ask_change_rate": row[3]
-                }
-                for row in results
-            ]
-        
-        # 识别压力区域
-        pressure_zones = _identify_pressure_zones(imbalance_history)
-        
-        return StandardResponse(data={
-            "imbalance_history": imbalance_history,
-            "depth_changes": depth_changes,
-            "pressure_zones": pressure_zones
-        })
+        dynamics_data = push_service.get_order_flow_dynamics()
+        return StandardResponse(data=dynamics_data)
     
     except Exception as e:
         logger.error(f"获取订单簿动态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/config", summary="获取订单流配置")
+async def get_order_flow_config() -> StandardResponse:
+    """
+    获取当前订单流配置参数
+    
+    Returns:
+        - vpin: VPIN配置
+        - large_order: 大单检测配置
+        - orderbook: 订单簿配置
+    """
+    try:
+        push_service = bridge.get_push_service()
+        if not push_service or not push_service.order_flow_service:
+            return StandardResponse(data={
+                "vpin": {"bucket_size": 50},
+                "large_order": {"lookback": 100, "threshold_multiplier": 2.5},
+                "orderbook": {"max_history": 1000}
+            })
+        
+        service = push_service.order_flow_service
+        
+        config = {
+            "vpin": {
+                "bucket_size": service.vpin_calculator.bucket_size
+            },
+            "large_order": {
+                "lookback": service.large_order_detector.lookback,
+                "threshold_multiplier": service.large_order_detector.threshold_multiplier
+            },
+            "orderbook": {
+                "max_history": service.orderbook_tracker.depth_history.maxlen
+            }
+        }
+        
+        return StandardResponse(data=config)
+    
+    except Exception as e:
+        logger.error(f"获取订单流配置失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/config", summary="更新订单流配置")
+async def update_order_flow_config(config: Dict = Body(...)) -> StandardResponse:
+    """
+    更新订单流配置参数（立即生效并保存到配置文件）
+    
+    Args:
+        config: {
+            "vpin": {"bucket_size": 50},
+            "large_order": {"lookback": 100, "threshold_multiplier": 2.5},
+            "orderbook": {"max_history": 1000}
+        }
+    
+    Returns:
+        更新结果
+    """
+    try:
+        push_service = bridge.get_push_service()
+        if not push_service or not push_service.order_flow_service:
+            raise HTTPException(status_code=503, detail="订单流服务未启动")
+        
+        service = push_service.order_flow_service
+        
+        # 验证并更新配置
+        if "vpin" in config:
+            bucket_size = config["vpin"].get("bucket_size")
+            if bucket_size is not None:
+                if 10 <= bucket_size <= 500:
+                    service.vpin_calculator.bucket_size = int(bucket_size)
+                    logger.info(f"VPIN bucket_size 更新为: {bucket_size}")
+                else:
+                    raise HTTPException(status_code=400, detail=f"bucket_size 必须在 10-500 范围内，当前值: {bucket_size}")
+        
+        if "large_order" in config:
+            from collections import deque
+            
+            lookback = config["large_order"].get("lookback")
+            threshold = config["large_order"].get("threshold_multiplier")
+            
+            if lookback is not None:
+                if 10 <= lookback <= 500:
+                    service.large_order_detector.lookback = int(lookback)
+                    service.large_order_detector.recent_trades = deque(
+                        service.large_order_detector.recent_trades,
+                        maxlen=int(lookback)
+                    )
+                    logger.info(f"大单检测 lookback 更新为: {lookback}")
+                else:
+                    raise HTTPException(status_code=400, detail=f"lookback 必须在 10-500 范围内，当前值: {lookback}")
+            
+            if threshold is not None:
+                if 1.5 <= threshold <= 10:
+                    service.large_order_detector.threshold_multiplier = float(threshold)
+                    logger.info(f"大单检测 threshold_multiplier 更新为: {threshold}")
+                else:
+                    raise HTTPException(status_code=400, detail=f"threshold_multiplier 必须在 1.5-10 范围内，当前值: {threshold}")
+        
+        if "orderbook" in config:
+            from collections import deque
+            
+            max_history = config["orderbook"].get("max_history")
+            if max_history is not None:
+                if 100 <= max_history <= 5000:
+                    # 重建deque
+                    service.orderbook_tracker.depth_history = deque(
+                        service.orderbook_tracker.depth_history,
+                        maxlen=int(max_history)
+                    )
+                    logger.info(f"订单簿 max_history 更新为: {max_history}")
+                else:
+                    raise HTTPException(status_code=400, detail=f"max_history 必须在 100-5000 范围内，当前值: {max_history}")
+        
+        # 保存到配置文件
+        try:
+            from pathlib import Path
+            import yaml
+            
+            config_path = Path(__file__).parent.parent.parent / 'config' / 'trading_params.yaml'
+            with open(config_path, 'r', encoding='utf-8') as f:
+                params = yaml.safe_load(f)
+            
+            # 更新订单流配置
+            params['order_flow'] = config
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(params, f, allow_unicode=True, default_flow_style=False)
+            
+            logger.info(f"✅ 订单流配置已保存到文件: {config_path}")
+        except Exception as e:
+            logger.error(f"保存配置文件失败: {e}")
+            # 不抛出异常，因为内存配置已生效
+        
+        return StandardResponse(
+            data={
+                "success": True,
+                "message": "配置已更新并保存到文件（立即生效）",
+                "current_config": {
+                    "vpin": {"bucket_size": service.vpin_calculator.bucket_size},
+                    "large_order": {
+                        "lookback": service.large_order_detector.lookback,
+                        "threshold_multiplier": service.large_order_detector.threshold_multiplier
+                    },
+                    "orderbook": {"max_history": service.orderbook_tracker.depth_history.maxlen}
+                }
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新订单流配置失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/large-orders", summary="获取大单追踪")
 async def get_large_orders(
-    minutes: int = Query(60, description="查询分钟数", ge=10, le=1440)
+    count: int = Query(20, description="返回数量", ge=1, le=100)
 ) -> StandardResponse:
     """
     获取大单追踪数据
+    从实时推送服务获取数据
     
     Args:
-        minutes: 查询分钟数
+        count: 返回数量（1-100）
     
     Returns:
         - orders: 大单列表
-        - statistics: 统计信息
+        - count: 总数量
     """
     try:
-        db = bridge.get_db()
+        push_service = bridge.get_push_service()
+        if not push_service:
+            return StandardResponse(data={
+                "orders": [],
+                "count": 0
+            })
         
-        start_time = datetime.now() - timedelta(minutes=minutes)
-        query = """
-            SELECT side, volume, price, price_impact, toxicity_score, timestamp
-            FROM large_orders
-            WHERE timestamp >= ?
-            ORDER BY timestamp DESC
-        """
-        results = db.execute_query(query, (start_time.isoformat(),))
-        
-        if not results:
-            # Mock data
-            orders = [
-                {
-                    "side": "buy" if i % 2 == 0 else "sell",
-                    "volume": 50 + i * 5,
-                    "price": 1835.0 + i * 0.5,
-                    "price_impact": 0.02 * (i % 3 + 1),
-                    "toxicity_score": 0.6 + (i % 4) * 0.1,
-                    "timestamp": (datetime.now() - timedelta(minutes=i*5)).isoformat()
-                }
-                for i in range(10)
-            ]
-        else:
-            orders = [
-                {
-                    "side": row[0],
-                    "volume": row[1],
-                    "price": row[2],
-                    "price_impact": row[3],
-                    "toxicity_score": row[4],
-                    "timestamp": row[5]
-                }
-                for row in results
-            ]
-        
-        # 统计信息
-        buy_orders = [o for o in orders if o["side"] == "buy"]
-        sell_orders = [o for o in orders if o["side"] == "sell"]
-        
-        statistics = {
-            "total_count": len(orders),
-            "buy_count": len(buy_orders),
-            "sell_count": len(sell_orders),
-            "buy_volume": sum(o["volume"] for o in buy_orders),
-            "sell_volume": sum(o["volume"] for o in sell_orders),
-            "avg_toxicity": round(sum(o["toxicity_score"] for o in orders) / len(orders), 2) if orders else 0,
-            "net_pressure": "buy" if len(buy_orders) > len(sell_orders) else "sell"
-        }
-        
-        return StandardResponse(data={
-            "orders": orders,
-            "statistics": statistics
-        })
+        large_orders_data = push_service.get_order_flow_large_orders(count)
+        return StandardResponse(data=large_orders_data)
     
     except Exception as e:
         logger.error(f"获取大单追踪失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _get_vpin_trend(db, current_vpin: float) -> str:
-    """判断VPIN趋势"""
-    query = """
-        SELECT vpin
-        FROM vpin_history
-        WHERE timestamp <= datetime('now', '-5 minutes')
-        ORDER BY timestamp DESC
-        LIMIT 1
-    """
-    result = db.execute_query(query)
-    
-    if not result:
-        return "stable"
-    
-    previous_vpin = result[0][0]
-    diff = current_vpin - previous_vpin
-    
-    if diff > 0.05:
-        return "rising"
-    elif diff < -0.05:
-        return "falling"
-    else:
-        return "stable"
 
-
-def _interpret_vpin(vpin: float, level: str) -> str:
-    """解释VPIN值"""
-    interpretations = {
-        "low": "订单流毒性较低，知情交易者较少，市场相对平静",
-        "medium": "订单流毒性中等，有一定知情交易活动，需要关注",
-        "high": "订单流毒性较高，知情交易者活跃，市场可能面临变化"
-    }
-    return interpretations.get(level, "未知")
-
-
-def _interpret_orderbook(imbalance: float, depth_ratio: float) -> str:
-    """解释订单簿状态"""
-    if imbalance > 0.2 and depth_ratio > 1.2:
-        return "strong_buy_pressure"
-    elif imbalance < -0.2 and depth_ratio < 0.8:
-        return "strong_sell_pressure"
-    elif abs(imbalance) < 0.1 and 0.9 < depth_ratio < 1.1:
-        return "balanced"
-    else:
-        return "moderate_pressure"
-
-
-def _identify_pressure_zones(imbalance_history: List[Dict]) -> List[Dict]:
-    """识别压力区域"""
-    zones = []
-    
-    if not imbalance_history:
-        return zones
-    
-    # 简单识别：连续3个点失衡度>0.15或<-0.15
-    for i in range(len(imbalance_history) - 2):
-        window = imbalance_history[i:i+3]
-        avg_imbalance = sum(w["imbalance"] for w in window) / 3
-        
-        if avg_imbalance > 0.15:
-            zones.append({
-                "start_time": window[0]["timestamp"],
-                "end_time": window[-1]["timestamp"],
-                "type": "buy_pressure",
-                "intensity": round(avg_imbalance, 2)
-            })
-        elif avg_imbalance < -0.15:
-            zones.append({
-                "start_time": window[0]["timestamp"],
-                "end_time": window[-1]["timestamp"],
-                "type": "sell_pressure",
-                "intensity": round(abs(avg_imbalance), 2)
-            })
-    
-    return zones

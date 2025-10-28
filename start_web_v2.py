@@ -34,6 +34,12 @@ print("=" * 60)
 print(f"📁 服务器目录: {server_dir}")
 print()
 
+# 数据初始化已禁用 - 避免拉取非交易时段的无效数据
+# 如需手动初始化数据，请运行: python scripts/init_realtime_data.py
+project_root = Path(__file__).parent
+print("ℹ️  自动数据初始化已禁用，系统将在交易时段采集实时数据")
+print()
+
 # 运行FastAPI服务器
 try:
     subprocess.run(
