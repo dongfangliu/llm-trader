@@ -14,10 +14,15 @@ Parameters:
   --count: [Optional] Number of K-lines to fetch (auto-calculated if not specified)
   --initial_units: Set initial capital as price × contract_multiplier × units (default: 2.0)
                    Example: if SA price is 1500, initial_capital = 1500 × 20 × 2 = 60,000
+  --visual_prompt: [Experimental] Use visual/neutral prompt with ASCII K-line charts
+                   instead of structured JSON features
 
 Examples:
-  # 15-minute backtest
+  # 15-minute backtest (standard prompt)
   python src\backtest\llm_decision_backtest.py --mode llm_direct --symbol CZCE.SA0 --period 15
+
+  # 15-minute backtest (visual prompt - experimental)
+  python src\backtest\llm_decision_backtest.py --mode llm_direct --symbol CZCE.SA0 --period 15 --visual_prompt
 
   # Daily K-line backtest
   python src\backtest\llm_decision_backtest.py --mode llm_direct --symbol CZCE.SA0 --period 1440
@@ -26,6 +31,8 @@ Notes:
 - Uses TqSDK native technical indicators (MA, RSI, MACD, ATR, etc.)
 - If LLM credentials are missing, falls back to quant-only for that step.
 - Cache can be used to make runs deterministic and avoid repeated LLM calls.
+- Visual prompt mode presents data as ASCII charts and open-ended questions,
+  reducing technical indicator bias and letting LLM discover patterns naturally.
 """
 
 from __future__ import annotations
@@ -157,12 +164,13 @@ class SimpleQuantEngine:
 
 
 class LLMDirectEngine:
-    def __init__(self, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None):
+    def __init__(self, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None, use_visual_prompt: bool = False):
         self.max_pos = max_pos
         self.cache = cache or {}
         self.cache_write = cache_write
         self.feature_mode = feature_mode
         self.trade_meta = trade_meta or {}
+        self.use_visual_prompt = use_visual_prompt  # New: enable visual/neutral prompt
         try:
             self.client = LLMFactory.create_client()
         except Exception as e:
@@ -194,6 +202,195 @@ class LLMDirectEngine:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2, default=str)
         except Exception as e:
             logger.warning(f"write cache failed: {e}")
+
+    def _create_visual_kline(self, hist: List[Dict]) -> str:
+        """Create ASCII art K-line chart for visual representation."""
+        if len(hist) < 10:
+            return ""
+
+        # Take last 50 bars and normalize to fixed height
+        data = hist[-50:] if len(hist) >= 50 else hist
+
+        # Find price range
+        all_prices = []
+        for bar in data:
+            all_prices.extend([bar["o%"], bar["h%"], bar["l%"], bar["c%"]])
+
+        if not all_prices:
+            return ""
+
+        min_p = min(all_prices)
+        max_p = max(all_prices)
+        range_p = max_p - min_p if max_p > min_p else 1.0
+
+        # Normalize to 20 rows height
+        def normalize(val):
+            return int(19 * (val - min_p) / range_p)
+
+        # Build chart matrix
+        chart = [[' ' for _ in range(len(data))] for _ in range(20)]
+
+        for col, bar in enumerate(data):
+            try:
+                o_norm = normalize(bar["o%"])
+                h_norm = normalize(bar["h%"])
+                l_norm = normalize(bar["l%"])
+                c_norm = normalize(bar["c%"])
+
+                # Draw high-low line
+                for row in range(min(l_norm, h_norm), max(l_norm, h_norm) + 1):
+                    if row == o_norm or row == c_norm:
+                        continue
+                    chart[19 - row][col] = '│'
+
+                # Draw body
+                body_top = max(o_norm, c_norm)
+                body_bottom = min(o_norm, c_norm)
+                is_bull = c_norm > o_norm
+
+                for row in range(body_bottom, body_top + 1):
+                    if is_bull:
+                        chart[19 - row][col] = '█'  # Bullish
+                    else:
+                        chart[19 - row][col] = '▓'  # Bearish
+            except Exception:
+                continue
+
+        # Convert to string
+        visual = f"\n{'═' * (len(data) + 2)}\n"
+        visual += f"Price range: {min_p:+.2f}% to {max_p:+.2f}%\n"
+        visual += f"{'═' * (len(data) + 2)}\n"
+
+        for row in chart:
+            visual += ''.join(row) + '\n'
+
+        visual += f"{'─' * (len(data) + 2)}\n"
+        visual += f"Time ►{'►' * (len(data) - 5)}►►►►►\n"
+        visual += f"{' ' * (len(data) - 3)}NOW\n"
+
+        return visual
+
+    def _build_neutral_snapshot(self, row: pd.Series, df: pd.DataFrame, symbol: str) -> str:
+        """Build neutral market snapshot with facts, no interpretations."""
+
+        close = float(row["close"]) if not pd.isna(row["close"]) else 0.0
+        ts = pd.to_datetime(row["timestamp"]) if "timestamp" in row else pd.Timestamp.now()
+
+        # 1. Basic information (pure facts)
+        basic = f"""
+Symbol: {symbol}
+Current Time: {ts.strftime('%Y-%m-%d %H:%M')} (Weekday: {ts.strftime('%A')})
+Current Price: {close:.2f}
+
+Current Bar:
+  Open: {float(row['open']):.2f}
+  High: {float(row['high']):.2f}
+  Low: {float(row['low']):.2f}
+  Close: {close:.2f}
+  Volume: {int(row.get('volume', 0))}
+"""
+
+        # 2. Historical price sequence
+        idx = row.name
+        window = df.loc[:idx].tail(100) if idx in df.index else df.tail(100)
+
+        recent_prices = "\nRecent 20 bars (close prices):\n"
+        for i, (_, r) in enumerate(window.tail(20).iterrows(), 1):
+            recent_prices += f"{i:2d}. {float(r['close']):7.2f}  "
+            if i % 5 == 0:
+                recent_prices += "\n"
+
+        # 3. Price distribution (statistical, not technical indicators)
+        closes = window["close"].values.astype(float)
+        recent_10 = closes[-10:] if len(closes) >= 10 else closes
+        recent_50 = closes[-50:] if len(closes) >= 50 else closes
+
+        stats = f"""
+Price Statistics:
+  Last 10 bars: min={float(recent_10.min()):.2f}, max={float(recent_10.max()):.2f}, mean={float(recent_10.mean()):.2f}
+  Last 50 bars: min={float(recent_50.min()):.2f}, max={float(recent_50.max()):.2f}, mean={float(recent_50.mean()):.2f}
+  Current vs 10-bar mean: {((close / recent_10.mean() - 1) * 100):+.2f}%
+  Current vs 50-bar mean: {((close / recent_50.mean() - 1) * 100):+.2f}%
+"""
+
+        # 4. Volume comparison (pure numbers)
+        vols = window["volume"].values.astype(float)
+        vol_recent = vols[-20:] if len(vols) >= 20 else vols
+        vol_current = float(row.get("volume", 0))
+
+        volume_info = f"""
+Volume Comparison:
+  Current bar: {int(vol_current)}
+  20-bar average: {int(vol_recent.mean())}
+  20-bar max: {int(vol_recent.max())}
+  20-bar min: {int(vol_recent.min())}
+"""
+
+        # 5. Position and account (objective facts)
+        pos_obj = getattr(self, "current_pos", None)
+        account_balance = getattr(self, "current_balance", None)
+
+        position_info = ""
+        if pos_obj and pos_obj.direction != "none":
+            entry = pos_obj.entry_price
+            pnl_pct = ((close / entry - 1) * 100) if entry > 0 else 0.0
+            position_info = f"""
+Current Position:
+  Direction: {pos_obj.direction.upper()}
+  Quantity: {pos_obj.qty} lots
+  Entry Price: {entry:.2f}
+  Current P&L: {pnl_pct:+.2f}%
+"""
+        else:
+            position_info = "\nCurrent Position: NONE (flat)\n"
+
+        account_info = f"""
+Account:
+  Balance: {account_balance:.2f} (initial: {self.trade_meta.get('initial_capital', 0):.2f})
+  Max Position: {self.max_pos} lots
+"""
+
+        # 6. Visual K-line chart
+        hist = []
+        base_price = close
+        for _, b in window.tail(50).iterrows():
+            hist.append({
+                "o%": (float(b["open"]) / base_price - 1) * 100,
+                "h%": (float(b["high"]) / base_price - 1) * 100,
+                "l%": (float(b["low"]) / base_price - 1) * 100,
+                "c%": (float(b["close"]) / base_price - 1) * 100,
+                "v": int(b.get("volume", 0)),
+            })
+
+        visual_chart = self._create_visual_kline(hist)
+
+        # 7. Simple, open-ended instruction
+        instruction = """
+Based on the above market data, decide whether to take a trading action.
+
+Consider:
+- What pattern do you observe in the price movements?
+- Is there any notable change in volume?
+- If you have a position, how is it performing?
+- What is the potential opportunity vs. risk?
+
+Trading costs: {commission_per_lot:.2f} per lot, {slippage_ticks} tick slippage
+
+Respond in strict JSON format:
+{{
+  "action": "open_long|open_short|close_long|close_short|hold",
+  "position_size": <int>,
+  "stop_loss": <float, absolute price>,
+  "take_profit": <float, absolute price>,
+  "confidence": <float 0-1>,
+  "rationale": ["brief reason1", "brief reason2"]
+}}
+""".format(
+            commission_per_lot=self.trade_meta.get('commission_per_lot', 0.0),
+            slippage_ticks=self.trade_meta.get('slippage_ticks', 1)
+        )
+
+        return f"{basic}{stats}{volume_info}{position_info}{account_info}{visual_chart}\n{recent_prices}\n{instruction}"
 
     def decide(self, row: pd.Series, df: pd.DataFrame, symbol: str) -> Decision:
         ts_key = pd.to_datetime(row["timestamp"]).isoformat()
@@ -395,13 +592,19 @@ class LLMDirectEngine:
             "account": account,
         }
 
-        prompt = (
-            "You are a futures trading assistant deciding entries for Soda Ash (SA).\n"
-            "Use the current bar, recent history (normalized), optional neutral features, trading costs/specs, and the current position/account to decide.\n"
-            "Return STRICT JSON only with keys: action(one of 'open_long','open_short','add_long','add_short','close_long','close_short','hold'), position_size(int >=0; for add/close it's lots to add/close), stop_loss(number), take_profit(number), confidence(float 0..1), rationale(array of short strings).\n"
-            f"INPUT:\n{json.dumps(snapshot, ensure_ascii=False)}\n"
-            "OUTPUT JSON:"
-        )
+        # Choose prompt style based on configuration
+        if self.use_visual_prompt:
+            # Use new visual/neutral prompt with ASCII chart and open-ended questions
+            prompt = self._build_neutral_snapshot(row, df, symbol)
+        else:
+            # Use original structured JSON prompt
+            prompt = (
+                "You are a futures trading assistant deciding entries for Soda Ash (SA).\n"
+                "Use the current bar, recent history (normalized), optional neutral features, trading costs/specs, and the current position/account to decide.\n"
+                "Return STRICT JSON only with keys: action(one of 'open_long','open_short','add_long','add_short','close_long','close_short','hold'), position_size(int >=0; for add/close it's lots to add/close), stop_loss(number), take_profit(number), confidence(float 0..1), rationale(array of short strings).\n"
+                f"INPUT:\n{json.dumps(snapshot, ensure_ascii=False)}\n"
+                "OUTPUT JSON:"
+            )
 
         try:
             raw = self.client.chat(prompt)
@@ -429,10 +632,10 @@ class LLMDirectEngine:
 class HybridEngine:
     """Quant decision with optional LLM expert review when confidence is low."""
 
-    def __init__(self, low_conf_th: float = 0.7, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None):
+    def __init__(self, low_conf_th: float = 0.7, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None, use_visual_prompt: bool = False):
         self.low_conf_th = low_conf_th
         self.quant = SimpleQuantEngine(max_pos=max_pos)
-        self.llm_direct = LLMDirectEngine(cache=cache, cache_write=cache_write, max_pos=max_pos, feature_mode=feature_mode, trade_meta=trade_meta)
+        self.llm_direct = LLMDirectEngine(cache=cache, cache_write=cache_write, max_pos=max_pos, feature_mode=feature_mode, trade_meta=trade_meta, use_visual_prompt=use_visual_prompt)
 
     def decide(self, row: pd.Series, df: pd.DataFrame, symbol: str) -> Decision:
         q = self.quant.decide(row, df)
@@ -513,13 +716,14 @@ class Position:
 
 
 class Backtester:
-    def __init__(self, cfg: BTConfig, mode: DecisionMode, cache_path: Optional[Path] = None, llm_input: str = "neutral", llm_ignore_risk: bool = False, initial_units: Optional[float] = None):
+    def __init__(self, cfg: BTConfig, mode: DecisionMode, cache_path: Optional[Path] = None, llm_input: str = "neutral", llm_ignore_risk: bool = False, initial_units: Optional[float] = None, use_visual_prompt: bool = False):
         self.cfg = cfg
         self.mode = mode
         self.cache_path = cache_path
         self.llm_input = llm_input
         self.llm_ignore_risk = llm_ignore_risk
         self.initial_units = initial_units  # None表示使用cfg.initial_capital，否则根据价格*units计算
+        self.use_visual_prompt = use_visual_prompt  # New: enable visual/neutral prompt
         # load cache
         cache: Dict[str, Any] = {}
         if cache_path and cache_path.exists():
@@ -538,9 +742,9 @@ class Backtester:
         if mode == DecisionMode.QUANT_ONLY:
             self.engine = SimpleQuantEngine(max_pos=cfg.max_position)
         elif mode == DecisionMode.HYBRID:
-            self.engine = HybridEngine(cache=cache, cache_write=cache_path, max_pos=cfg.max_position, feature_mode=self.llm_input, trade_meta=trade_meta)
+            self.engine = HybridEngine(cache=cache, cache_write=cache_path, max_pos=cfg.max_position, feature_mode=self.llm_input, trade_meta=trade_meta, use_visual_prompt=self.use_visual_prompt)
         else:
-            self.engine = LLMDirectEngine(cache=cache, cache_write=cache_path, max_pos=cfg.max_position, feature_mode=self.llm_input, trade_meta=trade_meta)
+            self.engine = LLMDirectEngine(cache=cache, cache_write=cache_path, max_pos=cfg.max_position, feature_mode=self.llm_input, trade_meta=trade_meta, use_visual_prompt=self.use_visual_prompt)
 
     def run_tqsdk(self, start_dt: datetime, end_dt: datetime, username: Optional[str] = None, password: Optional[str] = None, use_sim: bool = True) -> Dict[str, Any]:
         try:
@@ -858,6 +1062,7 @@ def main():
     parser.add_argument("--start", help="Backtest start datetime, e.g. 2024-09-01 09:00")
     parser.add_argument("--end", help="Backtest end datetime, e.g. 2024-10-31 15:00")
     parser.add_argument("--initial_units", type=float, default=2.0, help="Initial capital = price × contract_multiplier × units (default: 2.0)")
+    parser.add_argument("--visual_prompt", action="store_true", help="Use visual/neutral prompt with ASCII charts (experimental)")
     args = parser.parse_args()
 
     logger.add(str(Path("logs") / f"llm_backtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"), rotation="1 day")
@@ -871,7 +1076,7 @@ def main():
 
     # 使用TqSDK回测
     mode = DecisionMode(args.mode)
-    bt = Backtester(cfg, mode, cache_path=cache_path, llm_input=args.llm_input, llm_ignore_risk=args.llm_ignore_risk, initial_units=args.initial_units)
+    bt = Backtester(cfg, mode, cache_path=cache_path, llm_input=args.llm_input, llm_ignore_risk=args.llm_ignore_risk, initial_units=args.initial_units, use_visual_prompt=args.visual_prompt)
     # 回测区间：参考 TqSDK 教程，支持命令行指定开始/结束时间
     def _parse_dt(s, default):
         if not s:
