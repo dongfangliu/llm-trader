@@ -16,6 +16,7 @@ Parameters:
                    Example: if SA price is 1500, initial_capital = 1500 × 20 × 2 = 60,000
   --visual_prompt: [Experimental] Use visual/neutral prompt with ASCII K-line charts
                    instead of structured JSON features
+  --show_rationale: Show detailed rationale for each decision (default: False)
 
 Examples:
   # 15-minute backtest (standard prompt)
@@ -364,7 +365,7 @@ Account:
 
         visual_chart = self._create_visual_kline(hist)
 
-        # 7. Simple, open-ended instruction
+        # 7. Simple, open-ended instruction with confidence guidance
         instruction = """
 Based on the above market data, decide whether to take a trading action.
 
@@ -385,6 +386,14 @@ Respond in strict JSON format:
   "confidence": <float 0-1>,
   "rationale": ["brief reason1", "brief reason2"]
 }}
+
+IMPORTANT - Confidence Guidelines:
+- 0.9-1.0: Very strong signal, clear pattern, high volume confirmation
+- 0.7-0.9: Strong signal, good pattern, reasonable confirmation
+- 0.5-0.7: Moderate signal, some uncertainty
+- 0.3-0.5: Weak signal, high uncertainty
+- 0.0-0.3: Very weak/conflicting signal
+Adjust confidence based on actual market conditions - don't use fixed values!
 """.format(
             commission_per_lot=self.trade_meta.get('commission_per_lot', 0.0),
             slippage_ticks=self.trade_meta.get('slippage_ticks', 1)
@@ -528,7 +537,7 @@ Respond in strict JSON format:
                 ret5, ret20 = 0.0, 0.0
             # volatility: std of returns and ATR
             try:
-                rets = window["close"].pct_change().tail(20)
+                rets = window["close"].astype(float).pct_change().tail(20)
                 vol_std20 = float(rets.std(skipna=True)) if len(rets) else 0.0
             except Exception:
                 vol_std20 = 0.0
@@ -597,11 +606,17 @@ Respond in strict JSON format:
             # Use new visual/neutral prompt with ASCII chart and open-ended questions
             prompt = self._build_neutral_snapshot(row, df, symbol)
         else:
-            # Use original structured JSON prompt
+            # Use original structured JSON prompt with confidence guidance
             prompt = (
                 "You are a futures trading assistant deciding entries for Soda Ash (SA).\n"
                 "Use the current bar, recent history (normalized), optional neutral features, trading costs/specs, and the current position/account to decide.\n"
-                "Return STRICT JSON only with keys: action(one of 'open_long','open_short','add_long','add_short','close_long','close_short','hold'), position_size(int >=0; for add/close it's lots to add/close), stop_loss(number), take_profit(number), confidence(float 0..1), rationale(array of short strings).\n"
+                "Return STRICT JSON only with keys: action(one of 'open_long','open_short','add_long','add_short','close_long','close_short','hold'), position_size(int >=0; for add/close it's lots to add/close), stop_loss(number), take_profit(number), confidence(float 0..1), rationale(array of short strings).\n\n"
+                "CONFIDENCE GUIDELINES (adjust based on market conditions, don't use fixed values):\n"
+                "- 0.9-1.0: Very strong signal, clear pattern, high volume confirmation\n"
+                "- 0.7-0.9: Strong signal, good pattern, reasonable confirmation\n"
+                "- 0.5-0.7: Moderate signal, some uncertainty\n"
+                "- 0.3-0.5: Weak signal, high uncertainty\n"
+                "- 0.0-0.3: Very weak/conflicting signal\n\n"
                 f"INPUT:\n{json.dumps(snapshot, ensure_ascii=False)}\n"
                 "OUTPUT JSON:"
             )
@@ -716,7 +731,7 @@ class Position:
 
 
 class Backtester:
-    def __init__(self, cfg: BTConfig, mode: DecisionMode, cache_path: Optional[Path] = None, llm_input: str = "neutral", llm_ignore_risk: bool = False, initial_units: Optional[float] = None, use_visual_prompt: bool = False):
+    def __init__(self, cfg: BTConfig, mode: DecisionMode, cache_path: Optional[Path] = None, llm_input: str = "neutral", llm_ignore_risk: bool = False, initial_units: Optional[float] = None, use_visual_prompt: bool = False, show_rationale: bool = False):
         self.cfg = cfg
         self.mode = mode
         self.cache_path = cache_path
@@ -724,6 +739,7 @@ class Backtester:
         self.llm_ignore_risk = llm_ignore_risk
         self.initial_units = initial_units  # None表示使用cfg.initial_capital，否则根据价格*units计算
         self.use_visual_prompt = use_visual_prompt  # New: enable visual/neutral prompt
+        self.show_rationale = show_rationale  # Control rationale output
         # load cache
         cache: Dict[str, Any] = {}
         if cache_path and cache_path.exists():
@@ -943,6 +959,12 @@ class Backtester:
                         decision = self.engine.decide(row, df_ctx)
                     else:
                         decision = self.engine.decide(row, df_ctx, symbol=self.cfg.symbol)
+
+                    # Output LLM rationale if enabled
+                    if self.show_rationale and decision.rationale and len(decision.rationale) > 0:
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 决策依据: {' | '.join(decision.rationale)}")
+                        if decision.confidence > 0:
+                            logger.info(f"  → 置信度: {decision.confidence:.2%}, 操作: {decision.action}")
                 except Exception as e:
                     logger.warning(f"决策失败 @ {bar_time}: {e}")
                     continue
@@ -953,24 +975,36 @@ class Backtester:
                     new_target_pos = current_pos_qty  # Default: maintain current position
 
                     if decision.action == "open_long" and current_pos_qty == 0 and decision.position_size > 0:
-                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 开多 {decision.position_size}手 @ {current_price:.2f}")
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📈 开多 {decision.position_size}手 @ {current_price:.2f}")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                        if decision.stop_loss > 0 or decision.take_profit > 0:
+                            logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
                         new_target_pos = int(decision.position_size)
                         trade_count += 1
 
                     elif decision.action == "open_short" and current_pos_qty == 0 and decision.position_size > 0:
-                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 开空 {decision.position_size}手 @ {current_price:.2f}")
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📉 开空 {decision.position_size}手 @ {current_price:.2f}")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                        if decision.stop_loss > 0 or decision.take_profit > 0:
+                            logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
                         new_target_pos = -int(decision.position_size)
                         trade_count += 1
 
                     elif decision.action == "close_long" and current_pos_qty > 0:
                         close_qty = int(decision.position_size) if decision.position_size else current_pos_qty
-                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 平多 {close_qty}手 @ {current_price:.2f}")
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🔻 平多 {close_qty}手 @ {current_price:.2f}")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
                         new_target_pos = max(0, current_pos_qty - close_qty)
                         trade_count += 1
 
                     elif decision.action == "close_short" and current_pos_qty < 0:
                         close_qty = int(decision.position_size) if decision.position_size else abs(current_pos_qty)
-                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 平空 {close_qty}手 @ {current_price:.2f}")
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🔺 平空 {close_qty}手 @ {current_price:.2f}")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
                         new_target_pos = min(0, current_pos_qty + close_qty)
                         trade_count += 1
 
@@ -1063,6 +1097,7 @@ def main():
     parser.add_argument("--end", help="Backtest end datetime, e.g. 2024-10-31 15:00")
     parser.add_argument("--initial_units", type=float, default=2.0, help="Initial capital = price × contract_multiplier × units (default: 2.0)")
     parser.add_argument("--visual_prompt", action="store_true", help="Use visual/neutral prompt with ASCII charts (experimental)")
+    parser.add_argument("--show_rationale", action="store_true", help="Show detailed rationale for each decision (default: False)")
     args = parser.parse_args()
 
     logger.add(str(Path("logs") / f"llm_backtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"), rotation="1 day")
@@ -1076,7 +1111,7 @@ def main():
 
     # 使用TqSDK回测
     mode = DecisionMode(args.mode)
-    bt = Backtester(cfg, mode, cache_path=cache_path, llm_input=args.llm_input, llm_ignore_risk=args.llm_ignore_risk, initial_units=args.initial_units, use_visual_prompt=args.visual_prompt)
+    bt = Backtester(cfg, mode, cache_path=cache_path, llm_input=args.llm_input, llm_ignore_risk=args.llm_ignore_risk, initial_units=args.initial_units, use_visual_prompt=args.visual_prompt, show_rationale=args.show_rationale)
     # 回测区间：参考 TqSDK 教程，支持命令行指定开始/结束时间
     def _parse_dt(s, default):
         if not s:
