@@ -20,7 +20,7 @@ class DataProcessor:
     """数据处理和技术指标计算"""
 
     @staticmethod
-    def calculate_ma(df: pd.DataFrame, periods: list = [5, 10, 20, 60]) -> pd.DataFrame:
+    def calculate_ma(df: pd.DataFrame, periods: list = [5, 10, 20, 30, 60]) -> pd.DataFrame:
         """
         计算移动平均线
 
@@ -199,6 +199,17 @@ class DataProcessor:
         df = DataProcessor.calculate_ma(df)
         df = DataProcessor.calculate_macd(df)
         df = DataProcessor.calculate_rsi(df)
+
+        # ATR(14) 对齐 TqSDK 文档
+        if HAS_TALIB:
+            df['atr'] = ta.ATR(df['high'].values, df['low'].values, df['close'].values, timeperiod=14)
+        else:
+            high_low = df['high'] - df['low']
+            high_close = (df['high'] - df['close'].shift()).abs()
+            low_close = (df['low'] - df['close'].shift()).abs()
+            tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            df['atr'] = tr.rolling(window=14).mean()
+
         df = DataProcessor.calculate_bollinger_bands(df)
         df = DataProcessor.calculate_volume_ratio(df)
         df = DataProcessor.calculate_volatility(df)

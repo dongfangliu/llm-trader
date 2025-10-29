@@ -67,10 +67,10 @@ class ResponseParser:
     def parse_json(text: str) -> Optional[Dict[str, Any]]:
         """
         解析JSON
-        
+
         Args:
             text: JSON文本
-            
+
         Returns:
             Optional[Dict]: 解析后的字典，失败返回None
         """
@@ -78,6 +78,7 @@ class ResponseParser:
             return json.loads(text)
         except json.JSONDecodeError as e:
             logger.error(f"JSON解析失败: {e}")
+
             # 尝试修复常见错误
             try:
                 # 修复单引号问题
@@ -85,18 +86,57 @@ class ResponseParser:
                 return json.loads(fixed_text)
             except:
                 pass
-            
-            # 尝试提取JSON部分
+
+            # 尝试提取JSON部分（改进版：处理嵌套和额外数据）
             try:
-                # 查找第一个{和最后一个}
+                # 查找第一个{
                 start = text.find('{')
-                end = text.rfind('}')
-                if start != -1 and end != -1 and end > start:
+                if start == -1:
+                    return None
+
+                # 使用计数器找到匹配的}
+                brace_count = 0
+                end = start
+                in_string = False
+                escape_next = False
+
+                for i in range(start, len(text)):
+                    char = text[i]
+
+                    # 处理转义字符
+                    if escape_next:
+                        escape_next = False
+                        continue
+
+                    if char == '\\':
+                        escape_next = True
+                        continue
+
+                    # 处理字符串
+                    if char == '"':
+                        in_string = not in_string
+                        continue
+
+                    # 只在非字符串内计数大括号
+                    if not in_string:
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end = i
+                                break
+
+                if brace_count == 0 and end > start:
                     json_text = text[start:end+1]
+                    logger.debug(f"提取JSON片段: {json_text[:100]}...")
                     return json.loads(json_text)
-            except:
+            except Exception as extract_error:
+                logger.error(f"JSON提取失败: {extract_error}")
                 pass
-            
+
+            # 最后尝试：输出原始文本前500字符以便调试
+            logger.error(f"无法解析的响应（前500字符）: {text[:500]}")
             return None
     
     @staticmethod
