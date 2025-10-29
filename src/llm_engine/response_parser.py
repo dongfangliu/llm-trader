@@ -79,6 +79,19 @@ class ResponseParser:
         except json.JSONDecodeError as e:
             logger.error(f"JSON解析失败: {e}")
 
+            # 特殊处理：Extra data错误（JSON后面有额外内容）
+            if "Extra data" in str(e):
+                logger.info("检测到Extra data错误，尝试提取第一个完整JSON对象")
+                try:
+                    # 使用JSONDecoder的raw_decode方法，它会返回第一个JSON对象和结束位置
+                    decoder = json.JSONDecoder()
+                    obj, end_idx = decoder.raw_decode(text)
+                    logger.info(f"成功提取第一个JSON对象（到位置{end_idx}），忽略后续内容")
+                    logger.debug(f"忽略的后续内容: {text[end_idx:end_idx+100]}...")
+                    return obj
+                except Exception as decode_error:
+                    logger.error(f"raw_decode提取失败: {decode_error}")
+
             # 尝试修复常见错误
             try:
                 # 修复单引号问题

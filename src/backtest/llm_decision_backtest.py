@@ -107,6 +107,12 @@ class Decision:
     risk_analysis: str = ""  # 风险收益分析
     execution_plan: str = ""  # 执行方案
 
+    # LLM-controlled stop loss/take profit adjustment
+    override_stop_loss: bool = False  # LLM是否要求忽略当前止损（需硬止损检查）
+    adjust_stop_loss: Optional[float] = None  # LLM建议的新止损价（绝对价格）
+    adjust_take_profit: Optional[float] = None  # LLM建议的新止盈价（绝对价格）
+    adjustment_reason: str = ""  # 调整原因（必填，用于审计）
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "action": self.action,
@@ -124,6 +130,11 @@ class Decision:
             "opportunity_assessment": str(self.opportunity_assessment or ""),
             "risk_analysis": str(self.risk_analysis or ""),
             "execution_plan": str(self.execution_plan or ""),
+            # LLM adjustments
+            "override_stop_loss": bool(self.override_stop_loss),
+            "adjust_stop_loss": float(self.adjust_stop_loss or 0.0),
+            "adjust_take_profit": float(self.adjust_take_profit or 0.0),
+            "adjustment_reason": str(self.adjustment_reason or ""),
         }
 
 
@@ -246,6 +257,12 @@ class LLMDirectEngine:
                 opportunity_assessment=str(data.get("opportunity_assessment", "") or ""),
                 risk_analysis=str(data.get("risk_analysis", "") or ""),
                 execution_plan=str(data.get("execution_plan", "") or ""),
+
+                # LLM adjustments
+                override_stop_loss=bool(data.get("override_stop_loss", False)),
+                adjust_stop_loss=float(data.get("adjust_stop_loss", 0) or 0) if data.get("adjust_stop_loss") else None,
+                adjust_take_profit=float(data.get("adjust_take_profit", 0) or 0) if data.get("adjust_take_profit") else None,
+                adjustment_reason=str(data.get("adjustment_reason", "") or ""),
             )
         return None
 
@@ -302,17 +319,34 @@ class LLMDirectEngine:
 
             float_pnl = 0.0
             if entry_price > 0 and qty > 0:
+                # 完全依赖 TqSDK 的浮动盈亏，不进行手工计算回退
                 if pos_obj.direction == "long":
-                    float_pnl = tq_pos_pnl_long if tq_pos_pnl_long is not None else (current_price - entry_price) * contract_multiplier * qty
+                    if tq_pos_pnl_long is not None:
+                        float_pnl = tq_pos_pnl_long
+                    else:
+                        logger.warning(f"TqSDK 多头持仓浮动盈亏为 None，可能数据有问题")
+                        float_pnl = 0.0
                 else:
-                    float_pnl = tq_pos_pnl_short if tq_pos_pnl_short is not None else (entry_price - current_price) * contract_multiplier * qty
-            # 若持仓级别缺失，则回退到账户级浮盈
-            if (qty == 0 or entry_price <= 0) and tq_acc_float_profit is not None:
+                    if tq_pos_pnl_short is not None:
+                        float_pnl = tq_pos_pnl_short
+                    else:
+                        logger.warning(f"TqSDK 空头持仓浮动盈亏为 None，可能数据有问题")
+                        float_pnl = 0.0
+            elif tq_acc_float_profit is not None:
+                # 无持仓时，回退到账户级浮盈
                 float_pnl = tq_acc_float_profit
+            else:
+                logger.warning(f"TqSDK 账户浮动盈亏也为 None，无法获取盈亏数据")
+                float_pnl = 0.0
 
             pct_base = float(tq_static_balance) if tq_static_balance else float(initial_capital)
             pnl_pct = (float_pnl / pct_base * 100.0) if pct_base > 0 else 0.0
 
+            # 获取止盈止损信息（从 backtester 注入）
+            active_stop_loss = getattr(self, 'active_stop_loss', 0.0)
+            active_take_profit = getattr(self, 'active_take_profit', 0.0)
+
+            # 构建持仓基本信息
             position_info = f"""
 ## 📋 当前持仓状态
 - 方向: {pos_obj.direction.upper()}
@@ -321,6 +355,68 @@ class LLMDirectEngine:
 - 当前价: {current_price:.2f}
 - 浮动盈亏: {pnl_pct:+.2f}% ({float_pnl:+.0f}元，按初始资金比例)
 - 标的涨跌: {price_change_pct:+.2f}%（价格变动）
+"""
+
+            # 添加止盈止损信息
+            if active_stop_loss > 0 or active_take_profit > 0:
+                position_info += "\n### 🎯 止盈止损设置\n"
+
+                # 止损信息
+                if active_stop_loss > 0:
+                    if pos_obj.direction == "long":
+                        stop_distance_pct = ((current_price - active_stop_loss) / current_price * 100)
+                        stop_distance_points = current_price - active_stop_loss
+                    else:  # short
+                        stop_distance_pct = ((active_stop_loss - current_price) / current_price * 100)
+                        stop_distance_points = active_stop_loss - current_price
+
+                    # 预警：接近止损（距离 < 1%）
+                    stop_warning = ""
+                    if abs(stop_distance_pct) < 1.0:
+                        stop_warning = " ⚠️ **即将触发止损!**"
+                    elif abs(stop_distance_pct) < 2.0:
+                        stop_warning = " ⚠️ 接近止损"
+
+                    position_info += f"- 止损价: {active_stop_loss:.2f} (距离: {abs(stop_distance_pct):.2f}% / {abs(stop_distance_points):.2f}点){stop_warning}\n"
+
+                # 止盈信息
+                if active_take_profit > 0:
+                    if pos_obj.direction == "long":
+                        profit_distance_pct = ((active_take_profit - current_price) / current_price * 100)
+                        profit_distance_points = active_take_profit - current_price
+                    else:  # short
+                        profit_distance_pct = ((current_price - active_take_profit) / current_price * 100)
+                        profit_distance_points = current_price - active_take_profit
+
+                    # 预警：接近止盈（距离 < 1%）
+                    profit_warning = ""
+                    if abs(profit_distance_pct) < 1.0:
+                        profit_warning = " 🎯 **即将触发止盈!**"
+                    elif abs(profit_distance_pct) < 2.0:
+                        profit_warning = " 🎯 接近止盈"
+
+                    position_info += f"- 止盈价: {active_take_profit:.2f} (距离: {abs(profit_distance_pct):.2f}% / {abs(profit_distance_points):.2f}点){profit_warning}\n"
+
+                # 获取硬止损配置信息
+                hard_stop_multiple = self.trade_meta.get('hard_stop_loss_atr_multiple', 3.0)
+                soft_stop_multiple = self.trade_meta.get('soft_stop_loss_atr_multiple', 1.5)
+                hard_tp_multiple = self.trade_meta.get('hard_take_profit_atr_multiple', 5.0)
+
+                # 添加风控说明和调整权限
+                position_info += f"""\n**⚠️ 重要提示：止盈止损管理**
+- **自动执行**：当前设置的止盈止损会在价格触及时自动执行（软止损，ATR×{soft_stop_multiple}）
+- **硬止损保护**：系统设有硬止损（ATR×{hard_stop_multiple}），无论任何情况都会强制执行
+- **硬止盈限制**：系统设有硬止盈（ATR×{hard_tp_multiple}），达到后自动平仓
+- **LLM调整权限**：你可以在决策中调整或忽略当前止盈止损，但需满足以下条件：
+  1. **必须提供充分的调整理由**（`adjustment_reason`字段，必填且具体）
+  2. 调整幅度在合理范围内（建议不超过50%）
+  3. **绝对不能超过硬止损限制**（系统会拒绝）
+  4. 建议仅在以下情况使用：
+     - ⚠️  重大市场突发事件（如重要数据公布、政策变化、突发新闻）
+     - ⚠️  技术形态发生重大改变（如突破关键支撑/阻力、形态反转）
+     - ⚠️  当前止损位置明显不合理（如刚好在关键技术位上，可能被针对性触发）
+     - ⚠️  市场流动性异常（如剧烈波动、跳空缺口）
+  5. **谨慎使用**：调整止损意味着承担更大风险，所有调整都会被记录到审计日志，请三思而后行！
 """
         else:
             position_info = """
@@ -424,7 +520,13 @@ class LLMDirectEngine:
   "market_diagnosis": "<string, 第一步分析摘要>",
   "opportunity_assessment": "<string, 第二步分析摘要>",
   "risk_analysis": "<string, 第三步分析摘要>",
-  "execution_plan": "<string, 第四步执行方案摘要>"
+  "execution_plan": "<string, 第四步执行方案摘要>",
+
+  // **可选字段：止盈止损调整（慎用！）**
+  "override_stop_loss": <bool, 是否忽略当前软止损，default: false>,
+  "adjust_stop_loss": <float, 建议的新止损价（绝对价格），不填表示不调整>,
+  "adjust_take_profit": <float, 建议的新止盈价（绝对价格），不填表示不调整>,
+  "adjustment_reason": "<string, 调整原因（如果调整则必填！）>"
 }}
 ```
 
@@ -500,12 +602,31 @@ class LLMDirectEngine:
                 logger.warning(f"Invalid action '{action}', defaulting to 'hold'")
                 action = "hold"
 
-            # Parse enhanced fields
+            # Parse enhanced fields with proper constraints
+            raw_target_position = int(data.get("target_position", 0))
+            # ✅ Clamp target_position to [-max_pos, max_pos] range
+            clamped_target_position = int(max(-self.max_pos, min(self.max_pos, raw_target_position)))
+
+            # Parse LLM adjustment fields
+            raw_override_stop_loss = bool(data.get("override_stop_loss", False))
+            raw_adjust_stop_loss = data.get("adjust_stop_loss")
+            raw_adjust_take_profit = data.get("adjust_take_profit")
+            adjustment_reason = str(data.get("adjustment_reason", "") or "")
+
+            # Validate adjustment fields: if any adjustment is requested, reason must be provided
+            if (raw_override_stop_loss or raw_adjust_stop_loss is not None or raw_adjust_take_profit is not None):
+                if not adjustment_reason.strip():
+                    logger.warning("LLM请求调整止盈止损但未提供原因，忽略调整请求")
+                    raw_override_stop_loss = False
+                    raw_adjust_stop_loss = None
+                    raw_adjust_take_profit = None
+                    adjustment_reason = ""
+
             decision = Decision(
                 # Core fields
                 action=action,
                 position_size=int(max(0, min(self.max_pos, int(data.get("position_size", 0))))),
-                target_position=int(data.get("target_position", 0)),
+                target_position=clamped_target_position,  # ✅ Now properly constrained
                 stop_loss=float(data.get("stop_loss", 0) or 0),
                 take_profit=float(data.get("take_profit", 0) or 0),
                 confidence=float(data.get("confidence", 0) or 0),
@@ -522,6 +643,12 @@ class LLMDirectEngine:
                 opportunity_assessment=str(data.get("opportunity_assessment", "") or ""),
                 risk_analysis=str(data.get("risk_analysis", "") or ""),
                 execution_plan=str(data.get("execution_plan", "") or ""),
+
+                # LLM adjustments (validated above)
+                override_stop_loss=raw_override_stop_loss,
+                adjust_stop_loss=float(raw_adjust_stop_loss) if raw_adjust_stop_loss is not None else None,
+                adjust_take_profit=float(raw_adjust_take_profit) if raw_adjust_take_profit is not None else None,
+                adjustment_reason=adjustment_reason,
             )
 
             # Log decision details if show_rationale is enabled
@@ -639,6 +766,19 @@ class Backtester:
         # 保证金比例：优先使用传入参数，否则使用cfg中的默认值
         if margin_ratio is not None:
             self.cfg.margin_ratio = margin_ratio
+
+        # ✅ Track stop loss and take profit for current position
+        self.active_stop_loss: float = 0.0  # 软止损（LLM可调整）
+        self.active_take_profit: float = 0.0  # 软止盈（LLM可调整）
+
+        # ✅ Hard stop loss/take profit configuration (CANNOT be overridden by LLM)
+        self.hard_stop_loss_atr_multiple: float = 3.0  # 硬止损：ATR的3倍
+        self.soft_stop_loss_atr_multiple: float = 1.5  # 软止损：ATR的1.5倍
+        self.hard_take_profit_atr_multiple: float = 5.0  # 硬止盈：ATR的5倍
+
+        # Audit log for LLM adjustments
+        self.adjustment_log_path = Path("logs") / "stop_loss_adjustments.log"
+        self.adjustment_log_path.parent.mkdir(parents=True, exist_ok=True)
         # load cache
         cache: Dict[str, Any] = {}
         if cache_path and cache_path.exists():
@@ -653,7 +793,11 @@ class Backtester:
             "commission_per_lot": cfg.commission_per_lot,
             "initial_capital": cfg.initial_capital,
             "margin_ratio": cfg.margin_ratio,
-            "contract_multiplier": 20,
+            "contract_multiplier": 20,  # 初始默认值，会在回测时从 TqSDK 获取真实值覆盖
+            # Hard/soft stop loss configuration
+            "hard_stop_loss_atr_multiple": self.hard_stop_loss_atr_multiple,
+            "soft_stop_loss_atr_multiple": self.soft_stop_loss_atr_multiple,
+            "hard_take_profit_atr_multiple": self.hard_take_profit_atr_multiple,
         }
         # engines
         if mode == DecisionMode.QUANT_ONLY:
@@ -664,6 +808,102 @@ class Backtester:
             self.engine = LLMDirectEngine(cache=cache, cache_write=cache_path, max_pos=cfg.max_position, feature_mode=self.llm_input, trade_meta=trade_meta, use_visual_prompt=self.use_visual_prompt)
             # Pass show_rationale flag to engine for detailed logging
             self.engine.show_rationale = self.show_rationale
+
+    def _process_llm_adjustment(self, decision: Decision, bar_time, current_price: float,
+                                current_pos_qty: int, position, current_atr: float):
+        """
+        处理LLM的止盈止损调整请求，验证合理性并记录审计日志
+        """
+        entry_price = position.open_price_long if current_pos_qty > 0 else position.open_price_short
+
+        # 计算硬止损边界（不能超过）
+        if current_pos_qty > 0:  # Long
+            hard_stop_loss = entry_price - (current_atr * self.hard_stop_loss_atr_multiple)
+        else:  # Short
+            hard_stop_loss = entry_price + (current_atr * self.hard_stop_loss_atr_multiple)
+
+        # Log adjustment request
+        audit_msg = f"\n{'='*80}\n"
+        audit_msg += f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] LLM止盈止损调整请求\n"
+        audit_msg += f"当前价格: {current_price:.2f}\n"
+        audit_msg += f"开仓价格: {entry_price:.2f}\n"
+        audit_msg += f"当前止损: {self.active_stop_loss:.2f}\n"
+        audit_msg += f"当前止盈: {self.active_take_profit:.2f}\n"
+        audit_msg += f"硬止损: {hard_stop_loss:.2f} (不可超越)\n"
+        audit_msg += f"调整原因: {decision.adjustment_reason}\n"
+
+        # Process override_stop_loss
+        if decision.override_stop_loss:
+            logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  LLM请求忽略软止损")
+            audit_msg += f"动作: 忽略软止损\n"
+            audit_msg += f"状态: ✅ 允许（软止损本次不触发）\n"
+            # Note: 软止损检查时会根据override_stop_loss标志跳过
+
+        # Process adjust_stop_loss
+        if decision.adjust_stop_loss is not None:
+            new_stop_loss = decision.adjust_stop_loss
+            audit_msg += f"建议新止损: {new_stop_loss:.2f}\n"
+
+            # Validation 1: Check against hard stop loss
+            if current_pos_qty > 0:  # Long
+                if new_stop_loss < hard_stop_loss:
+                    logger.error(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ LLM建议止损({new_stop_loss:.2f})超过硬止损({hard_stop_loss:.2f})，拒绝")
+                    audit_msg += f"状态: ❌ 拒绝（超过硬止损限制）\n"
+                else:
+                    # Validation 2: Check reasonable range (e.g., not loosening by more than 50%)
+                    if self.active_stop_loss > 0:
+                        loosening_pct = abs((new_stop_loss - self.active_stop_loss) / self.active_stop_loss)
+                        if new_stop_loss < self.active_stop_loss and loosening_pct > 0.5:
+                            logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  止损放宽超过50%({loosening_pct:.1%})，仍然接受")
+                            audit_msg += f"状态: ⚠️  接受（但放宽幅度较大: {loosening_pct:.1%}）\n"
+
+                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ✅ 接受LLM止损调整: {self.active_stop_loss:.2f} → {new_stop_loss:.2f}")
+                    audit_msg += f"状态: ✅ 接受\n"
+                    self.active_stop_loss = new_stop_loss
+
+            else:  # Short
+                if new_stop_loss > hard_stop_loss:
+                    logger.error(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ LLM建议止损({new_stop_loss:.2f})超过硬止损({hard_stop_loss:.2f})，拒绝")
+                    audit_msg += f"状态: ❌ 拒绝（超过硬止损限制）\n"
+                else:
+                    # Validation 2: Check reasonable range
+                    if self.active_stop_loss > 0:
+                        loosening_pct = abs((new_stop_loss - self.active_stop_loss) / self.active_stop_loss)
+                        if new_stop_loss > self.active_stop_loss and loosening_pct > 0.5:
+                            logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  止损放宽超过50%({loosening_pct:.1%})，仍然接受")
+                            audit_msg += f"状态: ⚠️  接受（但放宽幅度较大: {loosening_pct:.1%}）\n"
+
+                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ✅ 接受LLM止损调整: {self.active_stop_loss:.2f} → {new_stop_loss:.2f}")
+                    audit_msg += f"状态: ✅ 接受\n"
+                    self.active_stop_loss = new_stop_loss
+
+        # Process adjust_take_profit
+        if decision.adjust_take_profit is not None:
+            new_take_profit = decision.adjust_take_profit
+            audit_msg += f"建议新止盈: {new_take_profit:.2f}\n"
+
+            # Basic validation: take profit should be in profit direction
+            if current_pos_qty > 0:  # Long - take profit should be above entry
+                if new_take_profit < entry_price:
+                    logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  多头止盈({new_take_profit:.2f})低于开仓价({entry_price:.2f})，仍然接受")
+                    audit_msg += f"状态: ⚠️  接受（但低于开仓价）\n"
+            else:  # Short - take profit should be below entry
+                if new_take_profit > entry_price:
+                    logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  空头止盈({new_take_profit:.2f})高于开仓价({entry_price:.2f})，仍然接受")
+                    audit_msg += f"状态: ⚠️  接受（但高于开仓价）\n"
+
+            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ✅ 接受LLM止盈调整: {self.active_take_profit:.2f} → {new_take_profit:.2f}")
+            audit_msg += f"状态: ✅ 接受\n"
+            self.active_take_profit = new_take_profit
+
+        audit_msg += f"{'='*80}\n"
+
+        # Write to audit log
+        try:
+            with open(self.adjustment_log_path, "a", encoding="utf-8") as f:
+                f.write(audit_msg)
+        except Exception as e:
+            logger.warning(f"写入审计日志失败: {e}")
 
     def run_tqsdk(self, start_dt: datetime, end_dt: datetime, username: Optional[str] = None, password: Optional[str] = None, use_sim: bool = True) -> Dict[str, Any]:
         try:
@@ -695,9 +935,10 @@ class Backtester:
                 # Add timeout to prevent hanging
                 temp_api.wait_update(deadline=time.time() + 10)  # 10 second timeout
                 first_price = float(temp_quote.last_price)
+                # 从 TqSDK 获取合约乘数
+                contract_multiplier = int(temp_quote.volume_multiple)
                 temp_api.close()
 
-                contract_multiplier = 20  # 纯碱合约乘数：20吨/手
                 margin_ratio = self.cfg.margin_ratio  # 保证金比例
                 
                 # 计算合约价值和所需保证金
@@ -744,6 +985,16 @@ class Backtester:
         klines = api.get_kline_serial(symbol_tq_data, duration_seconds=duration_seconds, data_length=data_length)
         api.wait_update()  # Wait for first update after subscriptions
         symbol_tq_trade = quote.underlying_symbol if hasattr(quote, 'underlying_symbol') and quote.underlying_symbol else "CZCE.SA501"
+
+        # 从 TqSDK 获取合约乘数并更新到 engine 的 trade_meta
+        contract_multiplier = int(quote.volume_multiple)
+        logger.info(f"从 TqSDK 获取合约乘数: {contract_multiplier}")
+
+        # 更新 engine 的 trade_meta
+        if hasattr(self.engine, 'llm_direct') and hasattr(self.engine.llm_direct, 'trade_meta'):
+            self.engine.llm_direct.trade_meta['contract_multiplier'] = contract_multiplier
+        elif hasattr(self.engine, 'trade_meta'):
+            self.engine.trade_meta['contract_multiplier'] = contract_multiplier
 
         # Calculate technical indicators using TqSDK
         # IMPORTANT: TqSDK indicators require sufficient data length to avoid NaN
@@ -1039,6 +1290,9 @@ class Backtester:
                         self.engine.current_pos = None
                     setattr(self.engine, "current_balance", account.balance)
                     setattr(self.engine, "tqsdk_snapshot", snapshot)
+                    # ✅ Inject stop loss and take profit info for LLM prompt
+                    setattr(self.engine, "active_stop_loss", self.active_stop_loss)
+                    setattr(self.engine, "active_take_profit", self.active_take_profit)
                 elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
                     if current_pos_qty > 0:
                         self.engine.llm_direct.current_pos = Position(direction="long", qty=current_pos_qty, entry_price=position.open_price_long, stop=0, take=0)
@@ -1048,8 +1302,78 @@ class Backtester:
                         self.engine.llm_direct.current_pos = None
                     setattr(self.engine.llm_direct, "current_balance", account.balance)
                     setattr(self.engine.llm_direct, "tqsdk_snapshot", snapshot)
+                    # ✅ Inject stop loss and take profit info for LLM prompt
+                    setattr(self.engine.llm_direct, "active_stop_loss", self.active_stop_loss)
+                    setattr(self.engine.llm_direct, "active_take_profit", self.active_take_profit)
                 
-                # Make trading decision
+                # ========================================
+                # STEP 1: 硬止损检查（最高优先级，无法被LLM覆盖）
+                # ========================================
+                hard_stop_triggered = False
+                hard_take_profit_triggered = False
+
+                if current_pos_qty != 0:
+                    # 获取ATR用于计算硬止损
+                    current_atr = float(row.get("atr", 0))
+                    if current_atr <= 0:
+                        logger.warning(f"ATR无效({current_atr})，无法计算硬止损")
+                        current_atr = current_price * 0.02  # Fallback: 2% of price
+
+                    # 获取开仓价
+                    entry_price = position.open_price_long if current_pos_qty > 0 else position.open_price_short
+
+                    # 计算硬止损和硬止盈
+                    if current_pos_qty > 0:  # Long position
+                        hard_stop_loss = entry_price - (current_atr * self.hard_stop_loss_atr_multiple)
+                        hard_take_profit = entry_price + (current_atr * self.hard_take_profit_atr_multiple)
+
+                        # Check hard stop loss
+                        if current_price <= hard_stop_loss:
+                            logger.error(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ 硬止损触发 @ {current_price:.2f} (硬止损价: {hard_stop_loss:.2f}, ATR×{self.hard_stop_loss_atr_multiple})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                        # Check hard take profit
+                        elif current_price >= hard_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯✅ 硬止盈触发 @ {current_price:.2f} (硬止盈价: {hard_take_profit:.2f}, ATR×{self.hard_take_profit_atr_multiple})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                    elif current_pos_qty < 0:  # Short position
+                        hard_stop_loss = entry_price + (current_atr * self.hard_stop_loss_atr_multiple)
+                        hard_take_profit = entry_price - (current_atr * self.hard_take_profit_atr_multiple)
+
+                        # Check hard stop loss
+                        if current_price >= hard_stop_loss:
+                            logger.error(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ 硬止损触发 @ {current_price:.2f} (硬止损价: {hard_stop_loss:.2f}, ATR×{self.hard_stop_loss_atr_multiple})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                        # Check hard take profit
+                        elif current_price <= hard_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯✅ 硬止盈触发 @ {current_price:.2f} (硬止盈价: {hard_take_profit:.2f}, ATR×{self.hard_take_profit_atr_multiple})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                # Skip decision making if hard stop was triggered
+                if hard_stop_triggered or hard_take_profit_triggered:
+                    continue
+
+                # ========================================
+                # STEP 2: 策略决策（硬止损未触发时）
+                # ========================================
                 try:
                     if self.mode == DecisionMode.QUANT_ONLY:
                         decision = self.engine.decide(row, df_ctx)
@@ -1064,7 +1388,64 @@ class Backtester:
                 except Exception as e:
                     logger.warning(f"决策失败 @ {bar_time}: {e}")
                     continue
-                
+
+                # ========================================
+                # STEP 3: 处理LLM止盈止损调整请求
+                # ========================================
+                if decision.override_stop_loss or decision.adjust_stop_loss or decision.adjust_take_profit:
+                    self._process_llm_adjustment(
+                        decision, bar_time, current_price, current_pos_qty,
+                        position, current_atr if 'current_atr' in locals() else float(row.get("atr", 0))
+                    )
+
+                # ========================================
+                # STEP 4: 检查软止损（LLM可覆盖）
+                # ========================================
+                soft_stop_triggered = False
+                soft_take_profit_triggered = False
+
+                # Only check soft stop if LLM didn't override and position exists
+                if current_pos_qty != 0 and not decision.override_stop_loss:
+                    if current_pos_qty > 0:  # Long position
+                        # Check soft stop loss
+                        if self.active_stop_loss > 0 and current_price <= self.active_stop_loss:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🛑 软止损触发 @ {current_price:.2f} (止损价: {self.active_stop_loss:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+                        # Check soft take profit
+                        elif self.active_take_profit > 0 and current_price >= self.active_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯 软止盈触发 @ {current_price:.2f} (止盈价: {self.active_take_profit:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                    elif current_pos_qty < 0:  # Short position
+                        # Check soft stop loss
+                        if self.active_stop_loss > 0 and current_price >= self.active_stop_loss:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🛑 软止损触发 @ {current_price:.2f} (止损价: {self.active_stop_loss:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+                        # Check soft take profit
+                        elif self.active_take_profit > 0 and current_price <= self.active_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯 软止盈触发 @ {current_price:.2f} (止盈价: {self.active_take_profit:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                # Skip order execution if soft stop was triggered
+                if soft_stop_triggered or soft_take_profit_triggered:
+                    continue
+
                 # Execute decision via TqSDK using TargetPosTask
                 # TargetPosTask automatically handles order timing and execution
                 try:
@@ -1078,6 +1459,9 @@ class Backtester:
                             logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
                         new_target_pos = int(decision.position_size)
                         trade_count += 1
+                        # ✅ Update active stop loss and take profit
+                        self.active_stop_loss = float(decision.stop_loss) if decision.stop_loss > 0 else 0.0
+                        self.active_take_profit = float(decision.take_profit) if decision.take_profit > 0 else 0.0
 
                     elif decision.action == "open_short" and current_pos_qty == 0 and decision.position_size > 0:
                         logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📉 开空 {decision.position_size}手 @ {current_price:.2f}")
@@ -1087,6 +1471,9 @@ class Backtester:
                             logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
                         new_target_pos = -int(decision.position_size)
                         trade_count += 1
+                        # ✅ Update active stop loss and take profit
+                        self.active_stop_loss = float(decision.stop_loss) if decision.stop_loss > 0 else 0.0
+                        self.active_take_profit = float(decision.take_profit) if decision.take_profit > 0 else 0.0
 
                     elif decision.action == "close_long" and current_pos_qty > 0:
                         close_qty = int(decision.position_size) if decision.position_size else current_pos_qty
@@ -1095,6 +1482,10 @@ class Backtester:
                             logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
                         new_target_pos = max(0, current_pos_qty - close_qty)
                         trade_count += 1
+                        # ✅ Clear stop loss and take profit if fully closed
+                        if new_target_pos == 0:
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
 
                     elif decision.action == "close_short" and current_pos_qty < 0:
                         close_qty = int(decision.position_size) if decision.position_size else abs(current_pos_qty)
@@ -1103,6 +1494,10 @@ class Backtester:
                             logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
                         new_target_pos = min(0, current_pos_qty + close_qty)
                         trade_count += 1
+                        # ✅ Clear stop loss and take profit if fully closed
+                        if new_target_pos == 0:
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
 
                     elif decision.action == "adjust_position":
                         # New: support fine-grained position adjustment
@@ -1136,6 +1531,14 @@ class Backtester:
 
                             new_target_pos = target
                             trade_count += 1
+                            # ✅ Update stop loss and take profit for adjusted position
+                            if target != 0:
+                                self.active_stop_loss = float(decision.stop_loss) if decision.stop_loss > 0 else 0.0
+                                self.active_take_profit = float(decision.take_profit) if decision.take_profit > 0 else 0.0
+                            else:
+                                # Fully closed position
+                                self.active_stop_loss = 0.0
+                                self.active_take_profit = 0.0
 
                     # Set target position (TargetPosTask will execute when market is open)
                     if new_target_pos != current_pos_qty:
@@ -1233,6 +1636,18 @@ def main():
 
     # Configure logging level based on debug flag
     log_level = "DEBUG" if args.debug else "INFO"
+
+    # Remove default handler and add custom handlers with proper level
+    logger.remove()  # Remove default handler
+
+    # Add console handler with appropriate level
+    logger.add(
+        sys.stderr,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=log_level
+    )
+
+    # Add file handler with same level
     logger.add(
         str(Path("logs") / f"llm_backtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
         rotation="1 day",
