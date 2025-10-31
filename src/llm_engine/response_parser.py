@@ -151,7 +151,191 @@ class ResponseParser:
             # 最后尝试：输出原始文本前500字符以便调试
             logger.error(f"无法解析的响应（前500字符）: {text[:500]}")
             return None
-    
+
+    @staticmethod
+    def extract_fields_aggressively(text: str, fields: Dict[str, type]) -> Dict[str, Any]:
+        """
+        激进地从文本中提取字段值，即使JSON格式不完整
+
+        适用于LLM返回格式混乱但包含关键信息的情况
+
+        Args:
+            text: 响应文本
+            fields: 需要提取的字段及其类型 {field_name: type}
+
+        Returns:
+            Dict: 提取到的字段值
+        """
+        result = {}
+
+        for field_name, field_type in fields.items():
+            # 为每个字段尝试多种提取模式
+            patterns = [
+                # 标准JSON格式: "field": value
+                rf'"{field_name}"\s*:\s*([^,\}}\n]+)',
+                # 无引号格式: field: value
+                rf'{field_name}\s*:\s*([^,\}}\n]+)',
+                # 等号格式: field = value
+                rf'{field_name}\s*=\s*([^,\}}\n]+)',
+            ]
+
+            value = None
+            for pattern in patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    raw_value = match.group(1).strip()
+
+                    try:
+                        # 根据类型解析值
+                        if field_type == bool:
+                            # 布尔值
+                            raw_lower = raw_value.lower()
+                            if raw_lower in ['true', '1', 'yes']:
+                                value = True
+                            elif raw_lower in ['false', '0', 'no']:
+                                value = False
+
+                        elif field_type == int:
+                            # 整数（提取数字部分）
+                            num_match = re.search(r'-?\d+', raw_value)
+                            if num_match:
+                                value = int(num_match.group())
+
+                        elif field_type == float:
+                            # 浮点数
+                            num_match = re.search(r'-?\d+\.?\d*', raw_value)
+                            if num_match:
+                                value = float(num_match.group())
+
+                        elif field_type == str:
+                            # 字符串（去除引号）
+                            value = raw_value.strip('"\'')
+
+                        elif field_type == list:
+                            # 列表（尝试解析JSON数组）
+                            if raw_value.startswith('['):
+                                try:
+                                    value = json.loads(raw_value)
+                                except:
+                                    # 如果不是JSON，尝试分割字符串
+                                    value = [s.strip().strip('"\'') for s in raw_value.strip('[]').split(',')]
+                            else:
+                                # 单个值转为列表
+                                value = [raw_value.strip('"\'')]
+
+                        if value is not None:
+                            result[field_name] = value
+                            logger.info(f"激进提取成功: {field_name} = {value}")
+                            break
+
+                    except Exception as e:
+                        logger.debug(f"解析字段 '{field_name}' 值 '{raw_value}' 失败: {e}")
+                        continue
+
+        return result
+
+    @classmethod
+    def parse_trading_decision(cls, response_text: str) -> Dict[str, Any]:
+        """
+        解析交易决策响应，具有极强的容错能力
+
+        即使JSON格式不完整，也会尽可能提取关键字段
+
+        Args:
+            response_text: LLM响应文本
+
+        Returns:
+            Dict: 解析后的决策数据，包含：
+                - action: str (必需)
+                - target_position: int (可选)
+                - confidence: float (可选)
+                - price: float (可选)
+                - rationale: list (可选)
+                - stop_loss: float (可选)
+                - take_profit: float (可选)
+        """
+        # 清理响应
+        cleaned = cls.clean_response(response_text)
+
+        # 尝试标准JSON解析
+        data = cls.parse_json(cleaned)
+
+        if data is not None:
+            logger.info("标准JSON解析成功")
+            return data
+
+        # JSON解析失败，使用激进提取
+        logger.warning("标准JSON解析失败，尝试激进提取关键字段")
+
+        # 定义需要提取的字段及类型
+        fields_schema = {
+            'action': str,
+            'target_position': int,
+            'confidence': float,
+            'price': float,
+            'stop_loss': float,
+            'take_profit': float,
+        }
+
+        # 激进提取
+        extracted = cls.extract_fields_aggressively(cleaned, fields_schema)
+
+        # 提取 rationale（特殊处理，因为可能是列表）
+        rationale_patterns = [
+            r'"rationale"\s*:\s*\[([^\]]+)\]',
+            r'rationale\s*:\s*\[([^\]]+)\]',
+            r'"rationale"\s*:\s*"([^"]+)"',
+            r'rationale\s*:\s*"([^"]+)"',
+        ]
+
+        for pattern in rationale_patterns:
+            match = re.search(pattern, cleaned, re.IGNORECASE | re.DOTALL)
+            if match:
+                rationale_text = match.group(1)
+                try:
+                    # 尝试解析为列表
+                    if '[' in rationale_text or ',' in rationale_text:
+                        # 分割并清理
+                        items = [item.strip().strip('",\'') for item in rationale_text.split(',')]
+                        extracted['rationale'] = [item for item in items if item]
+                    else:
+                        # 单个字符串
+                        extracted['rationale'] = [rationale_text.strip()]
+                    logger.info(f"激进提取成功: rationale = {extracted['rationale']}")
+                    break
+                except Exception as e:
+                    logger.debug(f"解析rationale失败: {e}")
+
+        # 验证是否至少提取到action
+        if 'action' not in extracted:
+            logger.warning("无法提取action字段，尝试在响应中查找操作关键词")
+            # 尝试从响应中识别操作意图
+            action_keywords = {
+                'open_long': ['开多', '做多', 'buy', 'long', 'open long'],
+                'open_short': ['开空', '做空', 'sell', 'short', 'open short'],
+                'close_long': ['平多', '卖出', 'close long', 'exit long'],
+                'close_short': ['平空', '买入平仓', 'close short', 'exit short'],
+                'hold': ['持有', '观望', '等待', 'hold', 'wait'],
+            }
+
+            for action_name, keywords in action_keywords.items():
+                for keyword in keywords:
+                    if keyword in cleaned.lower():
+                        extracted['action'] = action_name
+                        logger.info(f"从关键词识别到操作: {action_name}")
+                        break
+                if 'action' in extracted:
+                    break
+
+        # 如果还是没有action，记录错误但不返回默认值
+        if 'action' not in extracted:
+            logger.error("完全无法提取任何有效信息")
+
+        # 记录提取结果
+        logger.info(f"激进提取最终结果: {extracted}")
+
+        return extracted
+
     @staticmethod
     def validate_and_convert(
         data: Dict[str, Any],
