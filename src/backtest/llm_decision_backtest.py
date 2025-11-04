@@ -2,24 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    # Fallback for Python < 3.9
-    from backports.zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo
 
-import numpy as np
 import pandas as pd
 from loguru import logger
+from tqsdk import tafunc
 
 # Ensure project root on sys.path when run as a script
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,14 +23,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # Local imports (avoid heavy dependencies; use light wrappers we already have)
-from src.data_fetcher.tqsdk_client import TqSdkClient
 from src.llm_engine.llm_factory import LLMFactory
 from src.llm_engine.response_parser import ResponseParser
 from src.llm_engine.market_representation import (
     EventDetector,
     MarketRepresentationGenerator,
-    MarketEvent,
-    MarketRepresentation,
 )
 
 
@@ -336,9 +329,7 @@ class LLMDirectEngine:
                 trend = "多头" if latest.ma10 > latest.ma30 else "空头"
 
                 # 获取时间戳（如果有）
-                bar_time = latest.get('datetime', 'N/A')
-                if bar_time != 'N/A' and hasattr(bar_time, 'strftime'):
-                    bar_time = bar_time.strftime('%Y-%m-%d %H:%M')
+                bar_time = tafunc.time_to_datetime(latest['datetime']).strftime("%Y-%m-%d %H:%M")
 
                 sections.append(f"- {period_display}: {trend} | MA10={latest.ma10:.2f} MA30={latest.ma30:.2f} | 最新时间={bar_time}")
 
@@ -751,7 +742,7 @@ class LLMDirectEngine:
 
         # 构建缓存键：包含合约、时间和价格，确保缓存的有效性
         # 价格取整到小数点后2位，避免微小的价格差异导致缓存失效
-        ts_key = f"{symbol}::{pd.to_datetime(row['timestamp']).isoformat()}::{current_price:.2f}"
+        ts_key = f"{symbol}::{tafunc.time_to_datetime(row['timestamp']).isoformat()}::{current_price:.2f}"
 
         cached = self._cache_get(ts_key)
         if cached is not None:
@@ -893,7 +884,7 @@ class HybridEngine:
         if q.action == "hold" or q.confidence >= self.low_conf_th:
             return q
         # Ask LLM to approve/reject
-        ts_key = pd.to_datetime(row["timestamp"]).isoformat()
+        ts_key = tafunc.time_to_datetime(row["timestamp"]).isoformat()
         cache_key = f"review::{ts_key}"
         cached = self.llm_direct._cache_get(cache_key)
         if cached is not None:
@@ -927,7 +918,6 @@ class HybridEngine:
 @dataclass
 class BTConfig:
     symbol: str = "CZCE.SA0"
-    period: int = 15  # Period in MINUTES (1=1min, 15=15min, 60=1hour, 1440=daily) - for backward compatibility
     count: Optional[int] = None  # Number of K-lines to fetch (auto-calculated if None)
     initial_capital: float = 100000.0
     max_position: int = 1
@@ -943,17 +933,11 @@ class BTConfig:
 
     def __post_init__(self):
         """Initialize multi-timeframe configuration."""
-        # If decision_period not specified, use period for backward compatibility
-        if self.decision_period is None:
-            self.decision_period = self.period
 
         # If auxiliary_periods not specified, initialize as empty list
         if self.auxiliary_periods is None:
             self.auxiliary_periods = []
 
-    def get_duration_seconds(self) -> int:
-        """Convert period (minutes) to TqSDK duration_seconds."""
-        return self.period * 60
 
     def get_decision_duration_seconds(self) -> int:
         """Convert decision period (minutes) to TqSDK duration_seconds."""
@@ -965,13 +949,13 @@ class BTConfig:
         # Daily: 250 bars = ~1 year, 15min: 1200 bars = ~2 weeks
         if self.count is not None:
             return self.count
-        if self.period >= 1440:  # Daily or above
+        if self.decision_period >= 1440:  # Daily or above
             return 300  # ~1 year
-        elif self.period >= 240:  # 4-hour
+        elif self.decision_period >= 240:  # 4-hour
             return 500
-        elif self.period >= 60:  # 1-hour
+        elif self.decision_period >= 60:  # 1-hour
             return 800
-        elif self.period >= 15:  # 15-min
+        elif self.decision_period >= 15:  # 15-min
             return 1200
         else:  # 1-min or 5-min
             return 3000
@@ -1526,7 +1510,7 @@ class Backtester:
             )
             return None
 
-        return pd.to_datetime(klines.loc[ready_mask, "datetime"].iloc[0])
+        return tafunc.time_to_datetime(klines.loc[ready_mask, "datetime"].iloc[0])
 
     def _setup_klines_and_indicators(
         self,
@@ -1553,7 +1537,7 @@ class Backtester:
                 raise RuntimeError("决策周期数据获取失败")
         else:
             logger.info("=== 使用单周期模式 ===")
-            duration_seconds = self.cfg.get_duration_seconds()
+            duration_seconds = self.cfg.get_decision_duration_seconds()
             data_length = self.cfg.get_auto_count() + self.DATA_WARMUP_BARS
 
             klines = api.get_kline_serial(
@@ -1757,7 +1741,7 @@ class Backtester:
         quote = api.get_quote(symbol_tq_data)
         api.wait_update()
 
-        symbol_tq_trade = quote.underlying_symbol if hasattr(quote, 'underlying_symbol') and quote.underlying_symbol else "CZCE.SA501"
+        symbol_tq_trade = quote.underlying_symbol if hasattr(quote, 'underlying_symbol') and quote.underlying_symbol else symbol_tq_data
 
         # Update contract info in engine
         contract_multiplier = int(quote.volume_multiple)
@@ -1786,14 +1770,14 @@ class Backtester:
             first_ready_time = first_ready_time.tz_localize(end_dt.tzinfo)
 
         # Log backtest info
-        duration_seconds = self.cfg.get_duration_seconds()
+        duration_seconds = self.cfg.get_decision_duration_seconds()
         data_length = self.cfg.get_auto_count() + self.DATA_WARMUP_BARS
 
         logger.info("=== TqSDK原生回测 ===")
         logger.info(f"数据合约: {symbol_tq_data}")
         logger.info(f"交易合约: {symbol_tq_trade}")
         logger.info(f"回测区间: {start_dt} ~ {end_dt}")
-        logger.info(f"决策周期: {self.cfg.period}分钟 ({duration_seconds}秒)")
+        logger.info(f"决策周期: {self.cfg.decision_period}分钟 ({duration_seconds}秒)")
         logger.info(f"数据长度: {data_length} bars")
         logger.info(f"初始资金: {self.cfg.initial_capital:,.2f}")
 
@@ -1808,7 +1792,7 @@ class Backtester:
         processed_bars = set()
         trade_count = 0
         initial_balance = account.balance
-        total_bars_expected = int((end_dt - start_dt).days) if self.cfg.period >= 1440 else None
+        total_bars_expected = int((end_dt - start_dt).days) if self.cfg.decision_period >= 1440 else None
 
         logger.info(f"初始资金: {initial_balance:,.2f}")
         logger.info(f"使用TargetPosTask自动处理订单时间")
@@ -1876,10 +1860,7 @@ class Backtester:
                 
                 # Get completed bar (second to last)
                 bar = klines.iloc[-2]
-                bar_time = pd.to_datetime(bar["datetime"])
-                # Ensure bar_time has same timezone info as end_dt for comparison
-                if end_dt.tzinfo is not None and bar_time.tzinfo is None:
-                    bar_time = bar_time.tz_localize(end_dt.tzinfo)
+                bar_time = tafunc.time_to_datetime(bar["datetime"])
                 
                 # Warmup: skip decisions until critical indicators are ready
                 if 'first_ready_time' in locals() and first_ready_time is not None and bar_time < first_ready_time:
@@ -1905,9 +1886,9 @@ class Backtester:
                     break
                 
                 # Prepare context data (all bars before current)
-                ctx = klines.iloc[: len(klines) - 1].copy()
+                ctx = klines.iloc[: len(klines)-1 ].copy()
                 df_ctx = pd.DataFrame({
-                    "timestamp": pd.to_datetime(ctx["datetime"]),
+                    "timestamp": ctx["datetime"].apply(tafunc.time_to_datetime),
                     "open": ctx["open"].astype(float),
                     "high": ctx["high"].astype(float),
                     "low": ctx["low"].astype(float),
@@ -2306,48 +2287,10 @@ class Backtester:
         }
 
 
-
-def load_kline(symbol: str, period_min: int, count: int) -> pd.DataFrame:
-    # Prefer credentials from config/api_keys.yaml, fallback to environment variables
-    username = os.getenv("TQSDK_USERNAME")
-    password = os.getenv("TQSDK_PASSWORD")
-    use_sim = True
-    try:
-        import yaml  # local import to avoid global dependency if unused
-        cfg_path = ROOT / "config" / "api_keys.yaml"
-        if cfg_path.exists():
-            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-            tcfg = cfg.get("tqsdk", {}) or {}
-            username = tcfg.get("username") or username
-            password = tcfg.get("password") or password
-            use_sim = bool(tcfg.get("use_sim", True))
-    except Exception:
-        # ignore config errors, rely on env vars
-        pass
-
-    # Normalize user-friendly symbols to TqSDK format
-    sym_up = (symbol or "").strip().upper()
-    symbol_tq = "KQ.m@CZCE.SA" if (sym_up == "SA0" or sym_up.endswith(".SA0")) else symbol
-    if symbol_tq != symbol:
-        logger.info(f"符号映射 {symbol} -> {symbol_tq}（用于 TqSDK）")
-    client = TqSdkClient(symbol=symbol_tq, auth_username=username, auth_password=password, use_sim=use_sim)
-    try:
-        df = client.get_minute_kline(period=str(period_min), count=count)
-        if df is None or df.empty:
-            raise RuntimeError("empty kline from TqSDK")
-        return df
-    finally:
-        try:
-            client.close()
-        except Exception:
-            pass
-
-
 def main():
     parser = argparse.ArgumentParser(description="LLM Direct Decision Backtest using TqSDK")
     parser.add_argument("--mode", choices=[m.value for m in DecisionMode], default=DecisionMode.LLM_DIRECT.value, help="Decision mode")
     parser.add_argument("--symbol", default="KQ.m@CZCE.SA", help="Trading symbol (default: KQ.m@CZCE.SA)")
-    parser.add_argument("--period", type=int, default=15, help="K-line period in MINUTES (1=1min, 15=15min, 60=1hour, 1440=daily) - for backward compatibility")
     parser.add_argument("--decision-period", type=int, default=None, help="Primary decision period in MINUTES (if not set, uses --period)")
     parser.add_argument("--auxiliary-periods", type=str, default=None, help="Auxiliary periods for multi-timeframe analysis, comma-separated (e.g., '60,240,1440' for 1h/4h/daily)")
     parser.add_argument("--count", type=int, default=None, help="Number of K-lines to fetch (auto-calculated if not specified)")
@@ -2407,7 +2350,6 @@ def main():
 
     cfg = BTConfig(
         symbol=args.symbol or "KQ.m@CZCE.SA",
-        period=args.period,
         decision_period=args.decision_period,  # Will use period if None
         auxiliary_periods=auxiliary_periods,
         count=args.count,
