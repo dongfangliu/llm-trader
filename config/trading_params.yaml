@@ -33,7 +33,7 @@ llm:
   max_tokens: 5000
   model: deepseek-reasoner
   temperature: 1.0
-  timeout: 120
+  timeout: 240
   # DeepSeek专用参数
   provider_overrides:
     deepseek:

@@ -1,0 +1,2454 @@
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+from loguru import logger
+from tqsdk import tafunc
+
+# Ensure project root on sys.path when run as a script
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+# Local imports (avoid heavy dependencies; use light wrappers we already have)
+from src.llm_engine.llm_factory import LLMFactory
+from src.llm_engine.response_parser import ResponseParser
+from src.llm_engine.market_representation import (
+    EventDetector,
+    MarketRepresentationGenerator,
+)
+
+
+class DecisionMode(str, Enum):
+    QUANT_ONLY = "quant_only"
+    HYBRID = "hybrid"
+    LLM_DIRECT = "llm_direct"
+
+
+@dataclass
+class Decision:
+    action: str  # 'open_long' | 'open_short' | 'close_long' | 'close_short' | 'adjust_position' | 'hold'
+    position_size: int = 0
+    stop_loss: float = 0.0
+    take_profit: float = 0.0
+    confidence: float = 0.0
+    rationale: List[str] = None
+
+    # Enhanced fields
+    target_position: int = 0  # 目标持仓手数（用于adjust_position）
+    position_percent: float = 0.0  # 目标仓位百分比
+    market_regime: str = ""  # 识别的市场状态
+    opportunity_quality: str = ""  # 机会质量评估
+    risk_factors: List[str] = None  # 风险因素列表
+
+    # Four-step reasoning chain
+    market_diagnosis: str = ""  # 市场状态诊断
+    opportunity_assessment: str = ""  # 交易机会评估
+    risk_analysis: str = ""  # 风险收益分析
+    execution_plan: str = ""  # 执行方案
+
+    # LLM-controlled stop loss/take profit adjustment
+    override_stop_loss: bool = False  # LLM是否要求忽略当前止损（需硬止损检查）
+    adjust_stop_loss: Optional[float] = None  # LLM建议的新止损价（绝对价格）
+    adjust_take_profit: Optional[float] = None  # LLM建议的新止盈价（绝对价格）
+    adjustment_reason: str = ""  # 调整原因（必填，用于审计）
+
+    # Cache validation
+    decision_price: float = 0.0  # 决策时的价格，用于验证缓存有效性
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "action": self.action,
+            "position_size": int(self.position_size),
+            "target_position": int(self.target_position),
+            "stop_loss": float(self.stop_loss or 0.0),
+            "take_profit": float(self.take_profit or 0.0),
+            "confidence": float(self.confidence or 0.0),
+            "rationale": list(self.rationale or []),
+            "position_percent": float(self.position_percent or 0.0),
+            "market_regime": str(self.market_regime or ""),
+            "opportunity_quality": str(self.opportunity_quality or ""),
+            "risk_factors": list(self.risk_factors or []),
+            "market_diagnosis": str(self.market_diagnosis or ""),
+            "opportunity_assessment": str(self.opportunity_assessment or ""),
+            "risk_analysis": str(self.risk_analysis or ""),
+            "execution_plan": str(self.execution_plan or ""),
+            # LLM adjustments
+            "override_stop_loss": bool(self.override_stop_loss),
+            "adjust_stop_loss": float(self.adjust_stop_loss or 0.0),
+            "adjust_take_profit": float(self.adjust_take_profit or 0.0),
+            "adjustment_reason": str(self.adjustment_reason or ""),
+            # Cache validation
+            "decision_price": float(self.decision_price or 0.0),
+        }
+
+
+class SimpleQuantEngine:
+    """Lightweight quant baseline: MA crossover + RSI filter.
+
+    Note: ONLY uses TqSDK pre-calculated indicators (ma10, ma30, rsi, atr).
+    No manual calculation fallback to ensure data quality.
+    """
+
+    def __init__(self, max_pos: int = 1):
+        self.max_pos = max_pos
+
+    def decide(self, row: pd.Series, df: pd.DataFrame) -> Decision:
+        close = row["close"]
+        idx = row.name
+
+        # ONLY use TqSDK-calculated indicators - no fallback
+        # Return hold if indicators are missing or NaN
+        required_indicators = ["ma10", "ma30", "rsi", "atr"]
+        for indicator in required_indicators:
+            if indicator not in row.index or pd.isna(row.get(indicator)):
+                logger.debug(f"指标 {indicator} 缺失或为NaN，返回hold决策")
+                return Decision(
+                    action="hold",
+                    position_size=0,
+                    stop_loss=0.0,
+                    take_profit=0.0,
+                    confidence=0.0,
+                    rationale=[f"missing_{indicator}"]
+                )
+
+        # Extract TqSDK indicators
+        ma_fast = float(row["ma10"])
+        ma_slow = float(row["ma30"])
+        rsi = float(row["rsi"])
+        atr = float(row["atr"])
+
+        # Validate ATR is positive
+        if atr <= 0:
+            logger.warning(f"ATR无效 ({atr})，返回hold决策")
+            return Decision(
+                action="hold",
+                position_size=0,
+                stop_loss=0.0,
+                take_profit=0.0,
+                confidence=0.0,
+                rationale=["invalid_atr"]
+            )
+
+        # Generate signal based on MA crossover and RSI filter
+        signal_strength = 0.0
+        action = "hold"
+
+        spread = (ma_fast - ma_slow) / max(1e-6, ma_slow)
+        if spread > 0.001 and rsi > 52:
+            action = "open_long"
+            signal_strength = min(1.0, max(0.55, spread * 50))
+        elif spread < -0.001 and rsi < 48:
+            action = "open_short"
+            signal_strength = min(1.0, max(0.55, -spread * 50))
+
+        # Calculate stop loss and take profit using TqSDK ATR
+        take = close + (2.5 * atr) if action == "open_long" else (close - 2.5 * atr if action == "open_short" else 0)
+        stop = close - (1.5 * atr) if action == "open_long" else (close + 1.5 * atr if action == "open_short" else 0)
+
+        pos = self.max_pos if action != "hold" else 0
+        return Decision(
+            action=action,
+            position_size=pos,
+            stop_loss=stop,
+            take_profit=take,
+            confidence=signal_strength,
+            rationale=["simple_quant_tqsdk"]
+        )
+
+
+class LLMDirectEngine:
+    def __init__(self, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None):
+        self.max_pos = max_pos
+        self.cache = cache or {}
+        self.cache_write = cache_write
+        self.feature_mode = feature_mode
+        self.trade_meta = trade_meta or {}
+        try:
+            self.client = LLMFactory.create_client()
+        except Exception as e:
+            logger.warning(f"LLM client init failed, fallback to quant baseline: {e}")
+            self.client = None
+        self.quant_fallback = SimpleQuantEngine(max_pos=self.max_pos)
+        self.current_pos = None  # Backtester会在每根bar前注入当前持仓
+        self.current_balance = None  # Backtester会在每根bar前注入当前资金
+
+        # Initialize enhanced market representation system
+        self.market_rep_generator = MarketRepresentationGenerator(
+            event_detector=EventDetector()
+        )
+    def _cache_get(self, key: str) -> Optional[Decision]:
+        if key in self.cache:
+            data = self.cache[key]
+            return Decision(
+                # Core fields
+                action=data.get("action", "hold"),
+                position_size=int(data.get("position_size", 0)),
+                target_position=int(data.get("target_position", 0)),
+                stop_loss=float(data.get("stop_loss", 0) or 0),
+                take_profit=float(data.get("take_profit", 0) or 0),
+                confidence=float(data.get("confidence", 0) or 0),
+                rationale=list(data.get("rationale", [])),
+
+                # Enhanced fields
+                position_percent=float(data.get("position_percent", 0) or 0),
+                market_regime=str(data.get("market_regime", "") or ""),
+                opportunity_quality=str(data.get("opportunity_quality", "") or ""),
+                risk_factors=list(data.get("risk_factors", [])),
+
+                # Four-step reasoning chain
+                market_diagnosis=str(data.get("market_diagnosis", "") or ""),
+                opportunity_assessment=str(data.get("opportunity_assessment", "") or ""),
+                risk_analysis=str(data.get("risk_analysis", "") or ""),
+                execution_plan=str(data.get("execution_plan", "") or ""),
+
+                # LLM adjustments
+                override_stop_loss=bool(data.get("override_stop_loss", False)),
+                adjust_stop_loss=float(data.get("adjust_stop_loss", 0) or 0) if data.get("adjust_stop_loss") is not None else None,
+                adjust_take_profit=float(data.get("adjust_take_profit", 0) or 0) if data.get("adjust_take_profit") is not None else None,
+                adjustment_reason=str(data.get("adjustment_reason", "") or ""),
+
+                # Cache validation
+                decision_price=float(data.get("decision_price", 0) or 0),
+            )
+        return None
+
+    def _cache_put(self, key: str, decision: Decision):
+        if self.cache_write is None:
+            return
+        self.cache[key] = decision.to_dict()
+        try:
+            self.cache_write.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.cache_write, "w", encoding="utf-8") as f:
+                json.dump(self.cache, f, ensure_ascii=False, indent=2, default=str)
+        except Exception as e:
+            logger.warning(f"write cache failed: {e}")
+
+    def _format_timeframe_data(self, klines: pd.DataFrame, period_name: str, is_primary: bool = False) -> str:
+        """Format single timeframe data for prompt.
+
+        Args:
+            klines: DataFrame with OHLCV and indicators
+            period_name: Human-readable name like "日线", "4小时线"
+            is_primary: Whether this is the primary decision timeframe
+
+        Returns:
+            Formatted string describing the timeframe
+        """
+        latest = klines.iloc[-1]
+
+        # ✅ Validate critical indicators - check for NaN values
+        critical_fields = ['close', 'ma10', 'ma30', 'rsi', 'atr', 'macd', 'macd_dea']
+        missing_fields = [field for field in critical_fields if pd.isna(latest.get(field))]
+
+        if missing_fields:
+            return f"⚠️ {period_name} 数据不完整（缺失: {', '.join(missing_fields)}），无法生成分析"
+
+        # MA trend direction (safe after NaN check)
+        ma_trend = "多头排列" if latest.ma10 > latest.ma30 else "空头排列"
+        ma_distance_pct = (latest.close - latest.ma30) / latest.ma30 * 100
+
+        # ✅ MACD status with proper NaN handling
+        macd_status = "数据缺失"
+        if not pd.isna(latest.macd) and not pd.isna(latest.macd_dea):
+            macd_status = "多头" if latest.macd > latest.macd_dea else "空头"
+            if not pd.isna(latest.close) and abs(latest.macd) < 0.01 * latest.close:  # Near zero
+                macd_status = "零轴附近"
+
+        # RSI status
+        rsi_status = "超买区" if latest.rsi > 70 else ("超卖区" if latest.rsi < 30 else "中性区")
+
+        info_lines = [
+            f"- 当前价格: {latest.close:.2f}",
+            f"- MA趋势: {ma_trend} (MA10={latest.ma10:.2f}, MA30={latest.ma30:.2f})",
+            f"- 价格位置: {'高于' if ma_distance_pct > 0 else '低于'}MA30 {abs(ma_distance_pct):.2f}%",
+            f"- MACD: {macd_status} (MACD={latest.macd:.2f}, DEA={latest.macd_dea:.2f})",
+            f"- RSI: {latest.rsi:.1f} ({rsi_status})",
+        ]
+
+        if is_primary:
+            info_lines.append(f"- ATR: {latest.atr:.2f} (止损参考)")
+
+        return "\n".join(info_lines)
+
+    def _build_multi_timeframe_section(self, klines_dict: Dict[str, pd.DataFrame], cfg) -> str:
+        """Build multi-timeframe analysis section for prompt.
+
+        Args:
+            klines_dict: Dict mapping period name to DataFrame
+            cfg: BTConfig instance
+
+        Returns:
+            Formatted multi-timeframe analysis string
+        """
+        sections = []
+
+        # Primary decision timeframe
+        if "decision" in klines_dict:
+            period_name = cfg.get_period_name(cfg.decision_period)
+            sections.append(f"## 📊 决策周期: {period_name}")
+            sections.append(self._format_timeframe_data(klines_dict["decision"], period_name, is_primary=True))
+
+        # Auxiliary timeframes
+        aux_periods = [k for k in klines_dict.keys() if k.startswith("aux_")]
+        if aux_periods:
+            sections.append("\n## 📈 辅助周期参考")
+
+            for period_key in sorted(aux_periods):
+                # Extract period minutes from key like "aux_240m"
+                period_minutes = int(period_key.replace("aux_", "").replace("m", ""))
+                period_name = cfg.get_period_name(period_minutes)
+
+                sections.append(f"\n### {period_name}")
+                sections.append(self._format_timeframe_data(klines_dict[period_key], period_name, is_primary=False))
+
+        # Multi-timeframe alignment check
+        if len(klines_dict) > 1:
+            sections.append("\n## ⚖️ 多周期一致性")
+
+            # 添加调试信息：显示每个周期的最新数据时间和趋势
+            sections.append("\n### 各周期状态详情")
+            for period_key, df in klines_dict.items():
+                latest = df.iloc[-1]
+                period_minutes = cfg.decision_period if period_key == "decision" else int(period_key.replace("aux_", "").replace("m", ""))
+                period_display = cfg.get_period_name(period_minutes)
+
+                # 判断该周期趋势
+                trend = "多头" if latest.ma10 > latest.ma30 else "空头"
+
+                # 获取时间戳（如果有）
+                bar_time = tafunc.time_to_datetime(latest['datetime']).strftime("%Y-%m-%d %H:%M")
+
+                sections.append(f"- {period_display}: {trend} | MA10={latest.ma10:.2f} MA30={latest.ma30:.2f} | 最新时间={bar_time}")
+
+            # Check if all timeframes have same MA trend
+            all_bullish = all(df.iloc[-1].ma10 > df.iloc[-1].ma30 for df in klines_dict.values())
+            all_bearish = all(df.iloc[-1].ma10 < df.iloc[-1].ma30 for df in klines_dict.values())
+
+            sections.append("\n### 一致性判断")
+            if all_bullish:
+                sections.append("- 多周期趋势: ✓ **一致向上**（所有周期MA10>MA30）")
+                sections.append("- **交易约束**: 建议仅做多或空仓观望")
+            elif all_bearish:
+                sections.append("- 多周期趋势: ✓ **一致向下**（所有周期MA10<MA30）")
+                sections.append("- **交易约束**: 建议仅做空或空仓观望")
+            else:
+                sections.append("- 多周期趋势: ✗ **不一致**（不同周期趋势方向不同）")
+                sections.append("- **交易约束**: 谨慎交易，优先观望")
+
+        return "\n".join(sections)
+
+    def _build_enhanced_prompt(self, row: pd.Series, df: pd.DataFrame, symbol: str, klines_dict: Optional[Dict[str, pd.DataFrame]] = None, cfg: Optional[Any] = None) -> str:
+        """
+        构建增强版决策prompt - 基于三级市场表示和四步决策框架
+
+        核心改进：
+        1. 三级信息结构（原始数据 + 特征描述 + 状态摘要）
+        2. 事件时间线
+        3. 四步决策框架引导
+        4. 动态置信度评估
+        5. 多周期分析（如果提供了klines_dict）
+
+        Args:
+            row: Current bar data
+            df: Historical data (for backward compatibility, single timeframe)
+            symbol: Trading symbol
+            klines_dict: Optional multi-timeframe data dict
+            cfg: Optional BTConfig instance (needed for multi-timeframe)
+        """
+
+        # 生成市场分析部分
+        if klines_dict and cfg:
+            # 使用多周期分析
+            market_analysis = self._build_multi_timeframe_section(klines_dict, cfg)
+        else:
+            # 使用单周期三级市场表示（向后兼容）
+            market_rep = self.market_rep_generator.generate(row, df, symbol)
+            market_analysis = market_rep.to_markdown()
+
+        # 获取当前持仓和账户信息
+        pos_obj = self.current_pos
+        balance = self.current_balance
+        initial_capital = self.trade_meta.get('initial_capital', 100000)
+
+        # 初始化可能在prompt中使用的变量
+        pnl_pct = 0.0
+        stop_distance_pct = 0.0
+        active_stop_loss = 0.0
+        active_take_profit = 0.0
+
+        # 当前持仓描述
+        if pos_obj and pos_obj.direction != "none":
+            current_price = float(row['close'])
+            entry_price = float(pos_obj.entry_price or 0)
+            qty = int(pos_obj.qty or 0)
+            contract_multiplier = self.trade_meta.get('contract_multiplier', 20)
+
+            # 价格本身的涨跌幅（不考虑杠杆/手数），仅作参考
+            price_change_pct = ((current_price / entry_price - 1) * 100) if entry_price > 0 else 0.0
+            if pos_obj.direction == "short":
+                price_change_pct = -price_change_pct
+
+            # 优先使用 TqSDK 导出的浮动盈亏；无则按价差×乘数×手数估算
+            snapshot = getattr(self, 'tqsdk_snapshot', None)
+            acc_snap = (snapshot or {}).get('account') or {}
+            pos_snap = (snapshot or {}).get('position') or {}
+            tq_pos_pnl_long = pos_snap.get('float_profit_long')
+            tq_pos_pnl_short = pos_snap.get('float_profit_short')
+            tq_acc_float_profit = acc_snap.get('float_profit')
+            tq_static_balance = acc_snap.get('static_balance')
+
+            float_pnl = 0.0
+            if entry_price > 0 and qty > 0:
+                # 完全依赖 TqSDK 的浮动盈亏，不进行手工计算回退
+                if pos_obj.direction == "long":
+                    if tq_pos_pnl_long is not None:
+                        float_pnl = tq_pos_pnl_long
+                    else:
+                        logger.warning(f"TqSDK 多头持仓浮动盈亏为 None，可能数据有问题")
+                        float_pnl = 0.0
+                else:
+                    if tq_pos_pnl_short is not None:
+                        float_pnl = tq_pos_pnl_short
+                    else:
+                        logger.warning(f"TqSDK 空头持仓浮动盈亏为 None，可能数据有问题")
+                        float_pnl = 0.0
+            elif tq_acc_float_profit is not None:
+                # 无持仓时，回退到账户级浮盈
+                float_pnl = tq_acc_float_profit
+            else:
+                logger.warning(f"TqSDK 账户浮动盈亏也为 None，无法获取盈亏数据")
+                float_pnl = 0.0
+
+            pct_base = float(tq_static_balance) if tq_static_balance is not None else float(initial_capital)
+            pnl_pct = (float_pnl / pct_base * 100.0) if pct_base > 0 else 0.0
+
+            # 获取止盈止损信息（从 backtester 注入）
+            active_stop_loss = getattr(self, 'active_stop_loss', 0.0)
+            active_take_profit = getattr(self, 'active_take_profit', 0.0)
+
+            # 构建持仓基本信息
+            position_info = f"""
+## 📋 当前持仓状态
+- 方向: {pos_obj.direction.upper()}
+- 持仓: {qty}手
+- 开仓价: {entry_price:.2f}
+- 当前价: {current_price:.2f}
+- 浮动盈亏: {pnl_pct:+.2f}% ({float_pnl:+.0f}元，按初始资金比例)
+- 标的涨跌: {price_change_pct:+.2f}%（价格变动）
+"""
+
+            # 添加止盈止损信息
+            if active_stop_loss > 0 or active_take_profit > 0:
+                position_info += "\n### 🎯 止盈止损设置\n"
+
+                # 止损信息
+                if active_stop_loss > 0:
+                    if pos_obj.direction == "long":
+                        stop_distance_pct = ((current_price - active_stop_loss) / current_price * 100)
+                        stop_distance_points = current_price - active_stop_loss
+                    else:  # short
+                        stop_distance_pct = ((active_stop_loss - current_price) / current_price * 100)
+                        stop_distance_points = active_stop_loss - current_price
+
+                    # 预警：接近止损（距离 < 1%）
+                    stop_warning = ""
+                    if abs(stop_distance_pct) < 1.0:
+                        stop_warning = " ⚠️ **即将触发止损!**"
+                    elif abs(stop_distance_pct) < 2.0:
+                        stop_warning = " ⚠️ 接近止损"
+
+                    position_info += f"- 止损价: {active_stop_loss:.2f} (距离: {abs(stop_distance_pct):.2f}% / {abs(stop_distance_points):.2f}点){stop_warning}\n"
+
+                # 止盈信息
+                if active_take_profit > 0:
+                    if pos_obj.direction == "long":
+                        profit_distance_pct = ((active_take_profit - current_price) / current_price * 100)
+                        profit_distance_points = active_take_profit - current_price
+                    else:  # short
+                        profit_distance_pct = ((current_price - active_take_profit) / current_price * 100)
+                        profit_distance_points = current_price - active_take_profit
+
+                    # 预警：接近止盈（距离 < 1%）
+                    profit_warning = ""
+                    if abs(profit_distance_pct) < 1.0:
+                        profit_warning = " 🎯 **即将触发止盈!**"
+                    elif abs(profit_distance_pct) < 2.0:
+                        profit_warning = " 🎯 接近止盈"
+
+                    position_info += f"- 止盈价: {active_take_profit:.2f} (距离: {abs(profit_distance_pct):.2f}% / {abs(profit_distance_points):.2f}点){profit_warning}\n"
+
+                # 获取硬止损配置信息
+                hard_stop_multiple = self.trade_meta.get('hard_stop_loss_atr_multiple', 3.0)
+                soft_stop_multiple = self.trade_meta.get('soft_stop_loss_atr_multiple', 1.5)
+                hard_tp_multiple = self.trade_meta.get('hard_take_profit_atr_multiple', 5.0)
+
+                # 添加风控说明和调整权限
+                position_info += f"""\n**⚠️ 重要提示：止盈止损管理**
+- **自动执行**：当前设置的止盈止损会在价格触及时自动执行（软止损，ATR×{soft_stop_multiple}）
+- **硬止损保护**：系统设有硬止损（ATR×{hard_stop_multiple}），无论任何情况都会强制执行
+- **硬止盈限制**：系统设有硬止盈（ATR×{hard_tp_multiple}），达到后自动平仓
+- **LLM调整权限**：你可以在决策中调整或忽略当前止盈止损，但需满足以下条件：
+  1. **必须提供充分的调整理由**（`adjustment_reason`字段，必填且具体）
+  2. 调整幅度在合理范围内（建议不超过50%）
+  3. **绝对不能超过硬止损限制**（系统会拒绝）
+  4. 建议仅在以下情况使用：
+     - ⚠️  技术形态发生重大改变（如突破关键支撑/阻力、形态反转）
+     - ⚠️  当前止盈止损位置明显不合理（如刚好在关键技术位上，可能被针对性触发）
+     - ⚠️  市场流动性异常（如剧烈波动、跳空缺口）
+  5. **谨慎使用**：调整止盈止损意味着承担更大风险，所有调整都会被记录到审计日志，请三思而后行！
+"""
+        else:
+            position_info = """
+## 📋 当前持仓状态
+- 当前无持仓（空仓）
+"""
+
+        # 账户信息
+        margin_ratio = self.trade_meta.get('margin_ratio', 0.18)
+        account_info = f"""
+## 💰 账户状态
+- 初始资金: {initial_capital:,.2f}
+- 当前权益: {balance:,.2f}
+- 最大持仓: {self.max_pos}手
+- 保证金比例: {margin_ratio:.1%}
+- 总收益率: {((balance / initial_capital - 1) * 100):+.2f}%
+"""
+
+        # 交易成本信息
+        costs_info = f"""
+## 💸 交易成本
+- 保证金比例: {margin_ratio:.1%}（每手占用合约价值的{margin_ratio:.1%}作为保证金）
+- 手续费: {self.trade_meta.get('commission_per_lot', 3.0)}元/手
+- 滑点: {self.trade_meta.get('slippage_ticks', 1)}跳
+- 最小变动: {self.trade_meta.get('tick_size', 1.0)}元/吨
+"""
+
+        # 组装完整prompt
+        prompt = f"""# 期货交易决策系统 - 纯碱(SA)合约
+
+你是一位经验丰富的期货交易专家，需要基于市场数据做出专业的交易决策。
+
+{market_analysis}
+
+{position_info}
+
+{account_info}
+
+{costs_info}
+
+---
+
+# 🎯 决策任务
+
+请按照专业交易员的思维框架，系统性地分析并输出交易决策。
+
+## 第一步：市场状态诊断 🔍
+
+请分析：
+- 当前市场处于什么状态？（强势趋势/温和趋势/震荡/反转）
+- 主要驱动因素是什么？（价格突破/成交量确认/技术指标/时间周期）
+- 市场情绪如何？（恐慌/贪婪/犹豫/理性）
+- 波动率处于什么状态？（扩张/收缩/正常）
+
+## 第二步：交易机会评估 💡
+
+请评估：
+- 识别到的机会是什么？（趋势跟随/均值回归/突破/套利）
+- 信号强度如何？（强/中/弱）
+- 确认程度如何？（多重确认/部分确认/单一信号）
+- 时间窗口如何？（立即/短期观察/长期跟踪）
+- 机会质量评级？（A级优质/B级良好/C级一般/D级观望）
+
+## 第三步：风险收益分析 ⚖️
+
+请分析：
+- 预期收益是多少？（目标价位和预期收益率）
+- 潜在风险是多少？（止损价位和最大亏损）
+- 风险收益比是否合适？当前应该激进、稳健还是保守？
+- 主要风险因素有哪些？（技术风险/基本面风险/流动性风险）
+- 如何管理这些风险？（止损策略/分批建仓/仓位控制）
+
+## 第四步：执行方案制定 📝
+
+请制定：
+- 具体操作：开仓/平仓/调仓/观望？
+- 仓位大小：建议持仓手数和账户占比
+- 入场时机：立即入场还是等待确认？
+- 出场计划：止损价位、止盈价位
+- 风险控制：最大亏损限额
+
+---
+
+# 📤 决策输出格式
+
+基于以上四步分析，请仅仅输出以下标准JSON格式的最终决策：
+
+```json
+{{
+  "action": "open_long|open_short|close_long|close_short|adjust_position|hold",
+  "position_size": <int, 本次操作手数（必须是整数，不能是0.5手）>,
+  "target_position": <int, 目标总持仓手数（仅用于adjust_position）
+                      ⚠️ 重要：正数=多仓，负数=空仓，0=空仓
+                      示例：2表示目标持有2手多仓，-1表示目标持有1手空仓>,
+  "stop_loss": <float, 止损价格（绝对价格）>,
+  "take_profit": <float, 止盈价格（绝对价格）>,
+  "confidence": <float 0.0-1.0, 决策置信度>,
+  "position_percent": <float 0.0-1.0, 目标仓位占账户比例>,
+  "market_regime": "<string, 市场状态诊断结果>",
+  "opportunity_quality": "<string, 机会质量评级 A/B/C/D>",
+  "rationale": ["<brief reason1>", "<brief reason2>", "<brief reason3>"],
+  "risk_factors": ["<risk1>", "<risk2>"],
+  "market_diagnosis": "<string, 第一步分析摘要>",
+  "opportunity_assessment": "<string, 第二步分析摘要>",
+  "risk_analysis": "<string, 第三步分析摘要>",
+  "execution_plan": "<string, 第四步执行方案摘要>",
+
+  // **可选字段：止盈止损调整**
+  "override_stop_loss": <bool, 是否忽略当前软止损，default: false>,
+  "adjust_stop_loss": <float, 建议的新止损价（绝对价格），不填表示不调整>,
+  "adjust_take_profit": <float, 建议的新止盈价（绝对价格），不填表示不调整>,
+  "adjustment_reason": "<string, 调整原因（如果调整则必填！）>"
+}}
+```
+
+**⚠️ 手数约束说明**：
+- **position_size** 和 **target_position** 都必须是整数（1, 2, 3等）
+- **不允许小数**（如0.5手、1.5手等），系统会自动取整
+- 如果你输出了小数，系统会向下取整（如1.8手 → 1手）
+
+## ⚠️ 重要提示
+
+### 📋 可执行操作定义（必须严格遵守）
+
+#### 1. 开仓操作
+
+**open_long** - 开多仓
+- **前置条件**: 当前持仓为0 或 当前为空仓（需先平空再开多）
+- **必须提供参数**:
+  * `position_size`: 开仓手数，必须 > 0 且 ≤ {self.max_pos}
+  * `stop_loss`: 止损价格（绝对价格），必须 < 当前价
+  * `take_profit`: 止盈价格（绝对价格），必须 > 当前价
+- **约束**: position_size不能超过最大持仓限制{self.max_pos}手
+
+**open_short** - 开空仓
+- **前置条件**: 当前持仓为0 或 当前为多仓（需先平多再开空）
+- **必须提供参数**:
+  * `position_size`: 开仓手数，必须 > 0 且 ≤ {self.max_pos}
+  * `stop_loss`: 止损价格（绝对价格），必须 > 当前价
+  * `take_profit`: 止盈价格（绝对价格），必须 < 当前价
+- **约束**: position_size不能超过{self.max_pos}手
+
+#### 2. 平仓操作
+
+**close_long** - 平多仓
+- **前置条件**: 当前持有多仓
+- **作用**: 全部或部分平掉多仓
+
+**close_short** - 平空仓
+- **前置条件**: 当前持有空仓
+- **作用**: 全部或部分平掉空仓
+
+#### 3. 调仓操作
+
+**adjust_position** - 调整仓位
+- **前置条件**: 无（任何持仓状态都可以调整）
+- **必须提供参数**:
+  * `target_position`: 目标仓位手数（正数=多仓，负数=空仓，0=空仓）
+- **约束**:
+  * |target_position| ≤ {self.max_pos}（最大持仓限制）
+  * **支持方向变更**：系统会自动先平仓再反向开仓（如：当前2手多 → target_position=-1 → 先平2手多，再开1手空）
+- **示例**:
+  * 当前0手 → target_position=2 → 开2手多
+  * 当前2手多 → target_position=3 → 加仓1手多
+  * 当前3手多 → target_position=1 → 减仓2手多
+  * 当前2手多 → target_position=-1 → 先平2手多，再开1手空（反向调仓）
+  * 当前1手空 → target_position=2 → 先平1手空，再开2手多（反向调仓）
+
+#### 4. 观望操作
+
+**hold** - 保持当前状态
+- **前置条件**: 无
+- **使用场景**:
+  * 无明确交易信号
+  * 等待更好入场点
+  * 当前持仓继续持有
+
+---
+
+### 决策时必须考虑的约束
+
+**基于当前持仓状态**:
+{f'- 当前持仓: {pos_obj.direction.upper()} {pos_obj.qty}手' if pos_obj and pos_obj.direction != "none" else '- 当前无持仓'}
+{f'- 浮动盈亏: {pnl_pct:+.2f}%' if pos_obj and pos_obj.direction != "none" else ''}
+{f'- 距离止损: {abs(stop_distance_pct):.2f}%' if pos_obj and pos_obj.direction != "none" and active_stop_loss > 0 else ''}
+
+**仓位限制约束**:
+- 最大持仓: {self.max_pos}手（硬性限制，任何操作后不可超过）
+{f'- 当前可用: {self.max_pos - abs(pos_obj.qty)}手（剩余可加仓额度）' if pos_obj and pos_obj.direction != "none" else f'- 当前可用: {self.max_pos}手（全部额度）'}
+
+**方向变更规则**:
+- **推荐方式1（简单）**: 使用 `adjust_position` 设置目标仓位，系统自动处理平仓和开仓
+  * 示例：当前2手多想转1手空 → `action: "adjust_position", target_position: -1`
+- **推荐方式2（明确）**: 先 `close_long`/`close_short` 平仓，下一个bar再 `open_long`/`open_short` 开仓
+  * 示例：当前2手多想转空 → 本bar `action: "close_long"`，下个bar `action: "open_short"`
+
+---
+
+**动态置信度评估标准**（根据市场实际情况调整）：
+- 0.9-1.0: 极强信号 - 多重确认，趋势清晰，成交量放大
+- 0.7-0.9: 强信号 - 趋势明确，有成交量确认
+- 0.5-0.7: 中等信号 - 趋势初现，部分确认
+- 0.3-0.5: 弱信号 - 信号不明确，建议观望或小仓位
+- 0.0-0.3: 极弱信号 - 信号冲突，强烈建议观望
+
+**仓位管理原则**：
+- 单次风险不超过账户的1.5%-5%
+- 根据ATR动态调整仓位大小以及风险偏好
+- 高波动环境减小仓位，低波动环境可适当增加
+- 趋势明确时可持有满仓，震荡市应轻仓或观望
+
+请基于以上框架进行深入分析，输出结构化的专业决策。
+"""
+
+        return prompt
+
+    def decide(self, row: pd.Series, df: pd.DataFrame, symbol: str, klines_dict: Optional[Dict[str, pd.DataFrame]] = None, cfg: Optional[Any] = None) -> Decision:
+        """
+        Enhanced decision making with three-level market representation
+        and four-step decision framework.
+
+        Args:
+            row: Current bar data
+            df: Historical data (for backward compatibility)
+            symbol: Trading symbol
+            klines_dict: Optional multi-timeframe data dict
+            cfg: Optional BTConfig instance (needed for multi-timeframe)
+        """
+        # 获取当前价格
+        current_price = float(row.get("close", 0))
+
+        # 构建缓存键：包含合约、时间和价格，确保缓存的有效性
+        # 价格取整到小数点后2位，避免微小的价格差异导致缓存失效
+        ts_key = f"{symbol}::{tafunc.time_to_datetime(row['timestamp']).isoformat()}::{current_price:.2f}"
+
+        cached = self._cache_get(ts_key)
+        if cached is not None:
+            # 验证缓存价格与当前价格的一致性（允许0.5%的容忍度）
+            if cached.decision_price > 0 and current_price > 0:
+                price_diff_pct = abs(current_price - cached.decision_price) / current_price
+                if price_diff_pct > 0.005:  # 0.5% tolerance
+                    logger.warning(
+                        f"缓存价格差异过大 ({price_diff_pct:.2%}): "
+                        f"缓存={cached.decision_price:.2f} vs 当前={current_price:.2f}，重新决策"
+                    )
+                    cached = None
+                else:
+                    logger.debug(f"使用缓存决策 @ {current_price:.2f}")
+                    return cached
+            elif cached.decision_price <= 0 or current_price <= 0:
+                # 价格无效，直接使用缓存（兼容旧版本或价格异常情况）
+                logger.debug(f"价格验证跳过（缓存={cached.decision_price:.2f}, 当前={current_price:.2f}），使用缓存")
+                return cached
+            else:
+                # 旧缓存没有price信息，直接使用
+                return cached
+
+        if self.client is None:
+            logger.warning("LLM client not available, falling back to quant baseline")
+            return self.quant_fallback.decide(row, df)
+
+        try:
+            # Generate enhanced prompt with three-level representation (and optional multi-timeframe data)
+            prompt = self._build_enhanced_prompt(row, df, symbol, klines_dict=klines_dict, cfg=cfg)
+
+            # Call LLM
+            raw_response = self.client.chat(prompt)
+
+            # Debug logging for response
+            logger.debug(f"响应全文: {raw_response}")
+
+            # 使用增强的解析方法，即使JSON不完整也能提取关键信息
+            data = ResponseParser.parse_trading_decision(raw_response)
+
+            # 检查是否提取到action
+            if 'action' not in data or not data['action']:
+                logger.error(f"无法从LLM响应中提取action字段，使用量化回退策略")
+                return self.quant_fallback.decide(row, df)
+
+            # Validate and parse action
+            action = str(data.get("action")).strip().lower()
+            valid_actions = ["open_long", "open_short", "close_long", "close_short", "adjust_position", "hold"]
+
+            if action not in valid_actions:
+                logger.warning(f"Invalid action '{action}', 使用量化回退策略")
+                return self.quant_fallback.decide(row, df)
+
+            # Parse enhanced fields with proper constraints
+            # ✅ 强制手数为整数（向下取整）
+            raw_position_size = data.get("position_size", 0)
+            if isinstance(raw_position_size, float):
+                logger.warning(f"position_size 为小数 ({raw_position_size})，向下取整为 {int(raw_position_size)}")
+            position_size_int = int(max(0, min(self.max_pos, int(raw_position_size))))
+
+            raw_target_position = data.get("target_position", 0)
+            if isinstance(raw_target_position, float):
+                logger.warning(f"target_position 为小数 ({raw_target_position})，向下取整为 {int(raw_target_position)}")
+            # ✅ Clamp target_position to [-max_pos, max_pos] range
+            clamped_target_position = int(max(-self.max_pos, min(self.max_pos, int(raw_target_position))))
+
+            # Parse LLM adjustment fields
+            raw_override_stop_loss = bool(data.get("override_stop_loss", False))
+            raw_adjust_stop_loss = data.get("adjust_stop_loss")
+            raw_adjust_take_profit = data.get("adjust_take_profit")
+            adjustment_reason = str(data.get("adjustment_reason", "") or "")
+
+            # Validate adjustment fields: if any adjustment is requested, reason must be provided
+            if (raw_override_stop_loss or raw_adjust_stop_loss is not None or raw_adjust_take_profit is not None):
+                if not adjustment_reason.strip():
+                    logger.warning("LLM请求调整止盈止损但未提供原因，忽略调整请求")
+                    raw_override_stop_loss = False
+                    raw_adjust_stop_loss = None
+                    raw_adjust_take_profit = None
+                    adjustment_reason = ""
+
+            decision = Decision(
+                # Core fields
+                action=action,
+                position_size=position_size_int,  # ✅ 已强制为整数
+                target_position=clamped_target_position,  # ✅ Now properly constrained
+                stop_loss=float(data.get("stop_loss", 0) or 0),
+                take_profit=float(data.get("take_profit", 0) or 0),
+                confidence=float(data.get("confidence", 0) or 0),
+                rationale=[str(x) for x in (data.get("rationale") or [])],
+
+                # Enhanced fields
+                position_percent=float(data.get("position_percent", 0) or 0),
+                market_regime=str(data.get("market_regime", "") or ""),
+                opportunity_quality=str(data.get("opportunity_quality", "") or ""),
+                risk_factors=[str(x) for x in (data.get("risk_factors") or [])],
+
+                # Four-step reasoning chain
+                market_diagnosis=str(data.get("market_diagnosis", "") or ""),
+                opportunity_assessment=str(data.get("opportunity_assessment", "") or ""),
+                risk_analysis=str(data.get("risk_analysis", "") or ""),
+                execution_plan=str(data.get("execution_plan", "") or ""),
+
+                # LLM adjustments (validated above)
+                override_stop_loss=raw_override_stop_loss,
+                adjust_stop_loss=float(raw_adjust_stop_loss) if raw_adjust_stop_loss is not None else None,
+                adjust_take_profit=float(raw_adjust_take_profit) if raw_adjust_take_profit is not None else None,
+                adjustment_reason=adjustment_reason,
+
+                # Cache validation
+                decision_price=current_price,
+            )
+
+            # Log decision details if show_rationale is enabled
+            if hasattr(self, 'show_rationale') and getattr(self, 'show_rationale', False):
+                logger.info(f"[{ts_key}] LLM Decision:")
+                logger.info(f"  Market Regime: {decision.market_regime}")
+                logger.info(f"  Opportunity: {decision.opportunity_quality}")
+                logger.info(f"  Action: {decision.action} (Confidence: {decision.confidence:.2%})")
+
+        except Exception as e:
+            logger.warning(f"LLM decision failed, fallback to quant: {e}")
+            decision = self.quant_fallback.decide(row, df)
+
+        self._cache_put(ts_key, decision)
+        return decision
+
+
+class HybridEngine:
+    """Quant decision with optional LLM expert review when confidence is low."""
+
+    def __init__(self, low_conf_th: float = 0.7, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None):
+        self.low_conf_th = low_conf_th
+        self.quant = SimpleQuantEngine(max_pos=max_pos)
+        self.llm_direct = LLMDirectEngine(cache=cache, cache_write=cache_write, max_pos=max_pos, feature_mode=feature_mode, trade_meta=trade_meta)
+
+    def decide(self, row: pd.Series, df: pd.DataFrame, symbol: str) -> Decision:
+        q = self.quant.decide(row, df)
+        if q.action == "hold" or q.confidence >= self.low_conf_th:
+            return q
+        # Ask LLM to approve/reject
+        ts_key = tafunc.time_to_datetime(row["timestamp"]).isoformat()
+        cache_key = f"review::{ts_key}"
+        cached = self.llm_direct._cache_get(cache_key)
+        if cached is not None:
+            # Interpret cached as final decision
+            return cached
+
+        review_prompt = (
+            "You are reviewing a quant signal. Return STRICT JSON: {\"approved\":bool, \"concerns\":[str], \"warnings\":[str]}\n"
+            f"Signal: {json.dumps(q.to_dict(), ensure_ascii=False)}\n"
+            "If not confident, set approved=false and add reasons."
+        )
+        try:
+            client = self.llm_direct.client
+            if client is None:
+                return q
+            raw = client.chat(review_prompt)
+            resp = ResponseParser.parse_expert_review(raw)
+            if not resp.get("approved", False):
+                d = Decision(action="hold", position_size=0, confidence=0.0, rationale=["llm_reject"] + (resp.get("concerns") or []))
+                self.llm_direct._cache_put(cache_key, d)
+                return d
+            # approved: keep quant
+            d = Decision(**q.to_dict())
+            d.rationale = (d.rationale or []) + ["llm_approved"]
+            self.llm_direct._cache_put(cache_key, d)
+            return d
+        except Exception:
+            return q
+
+
+@dataclass
+class BTConfig:
+    symbol: str = "CZCE.SA0"
+    count: Optional[int] = None  # Number of K-lines to fetch (auto-calculated if None)
+    initial_capital: float = 100000.0
+    max_position: int = 1
+    commission_per_lot: Optional[float] = None  # 手续费（元/手），如果为None则从TqSDK的quote中获取
+    slippage_ticks: int = 1
+    tick_size: float = 1.0
+    margin_ratio: float = 0.18  # 保证金比例，默认18%
+    timezone: str = "Asia/Shanghai"  # 时区设置，默认北京时间
+
+    # Multi-timeframe configuration
+    decision_period: Optional[int] = None  # Primary decision period in MINUTES (if None, use period)
+    auxiliary_periods: Optional[List[int]] = None  # Auxiliary periods for multi-timeframe analysis [60, 240, 1440] etc.
+
+    def __post_init__(self):
+        """Initialize multi-timeframe configuration."""
+
+        # If auxiliary_periods not specified, initialize as empty list
+        if self.auxiliary_periods is None:
+            self.auxiliary_periods = []
+
+
+    def get_decision_duration_seconds(self) -> int:
+        """Convert decision period (minutes) to TqSDK duration_seconds."""
+        return self.decision_period * 60
+
+    def get_auto_count(self) -> int:
+        """Auto-calculate reasonable K-line count based on period."""
+        # Ensure at least 250 data points for indicator calculation
+        # Daily: 250 bars = ~1 year, 15min: 1200 bars = ~2 weeks
+        if self.count is not None:
+            return self.count
+        if self.decision_period >= 1440:  # Daily or above
+            return 300  # ~1 year
+        elif self.decision_period >= 240:  # 4-hour
+            return 500
+        elif self.decision_period >= 60:  # 1-hour
+            return 800
+        elif self.decision_period >= 15:  # 15-min
+            return 1200
+        else:  # 1-min or 5-min
+            return 3000
+
+    def get_auto_count_for_period(self, period_minutes: int) -> int:
+        """Auto-calculate reasonable K-line count for a specific period."""
+        if period_minutes >= 1440:  # Daily or above
+            return 300
+        elif period_minutes >= 240:  # 4-hour
+            return 500
+        elif period_minutes >= 60:  # 1-hour
+            return 800
+        elif period_minutes >= 15:  # 15-min
+            return 1200
+        else:  # 1-min or 5-min
+            return 3000
+
+    def get_all_periods(self) -> Dict[str, int]:
+        """Return all periods to fetch data for.
+
+        Returns:
+            Dict mapping period name to period in minutes
+            Example: {"decision": 1440, "aux_240m": 240, "aux_60m": 60}
+        """
+        periods = {"decision": self.decision_period}
+
+        for period in self.auxiliary_periods:
+            periods[f"aux_{period}m"] = period
+
+        return periods
+
+    def get_period_name(self, minutes: int) -> str:
+        """Convert minutes to human-readable period name."""
+        if minutes >= 1440:
+            days = minutes // 1440
+            return f"{days}日线" if days == 1 else f"{days}天线"
+        elif minutes >= 60:
+            hours = minutes // 60
+            return f"{hours}小时线"
+        else:
+            return f"{minutes}分钟线"
+
+    def get_timezone(self) -> ZoneInfo:
+        """Get ZoneInfo object for configured timezone."""
+        return ZoneInfo(self.timezone)
+
+
+@dataclass
+class Position:
+    direction: str  # 'long'|'short'
+    qty: int
+    entry_price: float
+    stop: float
+    take: float
+
+
+class Backtester:
+    """回测引擎，支持多种决策模式和止损策略"""
+
+    # Trading constants
+    DEFAULT_COMMISSION_PER_LOT = 3.0
+    DEFAULT_CONTRACT_MULTIPLIER = 20
+    CAPITAL_BUFFER_MULTIPLIER = 2.0  # 初始资金缓冲倍数
+    DATA_WARMUP_BARS = 50  # 预热K线数量
+
+    # Stop loss/take profit multiples (in ATR units)
+    HARD_STOP_LOSS_ATR = 3.0  # 硬止损
+    SOFT_STOP_LOSS_ATR = 1.5  # 软止损
+    HARD_TAKE_PROFIT_ATR = 5.0  # 硬止盈
+    MAX_LOOSENING_PCT = 0.5  # 止损放宽最大百分比
+
+    # Fallback ATR as percentage of price
+    FALLBACK_ATR_PCT = 0.02
+
+    def __init__(
+        self,
+        cfg: BTConfig,
+        mode: DecisionMode,
+        cache_path: Optional[Path] = None,
+        initial_units: Optional[float] = None,
+        show_rationale: bool = False,
+        margin_ratio: Optional[float] = None
+    ):
+        """
+        初始化回测引擎
+
+        Args:
+            cfg: 回测配置
+            mode: 决策模式（纯量化/混合/纯LLM）
+            cache_path: LLM决策缓存路径
+            initial_units: 初始持仓单位（None则使用cfg.initial_capital）
+            show_rationale: 是否显示决策理由
+            margin_ratio: 保证金比例（覆盖cfg中的值）
+        """
+        self.cfg = cfg
+        self.mode = mode
+        self.cache_path = cache_path
+        self.initial_units = initial_units
+        self.show_rationale = show_rationale
+
+        # Override margin ratio if provided
+        if margin_ratio is not None:
+            self.cfg.margin_ratio = margin_ratio
+
+        # Active stop loss/take profit tracking
+        self.active_stop_loss: float = 0.0
+        self.active_take_profit: float = 0.0
+
+        # Setup audit logging
+        self.adjustment_log_path = Path("logs") / "stop_loss_adjustments.log"
+        self.adjustment_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load cache and initialize engine
+        cache = self._load_cache()
+        trade_meta = self._build_trade_meta()
+        self.engine = self._create_engine(cache, trade_meta)
+
+    def _load_cache(self) -> Dict[str, Any]:
+        """加载LLM决策缓存"""
+        if not self.cache_path or not self.cache_path.exists():
+            return {}
+
+        try:
+            return json.loads(self.cache_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"加载缓存失败: {e}")
+            return {}
+
+    def _build_trade_meta(self) -> Dict[str, Any]:
+        """构建交易元数据（供LLM使用）"""
+        return {
+            "tick_size": self.cfg.tick_size,
+            "slippage_ticks": self.cfg.slippage_ticks,
+            "commission_per_lot": self.cfg.commission_per_lot or self.DEFAULT_COMMISSION_PER_LOT,
+            "initial_capital": self.cfg.initial_capital,
+            "margin_ratio": self.cfg.margin_ratio,
+            "contract_multiplier": self.DEFAULT_CONTRACT_MULTIPLIER,
+            "hard_stop_loss_atr_multiple": self.HARD_STOP_LOSS_ATR,
+            "soft_stop_loss_atr_multiple": self.SOFT_STOP_LOSS_ATR,
+            "hard_take_profit_atr_multiple": self.HARD_TAKE_PROFIT_ATR,
+        }
+
+    def _create_engine(self, cache: Dict[str, Any], trade_meta: Dict[str, Any]):
+        """创建决策引擎"""
+        if self.mode == DecisionMode.QUANT_ONLY:
+            return SimpleQuantEngine(max_pos=self.cfg.max_position)
+        elif self.mode == DecisionMode.HYBRID:
+            return HybridEngine(
+                cache=cache,
+                cache_write=self.cache_path,
+                max_pos=self.cfg.max_position,
+                trade_meta=trade_meta
+            )
+        else:
+            engine = LLMDirectEngine(
+                cache=cache,
+                cache_write=self.cache_path,
+                max_pos=self.cfg.max_position,
+                trade_meta=trade_meta
+            )
+            engine.show_rationale = self.show_rationale
+            return engine
+
+    def _process_llm_adjustment(
+        self,
+        decision: Decision,
+        bar_time,
+        current_price: float,
+        current_pos_qty: int,
+        position,
+        current_atr: float
+    ):
+        """
+        处理LLM的止盈止损调整请求，验证合理性并记录审计日志
+
+        Args:
+            decision: LLM决策
+            bar_time: K线时间
+            current_price: 当前价格
+            current_pos_qty: 当前持仓（>0多头，<0空头）
+            position: TqSDK持仓对象
+            current_atr: 当前ATR值
+        """
+        is_long = current_pos_qty > 0
+        entry_price = position.open_price_long if is_long else position.open_price_short
+
+        # Calculate hard stop loss boundary
+        hard_stop_loss = self._calculate_hard_stop_loss(entry_price, current_atr, is_long)
+
+        # Build audit log
+        audit_msg = self._build_audit_header(
+            bar_time, current_price, entry_price, hard_stop_loss, decision.adjustment_reason
+        )
+
+        # Process override request
+        if decision.override_stop_loss:
+            audit_msg += self._process_override_request(bar_time)
+
+        # Process stop loss adjustment
+        if decision.adjust_stop_loss is not None:
+            audit_msg += self._process_stop_loss_adjustment(
+                decision.adjust_stop_loss, bar_time, is_long, hard_stop_loss
+            )
+
+        # Process take profit adjustment
+        if decision.adjust_take_profit is not None:
+            audit_msg += self._process_take_profit_adjustment(
+                decision.adjust_take_profit, bar_time, is_long, entry_price
+            )
+
+        audit_msg += f"{'='*80}\n"
+        self._write_audit_log(audit_msg)
+
+    def _calculate_hard_stop_loss(self, entry_price: float, atr: float, is_long: bool) -> float:
+        """计算硬止损价格"""
+        if is_long:
+            return entry_price - (atr * self.HARD_STOP_LOSS_ATR)
+        else:
+            return entry_price + (atr * self.HARD_STOP_LOSS_ATR)
+
+    def _check_hard_stop_loss_take_profit(
+        self,
+        bar_time,
+        current_price: float,
+        current_pos_qty: int,
+        entry_price: float,
+        current_atr: float
+    ) -> Tuple[bool, bool]:
+        """
+        检查硬止损和硬止盈
+
+        Args:
+            bar_time: K线时间
+            current_price: 当前价格
+            current_pos_qty: 当前持仓（>0多头，<0空头）
+            entry_price: 开仓价格
+            current_atr: 当前ATR
+
+        Returns:
+            (是否触发硬止损, 是否触发硬止盈)
+        """
+        if current_pos_qty == 0:
+            return False, False
+
+        # Validate ATR
+        if current_atr <= 0:
+            logger.warning(f"ATR无效({current_atr})，使用价格的{self.FALLBACK_ATR_PCT:.1%}作为fallback")
+            current_atr = current_price * self.FALLBACK_ATR_PCT
+
+        is_long = current_pos_qty > 0
+
+        # Calculate hard levels
+        if is_long:
+            hard_stop_loss = entry_price - (current_atr * self.HARD_STOP_LOSS_ATR)
+            hard_take_profit = entry_price + (current_atr * self.HARD_TAKE_PROFIT_ATR)
+
+            # Check hard stop loss
+            if current_price <= hard_stop_loss:
+                logger.error(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ 硬止损触发 @ {current_price:.2f}\n"
+                    f"  └─ 开仓价: {entry_price:.2f}, 硬止损价: {hard_stop_loss:.2f} "
+                    f"(开仓价 - ATR×{self.HARD_STOP_LOSS_ATR})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return True, False
+
+            # Check hard take profit
+            if current_price >= hard_take_profit:
+                logger.info(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯✅ 硬止盈触发 @ {current_price:.2f}\n"
+                    f"  └─ 开仓价: {entry_price:.2f}, 硬止盈价: {hard_take_profit:.2f} "
+                    f"(开仓价 + ATR×{self.HARD_TAKE_PROFIT_ATR})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return False, True
+
+        else:  # Short
+            hard_stop_loss = entry_price + (current_atr * self.HARD_STOP_LOSS_ATR)
+            hard_take_profit = entry_price - (current_atr * self.HARD_TAKE_PROFIT_ATR)
+
+            # Check hard stop loss
+            if current_price >= hard_stop_loss:
+                logger.error(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ 硬止损触发 @ {current_price:.2f}\n"
+                    f"  └─ 开仓价: {entry_price:.2f}, 硬止损价: {hard_stop_loss:.2f} "
+                    f"(开仓价 + ATR×{self.HARD_STOP_LOSS_ATR})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return True, False
+
+            # Check hard take profit
+            if current_price <= hard_take_profit:
+                logger.info(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯✅ 硬止盈触发 @ {current_price:.2f}\n"
+                    f"  └─ 开仓价: {entry_price:.2f}, 硬止盈价: {hard_take_profit:.2f} "
+                    f"(开仓价 - ATR×{self.HARD_TAKE_PROFIT_ATR})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return False, True
+
+        return False, False
+
+    def _check_soft_stop_loss_take_profit(
+        self,
+        bar_time,
+        current_price: float,
+        current_pos_qty: int,
+        override_stop_loss: bool
+    ) -> Tuple[bool, bool]:
+        """
+        检查软止损和软止盈
+
+        Args:
+            bar_time: K线时间
+            current_price: 当前价格
+            current_pos_qty: 当前持仓
+            override_stop_loss: LLM是否请求忽略软止损
+
+        Returns:
+            (是否触发软止损, 是否触发软止盈)
+        """
+        if current_pos_qty == 0 or override_stop_loss:
+            return False, False
+
+        is_long = current_pos_qty > 0
+
+        if is_long:
+            # Check soft stop loss
+            if self.active_stop_loss > 0 and current_price <= self.active_stop_loss:
+                logger.info(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🛑 软止损触发 @ {current_price:.2f} "
+                    f"(止损价: {self.active_stop_loss:.2f})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return True, False
+
+            # Check soft take profit
+            if self.active_take_profit > 0 and current_price >= self.active_take_profit:
+                logger.info(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯 软止盈触发 @ {current_price:.2f} "
+                    f"(止盈价: {self.active_take_profit:.2f})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return False, True
+
+        else:  # Short
+            # Check soft stop loss
+            if self.active_stop_loss > 0 and current_price >= self.active_stop_loss:
+                logger.info(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🛑 软止损触发 @ {current_price:.2f} "
+                    f"(止损价: {self.active_stop_loss:.2f})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return True, False
+
+            # Check soft take profit
+            if self.active_take_profit > 0 and current_price <= self.active_take_profit:
+                logger.info(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯 软止盈触发 @ {current_price:.2f} "
+                    f"(止盈价: {self.active_take_profit:.2f})"
+                )
+                self.active_stop_loss = 0.0
+                self.active_take_profit = 0.0
+                return False, True
+
+        return False, False
+
+    def _build_audit_header(
+        self,
+        bar_time,
+        current_price: float,
+        entry_price: float,
+        hard_stop_loss: float,
+        reason: Optional[str]
+    ) -> str:
+        """构建审计日志头部"""
+        msg = f"\n{'='*80}\n"
+        msg += f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] LLM止盈止损调整请求\n"
+        msg += f"当前价格: {current_price:.2f}\n"
+        msg += f"开仓价格: {entry_price:.2f}\n"
+        msg += f"当前止损: {self.active_stop_loss:.2f}\n"
+        msg += f"当前止盈: {self.active_take_profit:.2f}\n"
+        msg += f"硬止损: {hard_stop_loss:.2f} (不可超越)\n"
+        msg += f"调整原因: {reason}\n"
+        return msg
+
+    def _process_override_request(self, bar_time) -> str:
+        """处理忽略软止损请求"""
+        logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  LLM请求忽略软止损")
+        return "动作: 忽略软止损\n状态: ✅ 允许（软止损本次不触发）\n"
+
+    def _process_stop_loss_adjustment(
+        self,
+        new_stop_loss: float,
+        bar_time,
+        is_long: bool,
+        hard_stop_loss: float
+    ) -> str:
+        """处理止损调整请求"""
+        msg = f"建议新止损: {new_stop_loss:.2f}\n"
+
+        # Check if exceeds hard stop loss
+        if (is_long and new_stop_loss < hard_stop_loss) or (not is_long and new_stop_loss > hard_stop_loss):
+            logger.error(
+                f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ "
+                f"LLM建议止损({new_stop_loss:.2f})超过硬止损({hard_stop_loss:.2f})，拒绝"
+            )
+            return msg + "状态: ❌ 拒绝（超过硬止损限制）\n"
+
+        # Check loosening percentage
+        warning_msg = ""
+        if self.active_stop_loss > 0:
+            loosening_pct = abs((new_stop_loss - self.active_stop_loss) / self.active_stop_loss)
+            is_loosening = (is_long and new_stop_loss < self.active_stop_loss) or \
+                          (not is_long and new_stop_loss > self.active_stop_loss)
+
+            if is_loosening and loosening_pct > self.MAX_LOOSENING_PCT:
+                logger.warning(
+                    f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  "
+                    f"止损放宽超过{self.MAX_LOOSENING_PCT:.0%}({loosening_pct:.1%})，仍然接受"
+                )
+                warning_msg = f"状态: ⚠️  接受（但放宽幅度较大: {loosening_pct:.1%}）\n"
+
+        # Accept adjustment
+        logger.info(
+            f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ✅ "
+            f"接受LLM止损调整: {self.active_stop_loss:.2f} → {new_stop_loss:.2f}"
+        )
+        self.active_stop_loss = new_stop_loss
+        return msg + (warning_msg or "状态: ✅ 接受\n")
+
+    def _process_take_profit_adjustment(
+        self,
+        new_take_profit: float,
+        bar_time,
+        is_long: bool,
+        entry_price: float
+    ) -> str:
+        """处理止盈调整请求"""
+        msg = f"建议新止盈: {new_take_profit:.2f}\n"
+
+        # Validate take profit direction
+        warning_msg = ""
+        if (is_long and new_take_profit < entry_price) or (not is_long and new_take_profit > entry_price):
+            direction = "多头" if is_long else "空头"
+            relation = "低于" if is_long else "高于"
+            logger.warning(
+                f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️  "
+                f"{direction}止盈({new_take_profit:.2f}){relation}开仓价({entry_price:.2f})，仍然接受"
+            )
+            warning_msg = f"状态: ⚠️  接受（但{relation}开仓价）\n"
+
+        # Accept adjustment
+        logger.info(
+            f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ✅ "
+            f"接受LLM止盈调整: {self.active_take_profit:.2f} → {new_take_profit:.2f}"
+        )
+        self.active_take_profit = new_take_profit
+        return msg + (warning_msg or "状态: ✅ 接受\n")
+
+    def _write_audit_log(self, msg: str):
+        """写入审计日志"""
+        try:
+            with open(self.adjustment_log_path, "a", encoding="utf-8") as f:
+                f.write(msg)
+        except Exception as e:
+            logger.warning(f"写入审计日志失败: {e}")
+
+    def _calculate_technical_indicators(self, klines: pd.DataFrame, period_display: str = "") -> pd.DataFrame:
+        """
+        计算技术指标（使用TqSDK）
+
+        Args:
+            klines: K线数据
+            period_display: 周期显示名称（用于日志）
+
+        Returns:
+            添加了技术指标的K线数据
+        """
+        try:
+            from tqsdk.ta import MA, RSI, ATR, MACD
+        except Exception as e:
+            logger.error(f"无法导入TqSDK指标函数: {e}")
+            raise
+
+        try:
+            # Calculate indicators
+            ma10 = MA(klines, 10)
+            ma30 = MA(klines, 30)
+            ma60 = MA(klines, 60)
+            rsi_series = RSI(klines, 14)
+            atr_series = ATR(klines, 14)
+            macd_series = MACD(klines, 12, 26, 9)
+
+            # Add to DataFrame
+            klines["ma10"] = ma10["ma"].astype(float)
+            klines["ma30"] = ma30["ma"].astype(float)
+            klines["ma60"] = ma60["ma"].astype(float)
+            klines["rsi"] = rsi_series["rsi"].astype(float)
+            klines["atr"] = atr_series["atr"].astype(float)
+            klines["macd"] = macd_series["diff"].astype(float)
+            klines["macd_dea"] = macd_series["dea"].astype(float)
+            klines["macd_bar"] = macd_series["bar"].astype(float)
+
+            # Validate
+            total_bars = len(klines)
+            valid_count = (~klines["ma30"].isna()).sum()
+            valid_pct = (valid_count / total_bars * 100) if total_bars > 0 else 0
+
+            if period_display:
+                logger.info(f"  ✅ {period_display} 指标计算完成: {valid_count}/{total_bars} ({valid_pct:.1f}%) 有效")
+                if valid_count < total_bars * 0.3:
+                    logger.warning(f"  ⚠️ {period_display} 有效数据不足30%，可能影响决策质量")
+
+            return klines
+
+        except Exception as e:
+            error_msg = f"{period_display} 指标计算失败: {e}" if period_display else f"指标计算失败: {e}"
+            logger.error(f"  ❌ {error_msg}")
+            raise RuntimeError(error_msg)
+
+    def _determine_first_ready_time(self, klines: pd.DataFrame) -> Optional[pd.Timestamp]:
+        """
+        确定指标就绪的第一个时间点
+
+        Args:
+            klines: K线数据
+
+        Returns:
+            第一个所有关键指标都有效的时间点，如果没有则返回None
+        """
+        critical_indicators = ['ma10', 'ma30', 'rsi', 'atr']
+        ready_mask = True
+
+        for ind in critical_indicators:
+            if ind not in klines.columns:
+                logger.error(f"关键指标 {ind} 不存在于K线数据中")
+                return None
+            ready_mask = ready_mask & (~klines[ind].isna())
+
+        if not ready_mask.any():
+            logger.error(
+                f"关键指标({'/'.join(critical_indicators)})始终为NaN，"
+                f"数据长度不足（建议≥60根K线），当前: {len(klines)}"
+            )
+            return None
+
+        return tafunc.time_to_datetime(klines.loc[ready_mask, "datetime"].iloc[0])
+
+    def _setup_klines_and_indicators(
+        self,
+        api,
+        symbol: str,
+        is_multi_timeframe: bool
+    ) -> Tuple[pd.DataFrame, Optional[Dict[str, pd.DataFrame]], Optional[pd.Timestamp], bool]:
+        """
+        设置K线数据和技术指标
+
+        Args:
+            api: TqSDK API实例
+            symbol: 交易合约
+            is_multi_timeframe: 是否多周期模式
+
+        Returns:
+            (主K线, 多周期K线字典, 指标就绪时间, 预热日志标志)
+        """
+        if is_multi_timeframe:
+            logger.info("=== 使用多周期模式 ===")
+            klines_dict = self._fetch_multi_timeframe_data(api, symbol)
+            klines = klines_dict.get("decision")
+            if klines is None:
+                raise RuntimeError("决策周期数据获取失败")
+        else:
+            logger.info("=== 使用单周期模式 ===")
+            duration_seconds = self.cfg.get_decision_duration_seconds()
+            data_length = self.cfg.get_auto_count() + self.DATA_WARMUP_BARS
+
+            klines = api.get_kline_serial(
+                symbol,
+                duration_seconds=duration_seconds,
+                data_length=data_length
+            )
+
+            logger.info(f"开始计算TqSDK技术指标，数据长度: {len(klines)} bars")
+            klines = self._calculate_technical_indicators(klines)
+
+            # Validate indicators
+            total_bars = len(klines)
+            min_required = max(60, 26, 14)
+            if total_bars < min_required:
+                logger.warning(f"数据长度({total_bars})少于建议值({min_required})，指标可能部分为NaN")
+
+            klines_dict = None
+
+        # Find first ready time
+        first_ready_time = self._determine_first_ready_time(klines)
+        if first_ready_time is None:
+            raise RuntimeError("关键指标无有效数据，无法继续回测")
+
+        return klines, klines_dict, first_ready_time, False
+
+    def _fetch_multi_timeframe_data(self, api, symbol: str) -> Dict[str, pd.DataFrame]:
+        """
+        获取并计算多周期K线数据和技术指标
+
+        Args:
+            api: TqSDK API实例
+            symbol: 交易合约
+
+        Returns:
+            周期名称到K线数据的映射
+            Example: {"decision": df_1d, "aux_240m": df_4h, "aux_60m": df_1h}
+        """
+        klines_dict = {}
+        all_periods = self.cfg.get_all_periods()
+
+        logger.info("=== 获取多周期数据 ===")
+        logger.info(f"配置的周期: {all_periods}")
+
+        for period_name, period_minutes in all_periods.items():
+            duration_seconds = period_minutes * 60
+            data_length = self.cfg.get_auto_count_for_period(period_minutes)
+            period_display = self.cfg.get_period_name(period_minutes)
+
+            logger.info(f"获取 {period_display} 数据: {data_length} 根K线...")
+
+            # Fetch klines
+            klines = api.get_kline_serial(
+                symbol,
+                duration_seconds=duration_seconds,
+                data_length=data_length
+            )
+            api.wait_update()
+
+            # Calculate indicators
+            klines = self._calculate_technical_indicators(klines, period_display)
+            klines_dict[period_name] = klines
+
+        logger.info(f"=== 多周期数据获取完成：共 {len(klines_dict)} 个周期 ===")
+        return klines_dict
+
+    def _setup_tqsdk_auth(self, username: Optional[str], password: Optional[str]):
+        """设置TqSDK认证"""
+        if not username or not password:
+            return None
+
+        try:
+            from tqsdk import TqAuth
+            return TqAuth(username, password)
+        except Exception:
+            return None
+
+    def _normalize_symbol(self, symbol: str) -> str:
+        """标准化合约符号为TqSDK格式"""
+        sym_up = (symbol or "").strip().upper()
+
+        # Handle SA special cases
+        if sym_up in ("SA0", "SA", "CZCE.SA0", "CZCE.SA") or sym_up.endswith(".SA0"):
+            return "KQ.m@CZCE.SA"
+
+        # Handle CZCE exchange
+        if sym_up.startswith("SA") and "." not in sym_up:
+            return f"CZCE.{symbol}"
+
+        return symbol
+
+    def _update_engine_trade_meta(self, updates: Dict[str, Any]):
+        """更新引擎的交易元数据"""
+        # Try llm_direct first (for LLMDirectEngine)
+        if hasattr(self.engine, 'llm_direct') and hasattr(self.engine.llm_direct, 'trade_meta'):
+            self.engine.llm_direct.trade_meta.update(updates)
+        # Fallback to engine directly (for HybridEngine)
+        elif hasattr(self.engine, 'trade_meta'):
+            self.engine.trade_meta.update(updates)
+
+    def _calculate_initial_capital_from_units(self, auth) -> float:
+        """
+        根据单位数计算初始资金
+
+        Args:
+            auth: TqSDK认证对象
+
+        Returns:
+            计算得到的初始资金
+        """
+        if self.initial_units is None:
+            return self.cfg.initial_capital
+
+        logger.info(f"准备根据单位数 {self.initial_units} 计算初始资金...")
+
+        try:
+            from tqsdk import TqApi
+            import math
+
+            # Create temporary API to fetch price
+            temp_api = TqApi(auth=auth) if auth else TqApi()
+            symbol_tq_data = self._normalize_symbol(self.cfg.symbol)
+            temp_quote = temp_api.get_quote(symbol_tq_data)
+
+            # Wait with timeout
+            temp_api.wait_update(deadline=time.time() + 10)
+
+            # Try to get a valid price, checking multiple fields
+            first_price = None
+            price_fields = ['last_price', 'close', 'settlement', 'pre_settlement', 'open', 'high', 'low', 'pre_close']
+            checked_fields = {}
+
+            for field in price_fields:
+                if hasattr(temp_quote, field):
+                    value = getattr(temp_quote, field)
+                    checked_fields[field] = value
+                    if value is not None and not math.isnan(float(value)) and float(value) > 0:
+                        first_price = float(value)
+                        logger.info(f"从实时API的 {field} 字段获取价格: {first_price:.2f}")
+                        break
+
+            if first_price is None:
+                logger.warning(f"无法从实时API获取有效价格，所有检查的价格字段:")
+                for field, value in checked_fields.items():
+                    logger.warning(f"  {field}: {value}")
+                temp_api.close()
+                raise ValueError(f"所有价格字段都是 NaN 或无效")
+
+            contract_multiplier = int(temp_quote.volume_multiple)
+
+            # Get commission
+            commission = self.cfg.commission_per_lot
+            if commission is None and hasattr(temp_quote, 'commission'):
+                commission = float(temp_quote.commission)
+                logger.info(f"从 TqSDK 获取手续费: {commission} 元/手")
+
+            temp_api.close()
+
+            # Calculate capital
+            margin_ratio = self.cfg.margin_ratio
+            contract_value = first_price * contract_multiplier * self.initial_units
+            required_margin = contract_value * margin_ratio
+            initial_capital = required_margin * self.CAPITAL_BUFFER_MULTIPLIER
+
+            # Update config and engine
+            self.cfg.initial_capital = initial_capital
+            updates = {'initial_capital': initial_capital, 'margin_ratio': margin_ratio}
+            if commission is not None:
+                updates['commission_per_lot'] = commission
+            self._update_engine_trade_meta(updates)
+
+            logger.info("根据单位数和保证金比例计算初始资金:")
+            logger.info(f"  合约价值: {first_price:.2f} × {contract_multiplier} × {self.initial_units} = {contract_value:,.2f}")
+            logger.info(f"  所需保证金: {contract_value:,.2f} × {margin_ratio:.1%} = {required_margin:,.2f}")
+            logger.info(f"  初始资金: {required_margin:,.2f} × {self.CAPITAL_BUFFER_MULTIPLIER} = {initial_capital:,.2f} (含缓冲)")
+
+            return initial_capital
+
+        except Exception as e:
+            logger.warning(f"无法获取价格计算初始资金，使用默认值: {e}")
+            return self.cfg.initial_capital
+
+    def run_tqsdk(self, start_dt: datetime, end_dt: datetime, username: Optional[str] = None, password: Optional[str] = None, use_sim: bool = True, web_gui: Optional[bool | str] = None) -> Dict[str, Any]:
+        """
+        运行TqSDK回测
+
+        Args:
+            start_dt: 回测开始时间
+            end_dt: 回测结束时间
+            username: TqSDK用户名
+            password: TqSDK密码
+            use_sim: 是否使用模拟账户
+            web_gui: 启用Web GUI。可以是True（使用默认地址）或指定地址字符串（如 "http://192.168.1.100:9876"）
+
+        Returns:
+            回测结果字典
+        """
+        try:
+            from tqsdk import TqApi, TqBacktest, TqAuth, TqSim, TargetPosTask
+            from tqsdk.ta import MA, RSI, ATR, MACD
+        except Exception as e:
+            logger.error(f"未安装或无法导入TqSDK: {e}")
+            raise
+
+        # Setup authentication
+        auth = self._setup_tqsdk_auth(username, password)
+
+        # Calculate initial capital
+        initial_capital = self._calculate_initial_capital_from_units(auth)
+
+        # Create backtest API
+        backtest_params = {
+            'account': TqSim(init_balance=initial_capital),
+            'backtest': TqBacktest(start_dt=start_dt, end_dt=end_dt)
+        }
+        if auth:
+            backtest_params['auth'] = auth
+
+        # Add web_gui parameter if specified
+        if web_gui is not None:
+            backtest_params['web_gui'] = web_gui
+
+        api = TqApi(**backtest_params)
+
+        # Get trading symbols
+        symbol_tq_data = self._normalize_symbol(self.cfg.symbol)
+        quote = api.get_quote(symbol_tq_data)
+        api.wait_update()
+
+        symbol_tq_trade = quote.underlying_symbol if hasattr(quote, 'underlying_symbol') and quote.underlying_symbol else symbol_tq_data
+
+        # Update contract info in engine
+        contract_multiplier = int(quote.volume_multiple)
+        logger.info(f"从 TqSDK 获取合约乘数: {contract_multiplier}")
+
+        commission = self.cfg.commission_per_lot
+        if commission is None and hasattr(quote, 'commission'):
+            commission = float(quote.commission)
+            logger.info(f"从 TqSDK 获取手续费: {commission} 元/手")
+        elif commission is not None:
+            logger.info(f"使用配置指定的手续费: {commission} 元/手")
+
+        updates = {'contract_multiplier': contract_multiplier}
+        if commission is not None:
+            updates['commission_per_lot'] = commission
+        self._update_engine_trade_meta(updates)
+
+        # Setup klines and indicators
+        is_multi_timeframe = len(self.cfg.get_all_periods()) > 1
+        klines, klines_dict, first_ready_time, warmup_logged = self._setup_klines_and_indicators(
+            api, symbol_tq_data, is_multi_timeframe
+        )
+
+        # Ensure first_ready_time has same timezone info as end_dt for comparison
+        if first_ready_time is not None and end_dt.tzinfo is not None and first_ready_time.tzinfo is None:
+            first_ready_time = first_ready_time.tz_localize(end_dt.tzinfo)
+
+        # Log backtest info
+        duration_seconds = self.cfg.get_decision_duration_seconds()
+        data_length = self.cfg.get_auto_count() + self.DATA_WARMUP_BARS
+
+        logger.info("=== TqSDK原生回测 ===")
+        logger.info(f"数据合约: {symbol_tq_data}")
+        logger.info(f"交易合约: {symbol_tq_trade}")
+        logger.info(f"回测区间: {start_dt} ~ {end_dt}")
+        logger.info(f"决策周期: {self.cfg.decision_period}分钟 ({duration_seconds}秒)")
+        logger.info(f"数据长度: {data_length} bars")
+        logger.info(f"初始资金: {self.cfg.initial_capital:,.2f}")
+
+        # Get TqSDK objects
+        account = api.get_account()
+        position = api.get_position(symbol_tq_trade)
+
+        # Create target position task (handles order timing automatically)
+        target_pos_task = TargetPosTask(api, symbol_tq_trade)
+
+        # Trading state tracking
+        processed_bars = set()
+        trade_count = 0
+        initial_balance = account.balance
+        total_bars_expected = int((end_dt - start_dt).days) if self.cfg.decision_period >= 1440 else None
+
+        logger.info(f"初始资金: {initial_balance:,.2f}")
+        logger.info(f"使用TargetPosTask自动处理订单时间")
+        if total_bars_expected:
+            logger.info(f"预计处理 {total_bars_expected} 根K线")
+        
+        # Main backtest loop
+        while api.wait_update():  # Returns False when backtest ends
+            
+            # Check if new bar completed
+            if api.is_changing(klines):
+                if len(klines) < 2:
+                    continue
+                
+                # Recompute indicators each update (TqSDK may refresh klines and drop custom cols)
+                try:
+                    ma10 = MA(klines, 10)
+                    ma30 = MA(klines, 30)
+                    ma60 = MA(klines, 60)
+                    rsi_series = RSI(klines, 14)
+                    atr_series = ATR(klines, 14)
+                    macd_series = MACD(klines, 12, 26, 9)
+
+                    klines["ma10"] = ma10["ma"].astype(float)
+                    klines["ma30"] = ma30["ma"].astype(float)
+                    klines["ma60"] = ma60["ma"].astype(float)
+                    klines["rsi"] = rsi_series["rsi"].astype(float)
+                    klines["atr"] = atr_series["atr"].astype(float)
+                    klines["macd"] = macd_series["diff"].astype(float)
+                    klines["macd_dea"] = macd_series["dea"].astype(float)
+                    klines["macd_bar"] = macd_series["bar"].astype(float)
+
+                    # 显式同步到 klines_dict（多周期模式）
+                    if is_multi_timeframe and klines_dict and "decision" in klines_dict:
+                        klines_dict["decision"] = klines
+                except Exception:
+                    pass
+
+                # 更新多周期辅助数据（针对 llm_direct 模式）
+                if is_multi_timeframe and klines_dict:
+                    for period_key in klines_dict.keys():
+                        if period_key == "decision":
+                            continue  # 决策周期已在上面更新
+
+                        try:
+                            aux_klines = klines_dict[period_key]
+                            # 重新计算辅助周期的所有指标
+                            ma10_aux = MA(aux_klines, 10)
+                            ma30_aux = MA(aux_klines, 30)
+                            ma60_aux = MA(aux_klines, 60)
+                            rsi_aux = RSI(aux_klines, 14)
+                            atr_aux = ATR(aux_klines, 14)
+                            macd_aux = MACD(aux_klines, 12, 26, 9)
+
+                            aux_klines["ma10"] = ma10_aux["ma"].astype(float)
+                            aux_klines["ma30"] = ma30_aux["ma"].astype(float)
+                            aux_klines["ma60"] = ma60_aux["ma"].astype(float)
+                            aux_klines["rsi"] = rsi_aux["rsi"].astype(float)
+                            aux_klines["atr"] = atr_aux["atr"].astype(float)
+                            aux_klines["macd"] = macd_aux["diff"].astype(float)
+                            aux_klines["macd_dea"] = macd_aux["dea"].astype(float)
+                            aux_klines["macd_bar"] = macd_aux["bar"].astype(float)
+                        except Exception as e:
+                            logger.warning(f"辅助周期 {period_key} 指标更新失败: {e}")
+                
+                # Get completed bar (second to last)
+                bar = klines.iloc[-2]
+                bar_time = tafunc.time_to_datetime(bar["datetime"])
+                
+                # Warmup: skip decisions until critical indicators are ready
+                if 'first_ready_time' in locals() and first_ready_time is not None and bar_time < first_ready_time:
+                    if not warmup_logged:
+                        logger.info(f"指标预热中，等待至 {first_ready_time} 开始决策")
+                        warmup_logged = True
+                    continue
+
+                # Skip if already processed
+                if bar_time in processed_bars:
+                    continue
+                processed_bars.add(bar_time)
+
+                # Show progress
+                bars_processed = len(processed_bars)
+                if total_bars_expected and bars_processed % max(1, total_bars_expected // 10) == 0:
+                    progress_pct = (bars_processed / total_bars_expected) * 100
+                    logger.info(f"进度: {bars_processed}/{total_bars_expected} bars ({progress_pct:.1f}%)")
+                
+                # Check if we've reached end
+                if bar_time >= end_dt:
+                    logger.info(f"达到回测结束时间: {bar_time}")
+                    break
+                
+                # Prepare context data (all bars before current)
+                ctx = klines.iloc[: len(klines)-1 ].copy()
+                df_ctx = pd.DataFrame({
+                    "timestamp": ctx["datetime"].apply(tafunc.time_to_datetime),
+                    "open": ctx["open"].astype(float),
+                    "high": ctx["high"].astype(float),
+                    "low": ctx["low"].astype(float),
+                    "close": ctx["close"].astype(float),
+                    "volume": ctx["volume"].astype(float),
+                })
+
+                # Copy technical indicators if available
+                indicator_columns = ["ma10", "ma30", "ma60", "rsi", "atr", "macd", "macd_dea", "macd_bar"]
+                copied_indicators = []
+                missing_indicators = []
+
+                for col in indicator_columns:
+                    if col in ctx.columns:
+                        df_ctx[col] = ctx[col].astype(float)
+                        # Check if this column has valid values
+                        valid_count = (~df_ctx[col].isna()).sum()
+                        if valid_count > 0:
+                            copied_indicators.append(f"{col}({valid_count})")
+                        else:
+                            missing_indicators.append(f"{col}(全空)")
+                    else:
+                        missing_indicators.append(f"{col}(不存在)")
+
+                # Log indicator status for first bar (to avoid spam)
+                if bars_processed == 1:
+                    logger.info(f"✅ 已复制指标: {', '.join(copied_indicators) if copied_indicators else '无'}")
+                    if missing_indicators:
+                        logger.warning(f"⚠️ 缺失/空值指标: {', '.join(missing_indicators)}")
+                
+                # Current bar as Series
+                row = pd.Series({
+                    "timestamp": bar_time,
+                    "open": float(bar["open"]),
+                    "high": float(bar["high"]),
+                    "low": float(bar["low"]),
+                    "close": float(bar["close"]),
+                    "volume": float(bar["volume"]),
+                })
+
+                # Add technical indicators to current bar (ONLY TqSDK calculated)
+                current_bar_indicators = {}
+                for col in indicator_columns:
+                    if col in bar.index and not pd.isna(bar[col]):
+                        row[col] = float(bar[col])
+                        current_bar_indicators[col] = float(bar[col])
+
+                # Log current bar indicators for first few bars (debugging)
+                if bars_processed <= 3:
+                    logger.debug(f"[Bar {bars_processed}] 当前K线指标: {current_bar_indicators}")
+
+                # ✅ 严格验证关键指标：ma10, ma30, rsi, atr 必须存在且有效
+                # 这些是 SimpleQuantEngine 和 LLMDirectEngine 都需要的核心指标
+                critical_indicators = ['ma10', 'ma30', 'rsi', 'atr']
+                missing_critical = []
+                for critical_ind in critical_indicators:
+                    if critical_ind not in row.index or pd.isna(row.get(critical_ind)):
+                        missing_critical.append(critical_ind)
+
+                if missing_critical:
+                    # 关键指标缺失，跳过此bar的决策
+                    if bars_processed <= 5:  # Only warn for first few bars
+                        logger.warning(f"[Bar {bars_processed}] ⚠️ 关键指标缺失/NaN: {missing_critical}，跳过决策")
+                    continue  # Skip decision for this bar
+
+                # Set row.name to the index it will have in the dataframe
+                row.name = len(df_ctx)
+                # Append row to df_ctx so indicators can be computed
+                df_ctx = pd.concat([df_ctx, row.to_frame().T], ignore_index=False)
+
+                current_price = float(row["close"]) if not pd.isna(row["close"]) else float(row["open"])
+
+                # Get current position from TqSDK
+                current_pos_qty = position.pos_long - position.pos_short  # >0 = long, <0 = short, 0 = flat
+                
+                # Inject position/account snapshot from TqSDK for consistent PnL
+                snapshot = {
+                    'account': {
+                        'balance': float(getattr(account, 'balance', 0) or 0),
+                        'static_balance': float(getattr(account, 'static_balance', 0) or 0),
+                        'float_profit': float(getattr(account, 'float_profit', 0) or 0),
+                        'risk_ratio': float(getattr(account, 'risk_ratio', 0) or 0),
+                    },
+                    'position': {
+                        'pos_long': int(getattr(position, 'pos_long', 0) or 0),
+                        'pos_short': int(getattr(position, 'pos_short', 0) or 0),
+                        'open_price_long': float(getattr(position, 'open_price_long', 0) or 0),
+                        'open_price_short': float(getattr(position, 'open_price_short', 0) or 0),
+                        'float_profit_long': (getattr(position, 'float_profit_long', None)),
+                        'float_profit_short': (getattr(position, 'float_profit_short', None)),
+                        'margin': float(getattr(position, 'margin', 0) or 0),
+                    }
+                }
+
+                # Inject position state to decision engine
+                if hasattr(self.engine, "current_pos"):
+                    if current_pos_qty > 0:
+                        self.engine.current_pos = Position(direction="long", qty=current_pos_qty, entry_price=position.open_price_long, stop=0, take=0)
+                    elif current_pos_qty < 0:
+                        self.engine.current_pos = Position(direction="short", qty=abs(current_pos_qty), entry_price=position.open_price_short, stop=0, take=0)
+                    else:
+                        self.engine.current_pos = None
+                    setattr(self.engine, "current_balance", account.balance)
+                    setattr(self.engine, "tqsdk_snapshot", snapshot)
+                    # ✅ Inject stop loss and take profit info for LLM prompt
+                    setattr(self.engine, "active_stop_loss", self.active_stop_loss)
+                    setattr(self.engine, "active_take_profit", self.active_take_profit)
+                elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
+                    if current_pos_qty > 0:
+                        self.engine.llm_direct.current_pos = Position(direction="long", qty=current_pos_qty, entry_price=position.open_price_long, stop=0, take=0)
+                    elif current_pos_qty < 0:
+                        self.engine.llm_direct.current_pos = Position(direction="short", qty=abs(current_pos_qty), entry_price=position.open_price_short, stop=0, take=0)
+                    else:
+                        self.engine.llm_direct.current_pos = None
+                    setattr(self.engine.llm_direct, "current_balance", account.balance)
+                    setattr(self.engine.llm_direct, "tqsdk_snapshot", snapshot)
+                    # ✅ Inject stop loss and take profit info for LLM prompt
+                    setattr(self.engine.llm_direct, "active_stop_loss", self.active_stop_loss)
+                    setattr(self.engine.llm_direct, "active_take_profit", self.active_take_profit)
+                
+                # ========================================
+                # STEP 1: 硬止损检查（最高优先级，无法被LLM覆盖）
+                # ========================================
+                hard_stop_triggered = False
+                hard_take_profit_triggered = False
+
+                if current_pos_qty != 0:
+                    # 获取ATR用于计算硬止损
+                    current_atr = float(row.get("atr", 0))
+                    if current_atr <= 0:
+                        logger.warning(f"ATR无效({current_atr})，无法计算硬止损")
+                        current_atr = current_price * 0.02  # Fallback: 2% of price
+
+                    # 获取开仓价
+                    entry_price = position.open_price_long if current_pos_qty > 0 else position.open_price_short
+
+                    # 计算硬止损和硬止盈
+                    if current_pos_qty > 0:  # Long position
+                        hard_stop_loss = entry_price - (current_atr * self.HARD_STOP_LOSS_ATR)
+                        hard_take_profit = entry_price + (current_atr * self.HARD_TAKE_PROFIT_ATR)
+
+                        # Check hard stop loss
+                        if current_price <= hard_stop_loss:
+                            logger.error(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ 硬止损触发 @ {current_price:.2f}")
+                            logger.error(f"  └─ 开仓价: {entry_price:.2f}, 硬止损价: {hard_stop_loss:.2f} (开仓价 - ATR×{self.HARD_STOP_LOSS_ATR})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                        # Check hard take profit
+                        elif current_price >= hard_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯✅ 硬止盈触发 @ {current_price:.2f}")
+                            logger.info(f"  └─ 开仓价: {entry_price:.2f}, 硬止盈价: {hard_take_profit:.2f} (开仓价 + ATR×{self.HARD_TAKE_PROFIT_ATR})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                    elif current_pos_qty < 0:  # Short position
+                        hard_stop_loss = entry_price + (current_atr * self.HARD_STOP_LOSS_ATR)
+                        hard_take_profit = entry_price - (current_atr * self.HARD_TAKE_PROFIT_ATR)
+
+                        # Check hard stop loss
+                        if current_price >= hard_stop_loss:
+                            logger.error(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ❌ 硬止损触发 @ {current_price:.2f}")
+                            logger.error(f"  └─ 开仓价: {entry_price:.2f}, 硬止损价: {hard_stop_loss:.2f} (开仓价 + ATR×{self.HARD_STOP_LOSS_ATR})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                        # Check hard take profit
+                        elif current_price <= hard_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯✅ 硬止盈触发 @ {current_price:.2f}")
+                            logger.info(f"  └─ 开仓价: {entry_price:.2f}, 硬止盈价: {hard_take_profit:.2f} (开仓价 - ATR×{self.HARD_TAKE_PROFIT_ATR})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            hard_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                # Skip decision making if hard stop was triggered
+                if hard_stop_triggered or hard_take_profit_triggered:
+                    continue
+
+                # ========================================
+                # STEP 2: 策略决策（硬止损未触发时）
+                # ========================================
+                try:
+                    if self.mode == DecisionMode.QUANT_ONLY:
+                        decision = self.engine.decide(row, df_ctx)
+                    else:
+                        # Pass multi-timeframe data if available
+                        decision = self.engine.decide(row, df_ctx, symbol=self.cfg.symbol, klines_dict=klines_dict, cfg=self.cfg)
+
+                    # Output LLM rationale if enabled
+                    if self.show_rationale and decision.rationale and len(decision.rationale) > 0:
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 决策依据: {' | '.join(decision.rationale)}")
+                        if decision.confidence > 0:
+                            logger.info(f"  → 置信度: {decision.confidence:.2%}, 操作: {decision.action}")
+                except Exception as e:
+                    logger.warning(f"决策失败 @ {bar_time}: {e}")
+                    continue
+
+                # ========================================
+                # STEP 3: 处理LLM止盈止损调整请求
+                # ========================================
+                if decision.override_stop_loss or decision.adjust_stop_loss or decision.adjust_take_profit:
+                    self._process_llm_adjustment(
+                        decision, bar_time, current_price, current_pos_qty,
+                        position, current_atr if 'current_atr' in locals() else float(row.get("atr", 0))
+                    )
+
+                # ========================================
+                # STEP 4: 检查软止损（LLM可覆盖）
+                # ========================================
+                soft_stop_triggered = False
+                soft_take_profit_triggered = False
+
+                # Only check soft stop if LLM didn't override and position exists
+                if current_pos_qty != 0 and not decision.override_stop_loss:
+                    if current_pos_qty > 0:  # Long position
+                        # Check soft stop loss
+                        if self.active_stop_loss > 0 and current_price <= self.active_stop_loss:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🛑 软止损触发 @ {current_price:.2f} (止损价: {self.active_stop_loss:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+                        # Check soft take profit
+                        elif self.active_take_profit > 0 and current_price >= self.active_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯 软止盈触发 @ {current_price:.2f} (止盈价: {self.active_take_profit:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                    elif current_pos_qty < 0:  # Short position
+                        # Check soft stop loss
+                        if self.active_stop_loss > 0 and current_price >= self.active_stop_loss:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🛑 软止损触发 @ {current_price:.2f} (止损价: {self.active_stop_loss:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_stop_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+                        # Check soft take profit
+                        elif self.active_take_profit > 0 and current_price <= self.active_take_profit:
+                            logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🎯 软止盈触发 @ {current_price:.2f} (止盈价: {self.active_take_profit:.2f})")
+                            target_pos_task.set_target_volume(0)
+                            trade_count += 1
+                            soft_take_profit_triggered = True
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                # Skip order execution if soft stop was triggered
+                if soft_stop_triggered or soft_take_profit_triggered:
+                    continue
+
+                # Execute decision via TqSDK using TargetPosTask
+                # TargetPosTask automatically handles order timing and execution
+                try:
+                    new_target_pos = current_pos_qty  # Default: maintain current position
+
+                    if decision.action == "open_long" and current_pos_qty == 0 and decision.position_size > 0:
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📈 开多 {decision.position_size}手 (决策价: {current_price:.2f})")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                        if decision.stop_loss > 0 or decision.take_profit > 0:
+                            logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
+                        new_target_pos = int(decision.position_size)
+                        trade_count += 1
+                        # ✅ Update active stop loss and take profit
+                        self.active_stop_loss = float(decision.stop_loss) if decision.stop_loss > 0 else 0.0
+                        self.active_take_profit = float(decision.take_profit) if decision.take_profit > 0 else 0.0
+
+                    elif decision.action == "open_short" and current_pos_qty == 0 and decision.position_size > 0:
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📉 开空 {decision.position_size}手 (决策价: {current_price:.2f})")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                        if decision.stop_loss > 0 or decision.take_profit > 0:
+                            logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
+                        new_target_pos = -int(decision.position_size)
+                        trade_count += 1
+                        # ✅ Update active stop loss and take profit
+                        self.active_stop_loss = float(decision.stop_loss) if decision.stop_loss > 0 else 0.0
+                        self.active_take_profit = float(decision.take_profit) if decision.take_profit > 0 else 0.0
+
+                    elif decision.action == "close_long" and current_pos_qty > 0:
+                        close_qty = int(decision.position_size) if decision.position_size else current_pos_qty
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🔻 平多 {close_qty}手 @ {current_price:.2f}")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                        new_target_pos = max(0, current_pos_qty - close_qty)
+                        trade_count += 1
+                        # ✅ Clear stop loss and take profit if fully closed
+                        if new_target_pos == 0:
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                    elif decision.action == "close_short" and current_pos_qty < 0:
+                        close_qty = int(decision.position_size) if decision.position_size else abs(current_pos_qty)
+                        logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🔺 平空 {close_qty}手 @ {current_price:.2f}")
+                        if self.show_rationale and decision.rationale:
+                            logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                        new_target_pos = min(0, current_pos_qty + close_qty)
+                        trade_count += 1
+                        # ✅ Clear stop loss and take profit if fully closed
+                        if new_target_pos == 0:
+                            self.active_stop_loss = 0.0
+                            self.active_take_profit = 0.0
+
+                    elif decision.action == "adjust_position":
+                        # New: support fine-grained position adjustment
+                        target = int(decision.target_position)
+                        if target != current_pos_qty:
+                            if current_pos_qty > 0:
+                                # Adjusting long position
+                                if target > current_pos_qty:
+                                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⬆️  加多 {target - current_pos_qty}手 @ {current_price:.2f} (目标: {target}手)")
+                                elif target < current_pos_qty and target >= 0:
+                                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⬇️  减多 {current_pos_qty - target}手 @ {current_price:.2f} (目标: {target}手)")
+                                else:
+                                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🔄 反向调仓 @ {current_price:.2f} (从{current_pos_qty}手多 → {target}手)")
+                            elif current_pos_qty < 0:
+                                # Adjusting short position
+                                if target < current_pos_qty:
+                                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⬆️  加空 {abs(target - current_pos_qty)}手 @ {current_price:.2f} (目标: {target}手)")
+                                elif target > current_pos_qty and target <= 0:
+                                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⬇️  减空 {abs(current_pos_qty - target)}手 @ {current_price:.2f} (目标: {target}手)")
+                                else:
+                                    logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 🔄 反向调仓 @ {current_price:.2f} (从{current_pos_qty}手空 → {target}手)")
+                            else:
+                                # Opening from flat
+                                direction = "多" if target > 0 else "空"
+                                logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📈 开{direction} {abs(target)}手 @ {current_price:.2f}")
+
+                            if self.show_rationale and decision.rationale:
+                                logger.info(f"  └─ 理由: {' | '.join(decision.rationale)}")
+                            if decision.stop_loss > 0 or decision.take_profit > 0:
+                                logger.info(f"  └─ 止损: {decision.stop_loss:.2f}, 止盈: {decision.take_profit:.2f}")
+
+                            new_target_pos = target
+                            trade_count += 1
+                            # ✅ Update stop loss and take profit for adjusted position
+                            if target != 0:
+                                self.active_stop_loss = float(decision.stop_loss) if decision.stop_loss > 0 else 0.0
+                                self.active_take_profit = float(decision.take_profit) if decision.take_profit > 0 else 0.0
+                            else:
+                                # Fully closed position
+                                self.active_stop_loss = 0.0
+                                self.active_take_profit = 0.0
+
+                    # Set target position (TargetPosTask will execute when market is open)
+                    if new_target_pos != current_pos_qty:
+                        target_pos_task.set_target_volume(new_target_pos)
+
+                except Exception as order_err:
+                    logger.warning(f"设置目标持仓失败: {order_err}")
+        
+        # Close any remaining position at end using TargetPosTask
+        final_pos = position.pos_long - position.pos_short
+        if final_pos != 0:
+            logger.info(f"收盘平仓: {final_pos}手")
+            target_pos_task.set_target_volume(0)
+        
+        # Wait a few updates for final orders to process
+        for _ in range(3):
+            api.wait_update()
+        
+        # Collect final statistics
+        final_balance = account.balance
+        total_return = ((final_balance - initial_balance) / initial_balance) * 100.0 if initial_balance > 0 else 0.0
+        
+        logger.info("=== 回测完成 ===")
+        logger.info(f"交易次数: {trade_count}")
+        logger.info(f"初始资金: {initial_balance:,.2f}")
+        logger.info(f"最终权益: {final_balance:,.2f}")
+        logger.info(f"总收益率: {total_return:.2f}%")
+        
+        api.close()
+        
+        return {
+            "initial": initial_balance,
+            "final": final_balance,
+            "return_pct": total_return,
+            "trades": [],  # TqSDK manages trades internally
+            "wins": 0,
+            "losses": 0,
+        }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="LLM Direct Decision Backtest using TqSDK")
+    parser.add_argument("--mode", choices=[m.value for m in DecisionMode], default=DecisionMode.LLM_DIRECT.value, help="Decision mode")
+    parser.add_argument("--symbol", default="KQ.m@CZCE.SA", help="Trading symbol (default: KQ.m@CZCE.SA)")
+    parser.add_argument("--decision-period", type=int, default=None, help="Primary decision period in MINUTES (if not set, uses --period)")
+    parser.add_argument("--auxiliary-periods", type=str, default=None, help="Auxiliary periods for multi-timeframe analysis, comma-separated (e.g., '60,240,1440' for 1h/4h/daily)")
+    parser.add_argument("--count", type=int, default=None, help="Number of K-lines to fetch (auto-calculated if not specified)")
+    parser.add_argument("--cache", default=None, help="Cache file path (if not specified, no caching will be used)")
+    parser.add_argument("--start", help="Backtest start datetime, e.g. 2024-09-01 09:00")
+    parser.add_argument("--end", help="Backtest end datetime, e.g. 2024-10-31 15:00")
+    parser.add_argument("--initial_units", type=float, default=2.0, help="Initial position units (default: 2.0 lots)")
+    parser.add_argument("--margin_ratio", type=float, default=0.18, help="Margin ratio for futures (default: 0.18 = 18%%)")
+    parser.add_argument("--show_rationale", action="store_true", help="Show detailed rationale for each decision (default: False)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging for LLM responses (default: False)")
+    parser.add_argument("--web-gui", type=str, nargs='?', const=True, default=None, help="Enable TqSDK web GUI for visualization. Use --web-gui for default (True), or specify address like --web-gui=http://192.168.1.100:9876")
+    args = parser.parse_args()
+
+    # Configure logging level based on debug flag
+    log_level = "DEBUG" if args.debug else "INFO"
+
+    # Remove default handler and add custom handlers with proper level
+    logger.remove()  # Remove default handler
+
+    # Add console handler with appropriate level
+    logger.add(
+        sys.stderr,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=log_level
+    )
+
+    # Note: File handler will be added after cfg creation to use configured timezone
+
+    try:
+        logging.getLogger("tqsdk").setLevel(logging.WARNING)
+    except Exception:
+        pass
+
+    cache_path = Path(args.cache) if args.cache else None
+
+    # Parse auxiliary periods (comma-separated string to list of ints)
+    auxiliary_periods = None
+    if args.auxiliary_periods:
+        try:
+            auxiliary_periods = [int(p.strip()) for p in args.auxiliary_periods.split(',')]
+            logger.info(f"配置辅助周期: {auxiliary_periods}")
+        except ValueError as e:
+            logger.error(f"解析辅助周期参数失败: {e}")
+            auxiliary_periods = None
+
+    # Load timezone from config file if available
+    timezone = "Asia/Shanghai"  # Default to Beijing time
+    try:
+        import yaml
+        params_path = ROOT / "config" / "trading_params.yaml"
+        if params_path.exists():
+            params_yaml = yaml.safe_load(params_path.read_text(encoding="utf-8")) or {}
+            system_cfg = params_yaml.get("system", {}) or {}
+            timezone = system_cfg.get("timezone", timezone)
+            logger.info(f"从配置文件加载时区: {timezone}")
+    except Exception as e:
+        logger.warning(f"加载时区配置失败，使用默认值 {timezone}: {e}")
+
+    cfg = BTConfig(
+        symbol=args.symbol or "KQ.m@CZCE.SA",
+        decision_period=args.decision_period,  # Will use period if None
+        auxiliary_periods=auxiliary_periods,
+        count=args.count,
+        margin_ratio=args.margin_ratio,
+        timezone=timezone
+    )
+
+    # Add file handler with configured timezone
+    tz = cfg.get_timezone()
+    now_local = datetime.now(tz)
+    logger.add(
+        str(Path("logs") / f"llm_backtest_{now_local.strftime('%Y%m%d_%H%M%S')}.log"),
+        rotation="1 day",
+        level=log_level
+    )
+
+    # 使用TqSDK回测
+    mode = DecisionMode(args.mode)
+    bt = Backtester(cfg, mode, cache_path=cache_path,initial_units=args.initial_units, show_rationale=args.show_rationale, margin_ratio=args.margin_ratio)
+    # 回测区间：参考 TqSDK 教程，支持命令行指定开始/结束时间
+    def _parse_dt(s, default):
+        if not s:
+            return default
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
+            try:
+                # Parse as naive datetime and localize to configured timezone
+                dt_naive = datetime.strptime(s, fmt)
+                return dt_naive.replace(tzinfo=tz)
+            except Exception:
+                continue
+        return default
+    # Default times with explicit timezone (Beijing time)
+    default_start = datetime(2024, 9, 1, 9, 0, 0, tzinfo=tz)
+    default_end = datetime(2024, 10, 31, 15, 0, 0, tzinfo=tz)
+    start_dt = _parse_dt(args.start, default_start)
+    end_dt = _parse_dt(args.end, default_end)
+
+    # 读取TqSDK认证配置
+    username = os.getenv("TQSDK_USERNAME")
+    password = os.getenv("TQSDK_PASSWORD")
+    use_sim = True
+    try:
+        import yaml
+        cfg_path = ROOT / "config" / "api_keys.yaml"
+        if cfg_path.exists():
+            cfg_yaml = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            tcfg = cfg_yaml.get("tqsdk", {}) or {}
+            username = tcfg.get("username") or username
+            password = tcfg.get("password") or password
+            use_sim = bool(tcfg.get("use_sim", True))
+    except Exception:
+        pass
+    logger.info("已启用基于TqSDK的回测下单：请以TqSDK输出的'模拟交易账户'汇总为准（本脚本摘要仅供参考）")
+    logger.info(f"使用TqSDK回测：{args.symbol},  bars≈{args.count}, 区间 {start_dt} ~ {end_dt}")
+
+    # Process web_gui argument
+    web_gui = None
+    if hasattr(args, 'web_gui') and args.web_gui is not None:
+        web_gui = args.web_gui if isinstance(args.web_gui, str) and args.web_gui != 'True' else True
+        logger.info(f"启用 TqSDK Web GUI: {web_gui}")
+
+    report = bt.run_tqsdk(start_dt=start_dt, end_dt=end_dt, username=username, password=password, use_sim=use_sim, web_gui=web_gui)
+
+    print("=== Backtest Summary ===")
+    print(f"Mode: {mode.value}")
+    print(f"Initial: {report['initial']:.2f}")
+    print(f"Final:   {report['final']:.2f}")
+    print(f"Return:  {report['return_pct']:.2f}%")
+    print(f"Trades:  {len([t for t in report['trades'] if t['side']=='OPEN'])}")
+    print(f"Wins/Losses: {report['wins']}/{report['losses']}")
+    print("Note: 以 TqSDK ‘模拟交易账户’ 汇总为准；本脚本摘要仅供快速参考。")
+
+
+if __name__ == "__main__":
+    main()

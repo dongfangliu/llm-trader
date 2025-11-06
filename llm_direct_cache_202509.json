@@ -1,0 +1,640 @@
+{
+  "CZCE.SA601::2025-08-29T00:00:00+08:00::1296.00": {
+    "action": "open_short",
+    "position_size": 1,
+    "target_position": -1,
+    "stop_loss": 1300.0,
+    "take_profit": 1200.0,
+    "confidence": 0.7,
+    "rationale": [
+      "多周期MA空头排列一致向下",
+      "价格低于MA30显示空头力量占优",
+      "技术指标多重确认下降趋势"
+    ],
+    "position_percent": 0.265,
+    "market_regime": "温和下降趋势",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "日线MACD在零轴附近可能引发反弹",
+      "RSI未超卖显示下跌动能可能延续"
+    ],
+    "market_diagnosis": "市场处于温和下降趋势，所有周期MA空头排列，价格低于MA30，RSI中性偏弱，波动率正常，市场情绪偏空但未恐慌。",
+    "opportunity_assessment": "趋势跟随做空机会，信号强度中等，多重技术指标确认，时间窗口短期至中期，质量评级B级。",
+    "risk_analysis": "预期收益目标1200（约5.6%下跌），止损1300（风险29点），风险收益比2.45:1，亏损限额占账户3.36%，符合稳健原则，主要风险为技术性反弹。",
+    "execution_plan": "开空仓1手，立即入场，硬止损1300，止盈1200，仓位占账户26.5%，严格风险控制。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1296.0
+  },
+  "CZCE.SA601::2025-09-01T00:00:00+08:00::1271.00": {
+    "action": "open_short",
+    "position_size": 1,
+    "target_position": -1,
+    "stop_loss": 1290.0,
+    "take_profit": 1220.0,
+    "confidence": 0.7,
+    "rationale": [
+      "多周期MA空头排列",
+      "MACD空头确认",
+      "价格低于MA30"
+    ],
+    "position_percent": 0.265,
+    "market_regime": "温和下跌趋势",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "趋势反转风险",
+      "波动率放大风险"
+    ],
+    "market_diagnosis": "多周期趋势一致向下，MA空头排列，价格低于MA30，MACD负值，RSI中性未超卖，市场处于温和下跌趋势中，波动率正常。",
+    "opportunity_assessment": "趋势跟随做空机会，信号强度强，多重技术指标确认，时间窗口立即，质量评级B级。",
+    "risk_analysis": "止损1290（基于6小时MA10阻力），止盈1220（基于ATR和下跌空间），风险收益比1:2.68，潜在亏损占账户2.2%，风险可控。",
+    "execution_plan": "开1手空仓，立即入场，止损1290，止盈1220，仓位占账户26.5%。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1271.0
+  },
+  "CZCE.SA601::2025-09-02T00:00:00+08:00::1267.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": -1,
+    "stop_loss": 1280.0,
+    "take_profit": 1220.0,
+    "confidence": 0.8,
+    "rationale": [
+      "多周期MA空头排列，趋势一致向下",
+      "MACD空头信号强化，RSI中性偏空",
+      "当前持仓已有盈利，趋势延续概率高"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "强势空头趋势，多周期一致向下，波动率较高（ATR=34.36）",
+    "opportunity_quality": "A",
+    "risk_factors": [
+      "趋势反转或技术性反弹风险",
+      "波动率较高可能导致止损被触发"
+    ],
+    "market_diagnosis": "市场处于强势空头趋势，日线、6小时和12小时线均显示空头排列，价格低于MA30超6%，MACD和RSI支持空头，波动率扩张，市场情绪偏向恐慌。",
+    "opportunity_assessment": "A级优质趋势跟随机会，信号强度高，多重技术指标确认，时间窗口立即，空头趋势明确且一致。",
+    "risk_analysis": "预期收益目标1220.00（收益率3.71%），调整后止损1280.00（风险1.03%），风险收益比约1:3.6，属稳健范围；主要风险为趋势反转或波动率冲击，通过止损下移管理风险。",
+    "execution_plan": "持有1手空仓，调整止损至1280.00以保护利润并提供波动空间，止盈保持1220.00，仓位满仓但符合风控。",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1280.0,
+    "adjust_take_profit": 1220.0,
+    "adjustment_reason": "原止损1290.00距离过近（仅1.82%），在较高波动率下易被正常波动触发；调整至1280.00基于6小时MA10（1276.70）附近阻力，提供更合理缓冲空间同时锁定部分利润。",
+    "decision_price": 1267.0
+  },
+  "CZCE.SA601::2025-09-03T00:00:00+08:00::1276.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 1280.0,
+    "take_profit": 1220.0,
+    "confidence": 0.6,
+    "rationale": [
+      "多周期MA空头排列一致性向下",
+      "6小时线MACD多头信号指示短期反弹可能",
+      "调整止损以避免波动触发"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和下跌趋势，短期反弹风险",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "短期反弹可能触发止损",
+      "波动率较高增加价格波动风险"
+    ],
+    "market_diagnosis": "市场处于温和下跌趋势，所有周期MA空头排列，价格低于MA30，但6小时线MACD显示短期多头信号，可能反弹。RSI中性，波动率正常（ATR=31.43），市场情绪偏空但无极端恐慌。",
+    "opportunity_assessment": "空头趋势机会存在，多周期一致性向下提供支撑，但6小时线分歧减弱信号强度。信号强度中等，确认程度部分确认，时间窗口立即，机会质量B级。",
+    "risk_analysis": "预期收益56点（4.39%至止盈1220.00），调整后风险24点（1.88%至止损1300.00），风险收益比1:2.3合理。主要风险为技术性反弹和流动性波动，通过调整止损管理风险，建议稳健持仓。",
+    "execution_plan": "继续持有1手空仓，调整止损至1300.00以给更多空间，止盈1220.00不变，监控市场变化，若趋势延续则持有，若突破关键阻力则 reconsider。",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1300.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "当前止损设置过紧（仅4点距离），基于ATR波动率（31.43），软止损标准应为约47点，但为避免短期反弹触发，调整止损至1300.00（MA10附近）以保持空头头寸。整体趋势空头，但6小时线MACD多头信号增加短期波动风险，调整后风险可控。",
+    "decision_price": 1276.0
+  },
+  "CZCE.SA601::2025-09-04T00:00:00+08:00::1277.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": -1,
+    "stop_loss": 1300.0,
+    "take_profit": 1220.0,
+    "confidence": 0.6,
+    "rationale": [
+      "多周期MA空头排列确认下行趋势",
+      "短期MACD显示反弹动能但整体趋势向下",
+      "调整止损以避免短期波动触发"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和下跌趋势，多周期一致空头但短期有反弹风险",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "短期反弹可能触发止损",
+      "高波动率环境增加价格不确定性"
+    ],
+    "market_diagnosis": "市场处于温和下跌趋势，所有周期MA空头排列，但6小时和12小时线MACD显示多头，表明短期有反弹风险；波动率较高（ATR=30.43），市场情绪犹豫。",
+    "opportunity_assessment": "空头趋势机会质量良好（B级），信号强度中等，多重确认下行趋势，但短期反弹风险需谨慎管理。",
+    "risk_analysis": "预期收益4.46%（至1220.00），潜在风险1.80%（原止损1300.00），风险收益比1:2.48合理；主要风险为技术性反弹和波动率扩张，通过调整止损管理风险。",
+    "execution_plan": "继续持有1手空仓，调整止损至1293.00以给仓位更多空间，止盈保持1220.00；最大亏损控制在账户权益1%以内。",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1293.0,
+    "adjust_take_profit": 1220.0,
+    "adjustment_reason": "短期MACD显示反弹动能，但整体趋势向下，调整止损至MA10（1292.80）附近以避免被短期波动触发，同时保持硬止损保护；ATR为30.43，新止损距离16点（1.26%），在合理范围内。",
+    "decision_price": 1277.0
+  },
+  "CZCE.SA601::2025-09-05T00:00:00+08:00::1302.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": -1,
+    "stop_loss": 1293.0,
+    "take_profit": 1220.0,
+    "confidence": 0.6,
+    "rationale": [
+      "多周期MA一致向下支撑空头趋势",
+      "当前止损过紧容易被波动触发",
+      "ATR支持更宽止损以允许趋势发展"
+    ],
+    "position_percent": 0.28,
+    "market_regime": "温和下跌趋势，但短期可能反弹",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "短期技术反弹风险",
+      "波动率较高可能加剧亏损"
+    ],
+    "market_diagnosis": "1日线空头排列，价格低于MA30，但RSI中性且短期周期显示潜在反弹信号；市场情绪犹豫，波动率正常（ATR=30.43）",
+    "opportunity_assessment": "空头趋势跟随机会，信号强度中等，多重确认但短期有分歧，时间窗口短期观察，质量评级B级",
+    "risk_analysis": "预期收益6.30%（目标1220），潜在风险0.69%（原止损1293），风险收益比一般；主要风险为技术反弹和流动性波动，建议调整止损以控制风险",
+    "execution_plan": "保持空头持仓1手，调整止损至1310.00以提供缓冲，止盈保持1220.00，密切关注价格动向",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1310.0,
+    "adjust_take_profit": 1220.0,
+    "adjustment_reason": "原止损1293.00距离仅0.69%，过于紧凑，易被正常波动触发；ATR为30.43点（约2.34%），调整止损至1310.00（距离0.62%）基于ATR的合理范围，以允许趋势继续发展同时控制风险",
+    "decision_price": 1302.0
+  },
+  "CZCE.SA601::2025-09-08T00:00:00+08:00::1293.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 1310.0,
+    "take_profit": 1220.0,
+    "confidence": 0.6,
+    "rationale": [
+      "多周期一致向下",
+      "价格低于MA30",
+      "ATR波动正常"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和下跌趋势，短期反弹风险",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "短期反弹可能触发止损",
+      "趋势可能反转"
+    ],
+    "market_diagnosis": "日线空头排列，但RSI中性表明动能减弱；多周期一致向下，但6小时线显示价格略高于MA30，短期有反弹风险；波动率正常（ATR=27.07）。",
+    "opportunity_assessment": "空头趋势延续机会，信号强度中等，多重技术指标确认向下趋势，但短期反弹风险存在，机会质量B级。",
+    "risk_analysis": "预期收益至1220（5.65%），潜在风险调整后至1335（3.25%），风险收益比1:1.74，符合稳健原则；主要风险为技术性反弹和趋势反转，通过调整止损管理。",
+    "execution_plan": "持有空头仓位1手，调整止损至1335以提供更多空间，止盈保持1220，密切关注价格是否突破关键阻力；单次风险控制在账户0.25%以内。",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1335.0,
+    "adjust_take_profit": 1220.0,
+    "adjustment_reason": "基于ATR（27.07）和日线MA30（1332.57）阻力，当前止损1310过于接近，容易被震荡触发；调整至1335符合软止损ATR×1.5=40.6点的原则，提供更合理风险空间。",
+    "decision_price": 1293.0
+  },
+  "CZCE.SA601::2025-09-09T00:00:00+08:00::1278.00": {
+    "action": "close_short",
+    "position_size": 1,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.4,
+    "rationale": [
+      "多周期趋势不一致导致信号冲突",
+      "RSI中性显示市场犹豫缺乏方向",
+      "当前持仓小幅亏损且风险收益比不具优势"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "多空分歧震荡状态",
+    "opportunity_quality": "C",
+    "risk_factors": [
+      "技术风险：短期反弹可能逆转空头趋势",
+      "趋势风险：多周期不一致增加不确定性"
+    ],
+    "market_diagnosis": "市场处于多空分歧的震荡状态，1日线空头趋势主导但6小时线出现多头迹象，RSI中性且波动率正常，缺乏明确方向。",
+    "opportunity_assessment": "交易机会质量一般，信号强度弱，多周期确认不足，短期时间窗口不明朗，建议优先观望。",
+    "risk_analysis": "风险收益比大致1:1但市场不确定性高，潜在亏损已锁定在当前水平，主要风险为技术反转和趋势不明确，建议平仓管理风险。",
+    "execution_plan": "立即平仓1手空仓，锁定当前浮动亏损，转为空仓观望状态，等待更明确的多周期一致信号。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1278.0
+  },
+  "CZCE.SA601::2025-09-10T00:00:00+08:00::1281.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 1270.0,
+    "take_profit": 1290.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致",
+      "RSI中性无超买超卖信号",
+      "MACD空头但短期有反弹迹象"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡状态，多周期趋势不一致，1日线和12小时线空头，6小时线多头，市场情绪犹豫，波动率正常",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "技术信号冲突导致方向不明",
+      "波动率正常但缺乏趋势确认"
+    ],
+    "market_diagnosis": "市场处于震荡状态，主要驱动为技术指标冲突，1日线空头趋势主导但短期6小时线显示反弹尝试，情绪犹豫，波动率处于正常水平无扩张或收缩。",
+    "opportunity_assessment": "无明确交易机会，信号强度弱，确认程度低（仅6小时线部分确认），时间窗口需观察，机会质量D级不建议操作。",
+    "risk_analysis": "预期收益不确定，潜在风险较高（技术冲突可能导致虚假信号），风险收益比不合适，主要风险为技术风险和方向不确定性，建议保守观望，不建仓。",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或更强信号确认，暂无入场计划，最大亏损限额为0。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1281.0
+  },
+  "CZCE.SA601::2025-09-11T00:00:00+08:00::1287.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "日线空头趋势但6小时线多头排列，信号冲突",
+      "多周期趋势不一致，缺乏明确方向",
+      "RSI中性显示市场情绪犹豫"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "多周期趋势不一致的震荡状态，日线空头主导但短周期有反弹迹象",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期方向不一致增加交易不确定性",
+      "ATR较高（27.07）表明波动率较大，易触发止损"
+    ],
+    "market_diagnosis": "市场处于日线空头趋势（价格低于MA30 3.05%），但6小时线出现多头排列反弹，12小时线仍为空头，多周期趋势不一致；RSI中性（44.3-49.6）显示情绪犹豫，波动率正常偏高（ATR=27.07），整体为震荡状态。",
+    "opportunity_assessment": "无高质量交易机会，信号强度弱且确认程度低（单一6小时线反弹被日线空头压制），机会质量评级D，时间窗口需短期观察等待更明确信号。",
+    "risk_analysis": "预期收益不确定（多目标阻力在1325，空目标支撑不明确），潜在风险较高（止损参考ATR约15-27点），风险收益比不理想；主要风险为技术性多周期冲突和波动率风险，建议保守观望以管理风险。",
+    "execution_plan": "保持空仓观望，不进行开仓操作；等待多周期趋势一致或更强信号（如价格突破关键均线或MACD确认），如未来交易则仓位不超过1手，风险控制在账户1.5%以内。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1287.0
+  },
+  "CZCE.SA601::2025-09-12T00:00:00+08:00::1290.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "日线空头趋势但价格接近MA10",
+      "6小时线多头但缺乏日线确认",
+      "多周期信号冲突增加不确定性"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "多周期趋势不一致的震荡状态",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "趋势方向不明导致误判风险",
+      "技术指标中性无强烈信号"
+    ],
+    "market_diagnosis": "市场处于多周期趋势不一致的震荡状态，日线空头排列但价格已接近MA10，6小时线短期多头但缺乏成交量确认，市场情绪犹豫，波动率正常（ATR=26.57）。",
+    "opportunity_assessment": "交易机会弱，信号强度低且缺乏多重确认，各周期趋势方向冲突，机会质量评级为D级（观望），时间窗口需要短期观察。",
+    "risk_analysis": "预期收益不明确，潜在风险较高 due to trend conflicts; risk-reward ratio unfavorable, suggesting conservative approach; main risks include technical misalignment and lack of momentum confirmation.",
+    "execution_plan": "保持空仓观望，等待更明确的趋势信号或多周期一致性出现；如未来信号强化，可考虑小仓位介入 with strict stop-loss based on ATR.",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1290.0
+  },
+  "CZCE.SA601::2025-09-15T00:00:00+08:00::1308.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致（1日线空头，6小时/12小时线多头）",
+      "技术指标中性（RSI、MACD均位于零轴附近）",
+      "价格位于关键阻力位MA30附近，方向不明确"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期冲突可能导致虚假信号",
+      "趋势方向不明确，入场风险较高"
+    ],
+    "market_diagnosis": "市场处于震荡状态，1日线显示空头排列但价格接近MA30关键位，6小时和12小时线显示多头排列但动能不足，多周期趋势不一致，波动率正常（ATR=27.86），市场情绪犹豫。",
+    "opportunity_assessment": "交易机会质量低，信号弱且未确认，无明确趋势跟随或突破机会，时间窗口需要观察，建议观望。",
+    "risk_analysis": "风险收益比不佳，预期收益不明确，潜在风险较高（止损距离可能较大），主要风险为技术性假突破和多周期冲突，应保守处理，不交易以规避风险。",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或技术指标出现明确信号后再考虑入场，暂无具体入场和出场计划。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1308.0
+  },
+  "CZCE.SA601::2025-09-16T00:00:00+08:00::1339.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势冲突",
+      "技术指标中性",
+      "波动率正常"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡状态，多周期趋势不一致",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "方向不明确风险",
+      "趋势冲突风险"
+    ],
+    "market_diagnosis": "日线空头排列但小周期多头排列，市场处于震荡状态，情绪中性犹豫，波动率正常无明显扩张或收缩",
+    "opportunity_assessment": "信号弱，多周期冲突导致确认程度低，机会质量差，建议观望等待明确方向",
+    "risk_analysis": "风险收益比不利，预期收益不明确，潜在风险较高 due to trend conflict，应保守管理风险",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或技术指标强化信号后再考虑入场",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1339.0
+  },
+  "CZCE.SA601::2025-09-17T00:00:00+08:00::1334.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致（1日线空头 vs 6小时/12小时线多头）",
+      "技术指标中性（MACD零轴附近，RSI中性区）",
+      "波动率正常，无明确驱动因素"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "趋势冲突导致方向不明",
+      "信号确认不足，容易误判"
+    ],
+    "market_diagnosis": "市场处于震荡状态，1日线空头排列但短期周期（6小时和12小时）显示多头排列，趋势方向冲突；MACD和RSI均处于中性区域，无强烈信号；波动率正常（ATR=27.29），市场情绪犹豫。",
+    "opportunity_assessment": "无明确交易机会，信号强度弱，确认程度低（多周期不一致），时间窗口需要观察，机会质量D级（观望）。",
+    "risk_analysis": "预期收益不明确，潜在风险较高（止损参考ATR约27点，但趋势冲突可能放大亏损）；风险收益比不合适，建议保守观望；主要风险为技术性趋势冲突和信号确认不足。",
+    "execution_plan": "保持空仓观望，不进行任何开仓操作；等待多周期趋势一致或技术指标出现明确信号后再评估入场；如后续出现突破或确认信号，可考虑小仓位测试。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1334.0
+  },
+  "CZCE.SA601::2025-09-18T00:00:00+08:00::1306.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "1日线空头排列但价格接近均线，趋势不强",
+      "6小时和12小时线多头排列但价格接近均线，短周期支撑有限",
+      "多周期趋势冲突导致无明确方向信号"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "多周期趋势不一致的震荡市场",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期不一致导致方向性风险",
+      "技术指标中性，缺乏确认信号"
+    ],
+    "market_diagnosis": "市场处于多周期趋势不一致的震荡状态，1日线空头排列而6小时和12小时线多头排列，技术指标如MACD和RSI均在中性区域，波动率正常（ATR=27.64），市场情绪犹豫，缺乏强势驱动因素。",
+    "opportunity_assessment": "无高质量交易机会，信号强度弱，确认程度低（多周期冲突），时间窗口需要观察，机会质量评级为D级（观望）。",
+    "risk_analysis": "预期收益不明确，潜在风险较高（基于ATR止损约27点），风险收益比不理想，主要风险包括技术面多周期冲突和方向不确定性，建议保守观望，不开仓以管理风险。",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或出现明确突破信号后再考虑入场，目前无需设置具体止损止盈。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1306.0
+  },
+  "CZCE.SA601::2025-09-19T00:00:00+08:00::1318.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势冲突，无一致方向",
+      "技术指标中性（RSI、MACD零轴附近）",
+      "无明确突破或成交量确认"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致，1日线空头排列但价格接近MA30，较短周期多头排列，市场情绪犹豫，波动率正常",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期不一致导致方向判断困难",
+      "价格在关键均线附近挣扎，易受震荡影响"
+    ],
+    "market_diagnosis": "市场处于震荡状态，1日线空头排列但价格仅高于MA30 0.05%，显示趋势偏弱但未确认；6小时和12小时线多头排列但价格偏离MA30有限，MACD和RSI均中性。多周期趋势不一致，主要驱动为技术面多空拉锯，缺乏基本面或成交量确认。市场情绪犹豫，波动率正常（ATR=27.93）。",
+    "opportunity_assessment": "无清晰交易机会，信号强度弱（多周期冲突），确认程度低（单一周期信号未得到其他周期支持），时间窗口需短期观察，机会质量D级（观望）。",
+    "risk_analysis": "预期收益和风险不明确：若强行交易，止损参考ATR（约28点），但风险收益比不合适（潜在亏损可能超过收益）。主要风险为技术面多空拉锯和方向不明确。建议保守观望，避免在信号冲突时入场。",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或价格突破关键位（如1日线MA30）后再评估。若未来出现明确信号，可考虑小仓位（1手）跟随，但当前不宜操作。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "无调整，当前无持仓且不交易",
+    "decision_price": 1318.0
+  },
+  "CZCE.SA601::2025-09-22T00:00:00+08:00::1293.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致（日线空头、小时线多头）",
+      "技术指标中性（MACD零轴附近、RSI中性）",
+      "无明确交易信号确认"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期冲突导致方向不明",
+      "波动率正常但缺乏趋势动能"
+    ],
+    "market_diagnosis": "市场处于震荡状态，日线空头排列但小时线多头排列，多周期趋势不一致，市场情绪犹豫，波动率正常（ATR=29.43）。",
+    "opportunity_assessment": "交易机会弱，信号冲突且缺乏多重确认，机会质量D级，建议观望等待更明确信号。",
+    "risk_analysis": "预期收益不明确，潜在风险高（技术风险为主），风险收益比不合适，应保守观望，避免盲目开仓。",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或技术指标出现强信号后再考虑入场。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1293.0
+  },
+  "CZCE.SA601::2025-09-23T00:00:00+08:00::1273.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致（1日线空头、12小时线多头、6小时线空头）",
+      "MACD和RSI均处于中性区域，无强烈方向信号",
+      "价格低于MA30但幅度有限，趋势动能不足"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致，技术指标中性",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期方向矛盾导致误判风险",
+      "波动率正常但缺乏趋势确认"
+    ],
+    "market_diagnosis": "市场处于震荡状态，主要驱动因素为技术面调整，多周期趋势方向分歧明显（1日线和6小时线空头排列，12小时线多头排列），MACD在零轴附近徘徊，RSI中性，波动率处于正常水平（ATR=29.36），市场情绪犹豫。",
+    "opportunity_assessment": "无明确交易机会，信号强度弱，确认程度低（多周期不一致且指标中性），时间窗口需等待观察，机会质量评级为D级（观望）。",
+    "risk_analysis": "预期收益不明确，潜在风险较高（止损难以设定合理位置），风险收益比不合适，主要风险为技术面方向冲突和趋势不确定性，建议采取保守策略，避免开仓。",
+    "execution_plan": "保持空仓观望，不进行任何开仓操作，等待多周期趋势收敛或技术指标出现明确信号后再评估。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1273.0
+  },
+  "CZCE.SA601::2025-09-24T00:00:00+08:00::1307.00": {
+    "action": "open_short",
+    "position_size": 1,
+    "target_position": -1,
+    "stop_loss": 1320.0,
+    "take_profit": 1280.0,
+    "confidence": 0.65,
+    "rationale": [
+      "多周期MA空头排列一致向下",
+      "价格在日线略高于MA30但趋势偏空",
+      "MACD和RSI中性缺乏强烈反弹信号"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和下跌趋势，多周期空头排列但价格接近关键移动平均线",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "价格可能反弹突破MA30阻力",
+      "波动率正常但需警惕短期反转"
+    ],
+    "market_diagnosis": "市场处于温和下跌趋势，所有周期均线呈空头排列，但价格在日线略高于MA30显示潜在阻力。MACD和RSI处于中性区域，市场情绪犹豫，波动率正常（ATR=30.86）。",
+    "opportunity_assessment": "识别到趋势跟随做空机会，信号强度中等，有多周期MA空头排列确认但缺乏成交量配合，时间窗口短期，机会质量B级。",
+    "risk_analysis": "预期收益31点（约620元/手），风险9点（约180元/手），风险收益比1:3.4合理。主要风险是技术性反弹，通过严格止损和仓位控制管理。",
+    "execution_plan": "开空仓1手，立即入场，止损1320，止盈1280，单笔风险控制在账户1.05%以内。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1307.0
+  },
+  "CZCE.SA601::2025-09-25T00:00:00+08:00::1315.00": {
+    "action": "close_short",
+    "position_size": 1,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.6,
+    "rationale": [
+      "多周期趋势不一致：日线多头但6小时和12小时线空头",
+      "技术指标中性：RSI和MACD均在零轴附近，无强烈方向信号",
+      "当前空单接近止损，风险较高，避免不必要的损失"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致，技术指标中性",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期冲突可能导致价格反转，增加持仓风险",
+      "止损距离过近（0.38%），容易被震荡触发"
+    ],
+    "market_diagnosis": "市场处于震荡状态，主要驱动因素为均线纠缠和指标中性，市场情绪犹豫，波动率正常（ATR=30）",
+    "opportunity_assessment": "无明确交易机会，信号强度弱，确认程度低，时间窗口建议观望，机会质量评级D",
+    "risk_analysis": "预期收益不确定，潜在风险为止损触发（最大亏损0.38%），风险收益比不合理，主要风险为技术性震荡和流动性正常，建议保守管理风险",
+    "execution_plan": "立即平掉空仓1手，目标持仓0手，无后续入场计划，等待更明确信号",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1315.0
+  },
+  "CZCE.SA601::2025-09-26T00:00:00+08:00::1293.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致（1日线多头，辅助周期空头）",
+      "技术指标均处于中性区域（MACD零轴附近，RSI中性）",
+      "缺乏明确方向确认和成交量支持"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡市，多周期趋势不一致，技术指标中性",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "多周期冲突导致方向不明",
+      "波动率正常但无趋势动能"
+    ],
+    "market_diagnosis": "市场处于震荡状态，1日线显示多头排列但价格低于MA30，辅助周期（6小时和12小时）均显示空头排列，趋势方向不一致；MACD和RSI均处于中性区域，市场情绪犹豫，波动率正常（ATR=30.14）",
+    "opportunity_assessment": "无明确交易机会，信号强度弱，确认程度低（多周期冲突），时间窗口需要短期观察，机会质量评级为D级（观望）",
+    "risk_analysis": "预期收益不确定，潜在风险高（止损可能被震荡触发），风险收益比不理想，应保守操作；主要风险包括技术风险（多周期不一致）和方向风险，建议通过观望管理风险",
+    "execution_plan": "保持空仓状态，不进行任何开仓操作，等待多周期趋势一致或技术指标出现明确信号后再考虑入场",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1293.0
+  },
+  "CZCE.SA601::2025-09-29T00:00:00+08:00::1278.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.3,
+    "rationale": [
+      "多周期趋势不一致",
+      "技术指标中性无强信号",
+      "价格在关键均线下方挣扎"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "震荡状态，多周期趋势不一致，1日线多头但价格跌破MA30，辅助周期空头，市场缺乏明确方向，情绪犹豫，波动率正常",
+    "opportunity_quality": "D",
+    "risk_factors": [
+      "趋势冲突导致假突破风险",
+      "波动率正常但方向不明"
+    ],
+    "market_diagnosis": "市场处于震荡状态，1日线显示多头排列但价格低于MA30，辅助6小时和12小时线空头排列，多周期趋势不一致，MACD和RSI中性，缺乏驱动因素，情绪犹豫，波动率正常（ATR=29.36）",
+    "opportunity_assessment": "无高质量交易机会，信号强度弱，确认程度低（多重周期冲突），时间窗口需短期观察，机会质量评级D（观望）",
+    "risk_analysis": "预期收益不明确，潜在风险高（止损参考ATR约29点），风险收益比差，主要风险为技术面多周期冲突和假突破，建议保守观望，避免开仓",
+    "execution_plan": "保持空仓观望，等待多周期趋势一致或价格突破关键位（如MA30）后再评估，无入场计划，仓位0手，最大亏损限额无",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1278.0
+  }
+}
