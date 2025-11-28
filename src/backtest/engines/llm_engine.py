@@ -229,9 +229,9 @@ class LLMDirectEngine:
             # 使用多周期分析
             market_analysis = self._build_multi_timeframe_section(klines_dict, cfg)
         else:
-            # 使用单周期三级市场表示（向后兼容）
-            market_rep = self.market_rep_generator.generate(row, df, symbol)
-            market_analysis = market_rep.to_markdown()
+            # 单周期改为“指标快照”风格（与多周期一致的单周期版本）
+            period_name = cfg.get_period_name(cfg.decision_period) if cfg else "决策周期"
+            market_analysis = f"## 📊 决策周期: {period_name}\n" + self._format_timeframe_data(df, period_name, is_primary=True)
 
         # 获取当前持仓和账户信息
         pos_obj = self.current_pos
@@ -392,7 +392,7 @@ class LLMDirectEngine:
 """
 
         # 组装完整prompt
-        prompt = f"""# 期货交易决策系统 - 纯碱(SA)合约
+        prompt = f"""# 期货交易决策系统 - {symbol}
 
 你是一位经验丰富的期货交易专家，需要基于市场数据做出专业的交易决策。
 
@@ -628,6 +628,7 @@ class LLMDirectEngine:
         try:
             # Generate enhanced prompt with three-level representation (and optional multi-timeframe data)
             prompt = self._build_enhanced_prompt(row, df, symbol, klines_dict=klines_dict, cfg=cfg)
+            logger.debug(f"Prompt全文:\n{prompt}")
 
             # Call LLM
             raw_response = self.client.chat(prompt)
