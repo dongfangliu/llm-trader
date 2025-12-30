@@ -29,6 +29,19 @@ from src.backtest.core.backtester import Backtester
 
 
 def main():
+    """
+    LLM决策回测工具
+
+    使用示例:
+    1. 回测模式（默认）:
+       python src/backtest/llm_decision_backtest.py --start 2024-09-01 --end 2024-10-31
+    
+    2. 最新K线分析模式:
+       python src/backtest/llm_decision_backtest.py --latest --show_rationale
+       
+    3. 多周期分析:
+       python src/backtest/llm_decision_backtest.py --latest --decision-period 1440 --auxiliary-periods 60,240
+    """
     parser = argparse.ArgumentParser(description="LLM Direct Decision Backtest using TqSDK")
     parser.add_argument("--mode", choices=[m.value for m in DecisionMode], default=DecisionMode.LLM_DIRECT.value, help="Decision mode")
     parser.add_argument("--symbol", default="KQ.m@CZCE.SA", help="Trading symbol (default: KQ.m@CZCE.SA)")
@@ -43,6 +56,7 @@ def main():
     parser.add_argument("--show_rationale", action="store_true", help="Show detailed rationale for each decision (default: False)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging for LLM responses (default: False)")
     parser.add_argument("--web-gui", type=str, nargs='?', const=True, default=None, help="Enable TqSDK web GUI for visualization. Use --web-gui for default (True), or specify address like --web-gui=http://192.168.1.100:9876")
+    parser.add_argument("--latest", action="store_true", help="Only analyze the latest K-line without running backtest (default: False)")
     args = parser.parse_args()
 
     # Configure logging level based on debug flag
@@ -144,6 +158,31 @@ def main():
             use_sim = bool(tcfg.get("use_sim", True))
     except Exception:
         pass
+    # Handle --latest mode: only analyze the latest K-line
+    if args.latest:
+        logger.info(f"使用最新K线分析模式：{args.symbol}")
+        decision_result = bt.analyze_latest(username=username, password=password, use_sim=use_sim)
+        
+        print("\n=== 最新K线分析结果 ===")
+        print(f"合约: {args.symbol}")
+        print(f"时间: {decision_result.get('timestamp', 'N/A')}")
+        print(f"当前价格: {decision_result.get('current_price', 'N/A')}")
+        print(f"\n决策: {decision_result.get('decision', 'N/A')}")
+        print(f"建议仓位: {decision_result.get('position_size', 'N/A')}")
+        print(f"置信度: {decision_result.get('confidence', 'N/A')}")
+        
+        # 显示止损止盈点位
+        if 'stop_loss' in decision_result and decision_result['stop_loss']:
+            print(f"止损点位: {decision_result['stop_loss']}")
+        if 'take_profit' in decision_result and decision_result['take_profit']:
+            print(f"止盈点位: {decision_result['take_profit']}")
+        
+        # 显示研判理由（始终显示，不再依赖show_rationale参数）
+        if 'rationale' in decision_result and decision_result['rationale']:
+            print(f"\n=== AI研判详情 ===")
+            print(decision_result['rationale'])
+        return
+
     logger.info("已启用基于TqSDK的回测下单：请以TqSDK输出的'模拟交易账户'汇总为准（本脚本摘要仅供参考）")
     logger.info(f"使用TqSDK回测：{args.symbol},  bars≈{args.count}, 区间 {start_dt} ~ {end_dt}")
 

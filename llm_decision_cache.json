@@ -1,0 +1,350 @@
+{
+  "CZCE.FG601::2025-06-30T00:00:00+08:00::1085.00": {
+    "action": "open_long",
+    "position_size": 1,
+    "target_position": 0,
+    "stop_loss": 1060.0,
+    "take_profit": 1100.0,
+    "confidence": 0.6,
+    "rationale": [
+      "MA多头排列支撑上涨趋势",
+      "价格位于MA30上方显示偏多结构",
+      "RSI中性无超买超卖压力"
+    ],
+    "position_percent": 0.259,
+    "market_regime": "温和多头趋势",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "MACD零轴附近缺乏强劲动能确认",
+      "价格已部分上涨存在回调风险"
+    ],
+    "market_diagnosis": "市场处于温和多头趋势，MA多头排列但价格高于MA30幅度有限（2.55%），MACD在零轴附近徘徊，RSI中性显示市场情绪理性犹豫，波动率处于正常水平（ATR=18.71）。",
+    "opportunity_assessment": "识别到趋势跟随机会，信号强度中等，仅MA部分确认，MACD和RSI未形成强烈买入信号，机会质量评级B级，建议短期参与。",
+    "risk_analysis": "预期收益目标1100（约1.38%），止损1060（约2.3%风险），风险收益比0.6偏低，主要风险为技术性回调，通过严格止损和轻仓管理风险，单笔风险占账户约4%。",
+    "execution_plan": "开多仓1手，立即入场，止损设1060（低于MA10），止盈设1100（心理关口），仓位占账户25.9%，最大亏损限额500元。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1085.0
+  },
+  "CZCE.FG601::2025-07-01T00:00:00+08:00::1065.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "confidence": 0.35,
+    "rationale": [
+      "MA多头排列但价格接近MA10，趋势强度较弱",
+      "MACD在零轴附近未形成明确方向信号",
+      "RSI中性显示市场犹豫，缺乏成交量确认"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "温和趋势偏震荡",
+    "opportunity_quality": "C",
+    "risk_factors": [
+      "技术风险：趋势可能虚假突破",
+      "波动率风险：ATR显示正常波动但风险收益比不佳"
+    ],
+    "market_diagnosis": "市场处于温和多头趋势但接近震荡状态，MA10和MA30多头排列但价格仅略高于MA30，MACD和RSI中性，波动率正常，市场情绪犹豫。",
+    "opportunity_assessment": "趋势跟随机会信号强度弱，确认程度部分，时间窗口需要短期观察，机会质量评级C级一般。",
+    "risk_analysis": "预期收益有限（目标约1085，收益20点），潜在风险较大（止损约1038，风险27点），风险收益比0.73<1不理想，建议保守观望。",
+    "execution_plan": "保持空仓观望，等待更明确的技术信号或成交量确认，暂无开仓计划。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1065.0
+  },
+  "CZCE.FG601::2025-07-02T00:00:00+08:00::1139.00": {
+    "action": "close_long",
+    "position_size": 1,
+    "target_position": 0,
+    "stop_loss": 1060.0,
+    "take_profit": 1100.0,
+    "confidence": 0.85,
+    "rationale": [
+      "价格已突破原止盈价1100，盈利目标达成",
+      "RSI接近超买区(66.1)，短期回调风险增加",
+      "MA多头排列但价格偏离MA30达7.49%，存在技术性回调需求"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "强势趋势但接近超买区域",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "RSI超买引发的技术性回调",
+      "高波动率环境(ATR=23.5)下的价格震荡"
+    ],
+    "market_diagnosis": "市场处于强势上升趋势，MA多头排列明确，但RSI接近超买区，波动率扩张，市场情绪偏向贪婪，需警惕短期回调",
+    "opportunity_assessment": "趋势跟随机会质量良好(B级)，但当前价格已超过原止盈目标，信号强度中等，确认程度部分确认，建议获利了结",
+    "risk_analysis": "当前浮动盈利+9.22%，已达成原止盈目标，继续持有风险收益比不再有利。主要风险为技术性回调和波动率风险，应锁定利润规避不确定性",
+    "execution_plan": "立即平仓1手多仓，锁定+9.22%盈利。平仓后保持空仓观望，等待更好的入场时机",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1139.0
+  },
+  "CZCE.FG601::2025-07-03T00:00:00+08:00::1128.00": {
+    "action": "open_long",
+    "position_size": 1,
+    "target_position": 1,
+    "stop_loss": 1110.0,
+    "take_profit": 1150.0,
+    "confidence": 0.6,
+    "rationale": [
+      "MA多头排列支撑上涨趋势",
+      "价格高于MA30显示突破动能",
+      "MACD在零轴附近金叉"
+    ],
+    "position_percent": 0.245,
+    "market_regime": "温和多头趋势，技术指标部分确认，情绪理性，波动率正常",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "RSI中性可能引发回调",
+      "缺乏成交量确认信号"
+    ],
+    "market_diagnosis": "市场处于温和多头趋势，MA10和MA30呈多头排列，价格高于MA30 6.32%，但MACD和RSI中性，缺乏强烈确认，波动率处于正常水平。",
+    "opportunity_assessment": "趋势跟随机会，信号强度中等，确认程度部分（MA确认但MACD和RSI中性），时间窗口短期，机会质量评级B级。",
+    "risk_analysis": "预期收益约2%（止盈1150），潜在风险约2.6%（止损1110），风险收益比1.22，建议稳健操作，主要风险为技术性回调，通过硬止损管理风险。",
+    "execution_plan": "开多仓1手，立即入场，止损设于1110，止盈设于1150，最大亏损控制在账户2.6%以内，仓位占用保证金24.5%。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1128.0
+  },
+  "CZCE.FG601::2025-07-04T00:00:00+08:00::1118.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 1,
+    "stop_loss": 1110.0,
+    "take_profit": 1150.0,
+    "confidence": 0.65,
+    "rationale": [
+      "MA多头排列支撑趋势",
+      "价格高于MA30显示相对强势",
+      "MACD零轴附近有转强潜力"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和多头趋势",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "价格接近止损位易被触发",
+      "RSI中性缺乏强烈动能确认"
+    ],
+    "market_diagnosis": "市场处于温和多头趋势，MA10和MA30呈多头排列，价格高于MA30 5.23%显示相对强势；MACD在零轴附近有转强迹象但动能不足，RSI 59.6处于中性区间；波动率正常（ATR=25.21），市场情绪理性偏犹豫。",
+    "opportunity_assessment": "趋势跟随机会，信号强度中等，有多头排列部分确认但缺乏成交量等其他因素强化；时间窗口立即，机会质量B级良好，但需注意止损风险。",
+    "risk_analysis": "预期收益2.86%（至1150），当前止损风险0.72%（至1110），风险收益比约4:1较为合理；主要风险为技术性回调触发止损，建议调整止损避免正常波动被扫；最大亏损控制在账户3%以内。",
+    "execution_plan": "继续持有1手多仓，调整止损至1080.0（基于ATR×1.5和MA10支撑），止盈保持1150.0；密切关注价格在MA10附近的反应，若跌破1080则坚决止损。",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1080.0,
+    "adjust_take_profit": 1150.0,
+    "adjustment_reason": "当前止损1110.0设置过紧（仅ATR×0.32），低于标准ATR×1.5=37.8点，易被正常波动触发；MA多头排列未破坏，MA10=1087.9提供支撑，调整至1080.0（ATR×1.5水平）允许合理波动空间，同时保持风险可控。",
+    "decision_price": 1118.0
+  },
+  "CZCE.FG601::2025-07-07T00:00:00+08:00::1114.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 1,
+    "stop_loss": 1080.0,
+    "take_profit": 1150.0,
+    "confidence": 0.6,
+    "rationale": [
+      "MA多头排列支撑趋势延续",
+      "价格高于MA30显示整体偏多",
+      "MACD和RSI中性表明短期动能有限"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和上升趋势，但动能不足，处于整理阶段",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "MACD零轴附近可能面临回调压力",
+      "RSI中性区显示方向不明确"
+    ],
+    "market_diagnosis": "市场处于温和上升趋势，MA多头排列但MACD和RSI中性，波动率正常，情绪犹豫，缺乏强劲驱动",
+    "opportunity_assessment": "趋势跟随机会，信号强度中等，部分确认，时间窗口短期，机会质量B级",
+    "risk_analysis": "预期收益3.23%，潜在风险3.05%，风险收益比大致1:1，建议稳健持仓，主要风险为技术性回调，通过止损管理",
+    "execution_plan": "持有当前多仓，调整止盈止损以优化风险收益比，止损调至1090.00（MA10支撑），止盈调至1160.00（扩大盈利空间）",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 1090.0,
+    "adjust_take_profit": 1160.0,
+    "adjustment_reason": "当前止盈止损设置过于紧凑，可能被正常波动触发；调整止损至MA10（1093.10）下方1090.00以提供更好支撑，止盈上调至1160.00以捕捉更大趋势空间，基于ATR和关键技术位优化风险收益比",
+    "decision_price": 1114.0
+  },
+  "CZCE.FG601::2025-07-08T00:00:00+08:00::1122.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 1,
+    "stop_loss": 1090.0,
+    "take_profit": 1160.0,
+    "confidence": 0.8,
+    "rationale": [
+      "MA多头排列确认趋势",
+      "MACD多头动量强劲",
+      "价格高于MA30支撑"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "强势趋势",
+    "opportunity_quality": "A",
+    "risk_factors": [
+      "RSI中性可能短期回调",
+      "ATR较高增加波动风险"
+    ],
+    "market_diagnosis": "市场处于强势多头趋势，MA10和MA30多头排列，价格高于MA30 5.30%，MACD多头确认，波动率正常，情绪偏向贪婪但未超买。",
+    "opportunity_assessment": "趋势跟随机会，信号强度强，多重技术指标确认，时间窗口立即，机会质量A级优质。",
+    "risk_analysis": "预期收益3.39%（38点），潜在风险2.85%（32点），风险收益比1:1.19合理，应稳健持有。主要风险为技术回调和波动率扩张，当前止损设置基于ATR有效管理风险。",
+    "execution_plan": "保持当前LONG 1手持仓，止损1090.0，止盈1160.0，无需调整仓位或止盈止损。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1122.0
+  },
+  "CZCE.FG601::2025-07-09T00:00:00+08:00::1132.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 1090.0,
+    "take_profit": 1160.0,
+    "confidence": 0.7,
+    "rationale": [
+      "MA多头排列和MACD确认上涨趋势",
+      "价格高于MA30 6.08%显示趋势强度",
+      "RSI 62.3提供进一步上涨空间"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和多头趋势，MA多头排列支撑，MACD动能向上，RSI中性未超买，波动率正常偏高",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "ATR较高显示波动风险",
+      "风险收益比初始不佳需调整"
+    ],
+    "market_diagnosis": "市场处于温和多头趋势，主要驱动为MA和MACD多头信号，情绪偏贪婪但理性，波动率正常扩张",
+    "opportunity_assessment": "趋势跟随机会，信号强度中等偏强，多重技术指标确认，时间窗口立即，质量评级B级良好",
+    "risk_analysis": "预期收益2.47%（28点），潜在风险3.71%（42点），风险收益比初始不佳，调整止盈后改善至约1:1.14，主要风险为技术回调和波动，通过止损和仓位控制管理",
+    "execution_plan": "持有当前1手多仓，调整止盈至1180.00以优化风险收益比，止损保持1090.00，监控市场变化",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 1180.0,
+    "adjustment_reason": "当前止盈价1160.00过于保守，基于趋势强度和ATR（25.36），上调止盈至1180.00可改善风险收益比（收益48点 vs 风险42点），同时保持止损合理，符合趋势延续逻辑",
+    "decision_price": 1132.0
+  },
+  "CZCE.FG601::2025-07-10T00:00:00+08:00::1174.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 0,
+    "stop_loss": 1140.0,
+    "take_profit": 1200.0,
+    "confidence": 0.7,
+    "rationale": [
+      "MA多头排列确认趋势强劲",
+      "MACD显示多头动能持续",
+      "价格高于MA30 9.65%支撑上行"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "强势趋势",
+    "opportunity_quality": "A",
+    "risk_factors": [
+      "RSI接近超买区可能引发技术回调",
+      "波动率正常但需警惕趋势逆转风险"
+    ],
+    "market_diagnosis": "市场处于强势多头趋势，主要驱动为技术突破和指标多重确认，情绪偏向贪婪，波动率处于正常状态但需监控扩张迹象。",
+    "opportunity_assessment": "趋势跟随机会，信号强度强，得到MA、MACD和价格位置多重确认，时间窗口立即，机会质量评级A级优质。",
+    "risk_analysis": "预期收益目标1200（约2.21%收益率），潜在风险止损1140（约-2.90%最大亏损），风险收益比1:0.76属合理范围，建议稳健操作，主要风险为技术回调和波动率扩张，通过止损上移和止盈优化管理风险。",
+    "execution_plan": "保持当前多头持仓1手，调整止盈至1200以捕捉更多上行空间，止损上移至1140以保护已实现利润，密切关注RSI变化和价格行为。",
+    "override_stop_loss": true,
+    "adjust_stop_loss": 1140.0,
+    "adjust_take_profit": 1200.0,
+    "adjustment_reason": "趋势保持强劲，MA多头排列且MACD支持继续上行，当前止盈设置1180过于保守可能过早终止盈利头寸。建议提高止盈目标至1200以捕捉更多趋势收益，同时上移止损至1140（高于开仓价1122）以保护已实现利润，基于ATR和关键技术位调整。",
+    "decision_price": 1174.0
+  },
+  "CZCE.FG601::2025-07-11T00:00:00+08:00::1170.00": {
+    "action": "hold",
+    "position_size": 0,
+    "target_position": 1,
+    "stop_loss": 1140.0,
+    "take_profit": 1200.0,
+    "confidence": 0.8,
+    "rationale": [
+      "MA多头排列确认上涨趋势",
+      "MACD多头信号强化动能",
+      "价格高于MA30显示强势"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "强势趋势",
+    "opportunity_quality": "A",
+    "risk_factors": [
+      "RSI接近超买区可能短期回调",
+      "ATR较高显示波动风险"
+    ],
+    "market_diagnosis": "市场处于强势趋势状态，MA多头排列、价格高于MA30 8.86%且MACD多头，主要驱动为技术突破和指标确认；市场情绪偏贪婪但理性，波动率处于扩张状态（ATR=28.07）。",
+    "opportunity_assessment": "趋势跟随机会，信号强度强（多重技术指标确认），确认程度高，时间窗口立即，机会质量A级优质。",
+    "risk_analysis": "预期收益目标1200.00（预期收益率2.56%），潜在风险止损1140.00（最大亏损2.56%），风险收益比1:1但趋势向上可能改善；主要风险为技术性回调和高波动，通过当前止损策略管理。",
+    "execution_plan": "保持当前LONG 1手持仓，止损1140.00、止盈1200.00，满仓运行，无需调整仓位；监控RSI和价格行为以防回调。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 1220.0,
+    "adjustment_reason": "趋势强劲且MA多头排列显示上涨动能充足，当前止盈1200.00距离过近（仅2.56%），基于ATR硬止盈限制（140.35点）和价格突破潜力，上调至1220.00以优化风险收益比，同时保持止损1140.00低于MA10支撑。",
+    "decision_price": 1170.0
+  },
+  "CZCE.FG601::2025-07-14T00:00:00+08:00::1196.00": {
+    "action": "close_long",
+    "position_size": 1,
+    "target_position": 0,
+    "stop_loss": 1140.0,
+    "take_profit": 1220.0,
+    "confidence": 0.7,
+    "rationale": [
+      "RSI超买提示回调风险",
+      "风险收益比不合理",
+      "锁定现有利润"
+    ],
+    "position_percent": 0.0,
+    "market_regime": "强势多头趋势但RSI超买，波动率扩张",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "RSI超买可能导致价格回调",
+      "高波动率增加不确定性"
+    ],
+    "market_diagnosis": "市场处于强势多头趋势（MA多头排列、MACD多头），但RSI=72.1进入超买区，ATR=29.57显示波动率扩张，短期回调风险增加。",
+    "opportunity_assessment": "多头趋势仍在但RSI超买使信号强度中等，确认程度部分，机会质量B级，需谨慎管理。",
+    "risk_analysis": "预期收益仅2.01%（止盈1220），潜在风险4.68%（止损1140），风险收益比约1:2.3不合理，主要风险为技术性回调，建议锁定利润。",
+    "execution_plan": "立即平仓1手多仓，实现当前9.55%盈利，避免超买回调风险；仓位归零，观望后续走势。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1196.0
+  },
+  "CZCE.FG601::2025-07-15T00:00:00+08:00::1168.00": {
+    "action": "open_long",
+    "position_size": 1,
+    "target_position": 1,
+    "stop_loss": 1145.0,
+    "take_profit": 1200.0,
+    "confidence": 0.7,
+    "rationale": [
+      "MA多头排列确认上升趋势",
+      "MACD金叉支持多头信号",
+      "价格高于MA30显示强势"
+    ],
+    "position_percent": 1.0,
+    "market_regime": "温和多头趋势",
+    "opportunity_quality": "B",
+    "risk_factors": [
+      "RSI中性可能短期回调",
+      "ATR波动需严格止损"
+    ],
+    "market_diagnosis": "市场处于温和多头趋势，MA10和MA30多头排列，价格高于MA30 7.65%，MACD多头，RSI中性偏多，波动率正常。",
+    "opportunity_assessment": "趋势跟随做多机会，信号中等偏强，MA和MACD多重确认，机会质量B级，适合立即入场。",
+    "risk_analysis": "预期收益32点（2.74%），风险23点（1.97%），风险收益比1.39，稳健操作，止损基于MA10和ATR设置，最大亏损控制在账户权益3%以内。",
+    "execution_plan": "开立1手多仓，立即入场，止损1145，止盈1200，仓位满额但符合风险控制原则。",
+    "override_stop_loss": false,
+    "adjust_stop_loss": 0.0,
+    "adjust_take_profit": 0.0,
+    "adjustment_reason": "",
+    "decision_price": 1168.0
+  }
+}

@@ -1327,3 +1327,159 @@ class Backtester:
             "wins": 0,
             "losses": 0,
         }
+
+    def analyze_latest(self, username: Optional[str] = None, password: Optional[str] = None, use_sim: bool = True) -> Dict[str, Any]:
+        """
+        仅分析最新一根K线，给出LLM的决策建议（不运行回测）
+
+        Args:
+            username: TqSDK用户名
+            password: TqSDK密码
+            use_sim: 是否使用模拟账户
+
+        Returns:
+            包含决策结果的字典
+        """
+        try:
+            from tqsdk import TqApi, TqAuth, TqSim
+            from tqsdk.ta import MA, RSI, ATR, MACD
+        except Exception as e:
+            logger.error(f"未安装或无法导入TqSDK: {e}")
+            raise
+
+        # Setup authentication
+        auth = self._setup_tqsdk_auth(username, password)
+
+        # Create API (real-time mode, no backtest)
+        api_params = {}
+        if auth:
+            api_params['auth'] = auth
+
+        api = TqApi(**api_params)
+
+        try:
+            # Get trading symbols
+            symbol_tq_data = self._normalize_symbol(self.cfg.symbol)
+            quote = api.get_quote(symbol_tq_data)
+
+            # Fetch K-line data
+            is_multi_timeframe = len(self.cfg.get_all_periods()) > 1
+            
+            if is_multi_timeframe:
+                logger.info("=== 使用多周期模式获取最新数据 ===")
+                klines_dict = self._fetch_multi_timeframe_data(api, symbol_tq_data)
+                klines = klines_dict.get("decision")
+                if klines is None:
+                    raise RuntimeError("决策周期数据获取失败")
+            else:
+                logger.info("=== 使用单周期模式获取最新数据 ===")
+                duration_seconds = self.cfg.get_decision_duration_seconds()
+                data_length = 100  # Fetch enough data for indicators
+
+                klines = api.get_kline_serial(
+                    symbol_tq_data,
+                    duration_seconds=duration_seconds,
+                    data_length=data_length
+                )
+                api.wait_update()
+
+                logger.info(f"计算技术指标，数据长度: {len(klines)} bars")
+                klines = self._calculate_technical_indicators(klines)
+                klines_dict = None
+
+            # Get the latest completed bar
+            if len(klines) < 2:
+                raise RuntimeError("数据不足，无法分析")
+
+            bar = klines.iloc[-2]  # Latest completed bar
+            bar_time = tafunc.time_to_datetime(bar["datetime"])
+
+            # Prepare context (all bars before current)
+            ctx = klines.iloc[: len(klines)-1].copy()
+            df_ctx = pd.DataFrame({
+                "timestamp": ctx["datetime"].apply(tafunc.time_to_datetime),
+                "open": ctx["open"].astype(float),
+                "high": ctx["high"].astype(float),
+                "low": ctx["low"].astype(float),
+                "close": ctx["close"].astype(float),
+                "volume": ctx["volume"].astype(float),
+            })
+
+            # Copy technical indicators
+            indicator_columns = ["ma10", "ma30", "ma60", "rsi", "atr", "macd", "macd_dea", "macd_bar"]
+            for col in indicator_columns:
+                if col in ctx.columns:
+                    df_ctx[col] = ctx[col].astype(float)
+
+            # Current bar as Series
+            row = pd.Series({
+                "timestamp": bar_time,
+                "open": float(bar["open"]),
+                "high": float(bar["high"]),
+                "low": float(bar["low"]),
+                "close": float(bar["close"]),
+                "volume": float(bar["volume"]),
+            })
+
+            # Add technical indicators to current bar
+            for col in indicator_columns:
+                if col in bar.index and not pd.isna(bar[col]):
+                    row[col] = float(bar[col])
+
+            # Set row.name and append to context
+            row.name = len(df_ctx)
+            df_ctx = pd.concat([df_ctx, row.to_frame().T], ignore_index=False)
+
+            current_price = float(row["close"]) if not pd.isna(row["close"]) else float(row["open"])
+
+            # Get position info (if available)
+            if hasattr(api, 'get_position'):
+                symbol_tq_trade = quote.underlying_symbol if hasattr(quote, 'underlying_symbol') and quote.underlying_symbol else symbol_tq_data
+                position = api.get_position(symbol_tq_trade)
+                current_pos_qty = position.pos_long - position.pos_short
+            else:
+                current_pos_qty = 0
+
+            # Inject position state to decision engine (no position for latest mode)
+            if hasattr(self.engine, "current_pos"):
+                self.engine.current_pos = None
+                setattr(self.engine, "current_balance", self.cfg.initial_capital)
+                setattr(self.engine, "active_stop_loss", 0.0)
+                setattr(self.engine, "active_take_profit", 0.0)
+            elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
+                self.engine.llm_direct.current_pos = None
+                setattr(self.engine.llm_direct, "current_balance", self.cfg.initial_capital)
+                setattr(self.engine.llm_direct, "active_stop_loss", 0.0)
+                setattr(self.engine.llm_direct, "active_take_profit", 0.0)
+
+            # Make decision
+            logger.info(f"分析最新K线: {bar_time}")
+            try:
+                if self.mode == DecisionMode.QUANT_ONLY:
+                    decision = self.engine.decide(row, df_ctx)
+                else:
+                    decision = self.engine.decide(row, df_ctx, symbol=self.cfg.symbol, klines_dict=klines_dict, cfg=self.cfg)
+            except Exception as e:
+                logger.error(f"决策失败: {e}")
+                raise
+
+            # Build result
+            result = {
+                "timestamp": bar_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "current_price": current_price,
+                "decision": decision.action,
+                "position_size": decision.position_size,
+                "confidence": decision.confidence,
+                "stop_loss": decision.stop_loss,
+                "take_profit": decision.take_profit,
+            }
+
+            if decision.rationale:
+                result["rationale"] = "\n".join(decision.rationale)
+
+            logger.info(f"决策结果: {decision.action}, 置信度: {decision.confidence:.2%}")
+
+            return result
+
+        finally:
+            api.close()
