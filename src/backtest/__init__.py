@@ -1,4 +1,8 @@
-from .backtester import TqBacktester
-from .performance import PerformanceAnalyzer
+"""Backtest module for LLM-based trading system."""
 
-__all__ = ['TqBacktester', 'PerformanceAnalyzer']
+from .core.backtester import Backtester
+from .models.decision import Decision, DecisionMode
+from .models.config import BTConfig
+from .models.position import Position
+
+__all__ = ['Backtester', 'Decision', 'DecisionMode', 'BTConfig', 'Position']

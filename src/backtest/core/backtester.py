@@ -645,6 +645,81 @@ class Backtester:
 
         return symbol
 
+    def _is_in_trading_time(self, quote) -> bool:
+        """
+        判断当前是否在交易时间内
+        
+        Args:
+            quote: TqSDK的quote对象，包含trading_time和datetime信息
+            
+        Returns:
+            True表示在交易时间内，False表示不在交易时间内
+        """
+        from datetime import datetime, time
+        
+        # 获取trading_time字段
+        trading_time = getattr(quote, 'trading_time', None)
+        if not trading_time:
+            logger.warning("无法获取trading_time信息，默认认为不在交易时间")
+            return False
+        
+        # 获取quote的datetime（纳秒数），转换为北京时间的datetime对象
+        quote_datetime_ns = getattr(quote, 'datetime', None)
+        if quote_datetime_ns is None:
+            logger.warning("无法获取quote.datetime，使用系统时间")
+            tz = self.cfg.get_timezone()
+            now = datetime.now(tz)
+        else:
+            # TqSDK的datetime是纳秒数，需要转换为datetime对象
+            now = tafunc.time_to_datetime(quote_datetime_ns)
+        
+        current_time = now.time()
+        
+        logger.debug(f"行情时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.debug(f"交易时间段: {trading_time}")
+        
+        # 检查是否在任何交易时间段内
+        for period_name, time_ranges in trading_time.items():
+            if not isinstance(time_ranges, list):
+                continue
+                
+            for time_range in time_ranges:
+                if not isinstance(time_range, list) or len(time_range) != 2:
+                    continue
+                
+                try:
+                    # 解析开始和结束时间
+                    start_str, end_str = time_range
+                    start_parts = [int(x) for x in start_str.split(':')]
+                    end_parts = [int(x) for x in end_str.split(':')]
+                    
+                    # 处理跨日情况（如夜盘 21:00:00 到 25:00:00）
+                    if end_parts[0] >= 24:
+                        # 结束时间超过24小时，说明跨日
+                        end_parts[0] -= 24
+                        end_time = time(end_parts[0], end_parts[1], end_parts[2] if len(end_parts) > 2 else 0)
+                        start_time = time(start_parts[0], start_parts[1], start_parts[2] if len(start_parts) > 2 else 0)
+                        
+                        # 跨日情况：在start_time之后 或 在end_time之前
+                        if current_time >= start_time or current_time < end_time:
+                            logger.info(f"当前时间在交易时段内: {period_name} [{start_str}-{end_str}]")
+                            return True
+                    else:
+                        # 正常情况，不跨日
+                        start_time = time(start_parts[0], start_parts[1], start_parts[2] if len(start_parts) > 2 else 0)
+                        end_time = time(end_parts[0], end_parts[1], end_parts[2] if len(end_parts) > 2 else 0)
+                        
+                        if start_time <= current_time < end_time:
+                            logger.info(f"当前时间在交易时段内: {period_name} [{start_str}-{end_str}]")
+                            return True
+                            
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"解析交易时间段失败: {time_range}, 错误: {e}")
+                    continue
+        
+        logger.info("当前时间不在任何交易时段内")
+        return False
+
     def _update_engine_trade_meta(self, updates: Dict[str, Any]):
         """更新引擎的交易元数据"""
         # Try llm_direct first (for LLMDirectEngine)
@@ -1391,11 +1466,29 @@ class Backtester:
             if len(klines) < 2:
                 raise RuntimeError("数据不足，无法分析")
 
-            bar = klines.iloc[-2]  # Latest completed bar
+            # Check if currently in trading time using quote.trading_time
+            # According to TqSDK docs: trading_time contains time ranges like:
+            # {"day": [["09:00:00", "10:15:00"], ...], "night": [["21:00:00", "25:00:00"]]}
+            api.wait_update()
+            
+            is_trading = self._is_in_trading_time(quote)
+            
+            if is_trading:
+                # In trading time: -1 is forming, -2 is latest completed
+                bar_idx = -2
+                logger.info(f"当前在交易时间内，使用前一根已完成K线(iloc[-2])")
+            else:
+                # Not in trading time: -1 might be empty future bar, use -2 for safety
+                bar_idx = -2
+                logger.info(f"当前不在交易时间，使用最新已完成K线(iloc[-2])")
+            
+            bar = klines.iloc[bar_idx]
             bar_time = tafunc.time_to_datetime(bar["datetime"])
 
             # Prepare context (all bars before current)
-            ctx = klines.iloc[: len(klines)-1].copy()
+            # If using -1 (latest bar), include all bars up to -1; if using -2, include all bars up to -2
+            ctx_end_idx = bar_idx if bar_idx == -1 else len(klines) - 1
+            ctx = klines.iloc[:ctx_end_idx].copy()
             df_ctx = pd.DataFrame({
                 "timestamp": ctx["datetime"].apply(tafunc.time_to_datetime),
                 "open": ctx["open"].astype(float),
