@@ -267,24 +267,28 @@ class LLMDirectEngine:
 
             float_pnl = 0.0
             if entry_price > 0 and qty > 0:
-                # 完全依赖 TqSDK 的浮动盈亏，不进行手工计算回退
+                # 优先使用 TqSDK 的浮动盈亏，如果为 None 则手工计算
                 if pos_obj.direction == "long":
                     if tq_pos_pnl_long is not None:
                         float_pnl = tq_pos_pnl_long
                     else:
-                        logger.warning(f"TqSDK 多头持仓浮动盈亏为 None，可能数据有问题")
-                        float_pnl = 0.0
+                        # Fallback: 手工计算多头盈亏
+                        price_diff = current_price - entry_price
+                        float_pnl = price_diff * contract_multiplier * qty
+                        logger.debug(f"TqSDK多头浮动盈亏为None，使用手工计算: ({current_price:.2f} - {entry_price:.2f}) × {contract_multiplier} × {qty} = {float_pnl:.2f}")
                 else:
                     if tq_pos_pnl_short is not None:
                         float_pnl = tq_pos_pnl_short
                     else:
-                        logger.warning(f"TqSDK 空头持仓浮动盈亏为 None，可能数据有问题")
-                        float_pnl = 0.0
+                        # Fallback: 手工计算空头盈亏
+                        price_diff = entry_price - current_price
+                        float_pnl = price_diff * contract_multiplier * qty
+                        logger.debug(f"TqSDK空头浮动盈亏为None，使用手工计算: ({entry_price:.2f} - {current_price:.2f}) × {contract_multiplier} × {qty} = {float_pnl:.2f}")
             elif tq_acc_float_profit is not None:
                 # 无持仓时，回退到账户级浮盈
                 float_pnl = tq_acc_float_profit
             else:
-                logger.warning(f"TqSDK 账户浮动盈亏也为 None，无法获取盈亏数据")
+                # 最后的fallback：设为0
                 float_pnl = 0.0
 
             pct_base = float(tq_static_balance) if tq_static_balance is not None else float(initial_capital)

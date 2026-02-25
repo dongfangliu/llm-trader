@@ -648,6 +648,157 @@ class Backtester:
     def _is_in_trading_time(self, quote) -> bool:
         """
         判断当前是否在交易时间内
+
+        Args:
+            quote: TqSDK的quote对象，包含trading_time和datetime信息
+
+        Returns:
+            True表示在交易时间内，False表示不在交易时间内
+        """
+        from datetime import datetime, time
+
+        # 获取trading_time字段
+        trading_time = getattr(quote, 'trading_time', None)
+        if not trading_time:
+            logger.warning("无法获取trading_time信息，默认认为不在交易时间")
+            return False
+        now = datetime.now()
+        current_time = now.time()
+
+        logger.debug(f"行情时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.debug(f"交易时间段: {trading_time}")
+
+        # 检查是否在任何交易时间段内
+        for period_name, time_ranges in trading_time.items():
+            if not isinstance(time_ranges, list):
+                continue
+
+            for time_range in time_ranges:
+                if not isinstance(time_range, list) or len(time_range) != 2:
+                    continue
+
+                try:
+                    # 解析开始和结束时间
+                    start_str, end_str = time_range
+                    start_parts = [int(x) for x in start_str.split(':')]
+                    end_parts = [int(x) for x in end_str.split(':')]
+
+                    # 处理跨日情况（如夜盘 21:00:00 到 25:00:00）
+                    if end_parts[0] >= 24:
+                        # 结束时间超过24小时，说明跨日
+                        end_parts[0] -= 24
+                        end_time = time(end_parts[0], end_parts[1], end_parts[2] if len(end_parts) > 2 else 0)
+                        start_time = time(start_parts[0], start_parts[1], start_parts[2] if len(start_parts) > 2 else 0)
+
+                        # 跨日情况：在start_time之后 或 在end_time之前
+                        if current_time >= start_time or current_time < end_time:
+                            logger.info(f"当前时间在交易时段内: {period_name} [{start_str}-{end_str}]")
+                            return True
+                    else:
+                        # 正常情况，不跨日
+                        start_time = time(start_parts[0], start_parts[1], start_parts[2] if len(start_parts) > 2 else 0)
+                        end_time = time(end_parts[0], end_parts[1], end_parts[2] if len(end_parts) > 2 else 0)
+
+                        if start_time <= current_time < end_time:
+                            logger.info(f"当前时间在交易时段内: {period_name} [{start_str}-{end_str}]")
+                            return True
+
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"解析交易时间段失败: {time_range}, 错误: {e}")
+                    continue
+
+        logger.info("当前时间不在任何交易时段内")
+        return False
+
+    def _get_last_trading_session_end(self, quote, current_dt: datetime) -> datetime:
+        """
+        获取上一个交易时段的结束时间
+        
+        Args:
+            quote: TqSDK的quote对象，包含trading_time信息
+            current_dt: 当前时间（带时区）
+            
+        Returns:
+            上一个交易时段的结束时间
+        """
+        from datetime import datetime, time, timedelta
+        
+        trading_time = getattr(quote, 'trading_time', None)
+        if not trading_time:
+            logger.warning("无法获取trading_time信息，使用当前时间")
+            return current_dt
+        
+        current_time = current_dt.time()
+        all_sessions = []
+        
+        # 收集所有交易时段的结束时间
+        for period_name, time_ranges in trading_time.items():
+            if not isinstance(time_ranges, list):
+                continue
+            
+            for time_range in time_ranges:
+                if not isinstance(time_range, list) or len(time_range) != 2:
+                    continue
+                
+                try:
+                    start_str, end_str = time_range
+                    end_parts = [int(x) for x in end_str.split(':')]
+                    
+                    # 处理跨日情况
+                    day_offset = 0
+                    if end_parts[0] >= 24:
+                        end_parts[0] -= 24
+                        day_offset = 1
+                    
+                    end_time = time(end_parts[0], end_parts[1], end_parts[2] if len(end_parts) > 2 else 0)
+                    all_sessions.append((end_time, day_offset, period_name))
+                    
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"解析交易时间段失败: {time_range}, 错误: {e}")
+                    continue
+        
+        if not all_sessions:
+            logger.warning("未找到有效的交易时段，使用当前时间")
+            return current_dt
+        
+        # 按结束时间排序（考虑跨日）
+        all_sessions.sort(key=lambda x: (x[1], x[0]))
+        
+        # 查找当前时间之前最近的交易时段结束时间
+        last_end_dt = None
+        for end_time, day_offset, period_name in all_sessions:
+            candidate_dt = current_dt.replace(hour=end_time.hour, minute=end_time.minute, 
+                                             second=end_time.second, microsecond=0)
+            
+            # 如果跨日，则加一天
+            if day_offset == 1:
+                candidate_dt += timedelta(days=1)
+            
+            # 如果这个时间在当前时间之前，就是候选
+            if candidate_dt <= current_dt:
+                if last_end_dt is None or candidate_dt > last_end_dt:
+                    last_end_dt = candidate_dt
+                    logger.debug(f"找到候选交易时段结束: {period_name} at {candidate_dt}")
+        
+        # 如果没找到今天的结束时间，使用昨天最晚的交易时段
+        if last_end_dt is None:
+            # 取最后一个交易时段（通常是日盘或夜盘的最后时段）
+            end_time, day_offset, period_name = all_sessions[-1]
+            last_end_dt = (current_dt - timedelta(days=1)).replace(
+                hour=end_time.hour, minute=end_time.minute, 
+                second=end_time.second, microsecond=0
+            )
+            if day_offset == 1:
+                last_end_dt += timedelta(days=1)
+            logger.info(f"使用昨日交易时段结束: {period_name} at {last_end_dt}")
+        else:
+            logger.info(f"使用最近交易时段结束时间: {last_end_dt}")
+        
+        return last_end_dt
+
+    def _is_in_trading_time(self, quote) -> bool:
+        """
+        判断当前是否在交易时间内
         
         Args:
             quote: TqSDK的quote对象，包含trading_time和datetime信息
@@ -664,15 +815,7 @@ class Backtester:
             return False
         
         # 获取quote的datetime（纳秒数），转换为北京时间的datetime对象
-        quote_datetime_ns = getattr(quote, 'datetime', None)
-        if quote_datetime_ns is None:
-            logger.warning("无法获取quote.datetime，使用系统时间")
-            tz = self.cfg.get_timezone()
-            now = datetime.now(tz)
-        else:
-            # TqSDK的datetime是纳秒数，需要转换为datetime对象
-            now = tafunc.time_to_datetime(quote_datetime_ns)
-        
+        now = datetime.now()
         current_time = now.time()
         
         logger.debug(f"行情时间: {now.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -915,6 +1058,62 @@ class Backtester:
         logger.info(f"使用TargetPosTask自动处理订单时间")
         if total_bars_expected:
             logger.info(f"预计处理 {total_bars_expected} 根K线")
+        
+        # Set initial position if configured
+        if self.cfg.initial_position != 0 and self.cfg.entry_price > 0:
+            initial_pos_direction = "多头" if self.cfg.initial_position > 0 else "空头"
+            initial_pos_qty = abs(self.cfg.initial_position)
+            logger.info(f"⚠️  设置初始持仓: {initial_pos_direction} {initial_pos_qty}手 @ {self.cfg.entry_price:.2f}")
+            target_pos_task.set_target_volume(self.cfg.initial_position)
+            
+            # Wait for position to be established and data to be updated
+            max_wait_attempts = 10
+            for attempt in range(max_wait_attempts):
+                api.wait_update()
+                current_pos = position.pos_long - position.pos_short
+                if current_pos == self.cfg.initial_position:
+                    logger.debug(f"初始持仓已确认: {current_pos}手")
+                    break
+            else:
+                logger.warning(f"等待初始持仓建立超时，当前持仓: {position.pos_long - position.pos_short}，目标: {self.cfg.initial_position}")
+            
+            # Inject initial position to engine for AI awareness
+            if hasattr(self.engine, "current_pos"):
+                if self.cfg.initial_position > 0:
+                    self.engine.current_pos = Position(
+                        direction="long", 
+                        qty=initial_pos_qty, 
+                        entry_price=self.cfg.entry_price, 
+                        stop=0, 
+                        take=0
+                    )
+                else:
+                    self.engine.current_pos = Position(
+                        direction="short", 
+                        qty=initial_pos_qty, 
+                        entry_price=self.cfg.entry_price, 
+                        stop=0, 
+                        take=0
+                    )
+            elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
+                if self.cfg.initial_position > 0:
+                    self.engine.llm_direct.current_pos = Position(
+                        direction="long", 
+                        qty=initial_pos_qty, 
+                        entry_price=self.cfg.entry_price, 
+                        stop=0, 
+                        take=0
+                    )
+                else:
+                    self.engine.llm_direct.current_pos = Position(
+                        direction="short", 
+                        qty=initial_pos_qty, 
+                        entry_price=self.cfg.entry_price, 
+                        stop=0, 
+                        take=0
+                    )
+            
+            logger.info(f"✅ 初始持仓已建立，AI决策时将考虑该持仓")
 
         # Main backtest loop
         while api.wait_update():  # Returns False when backtest ends
@@ -976,7 +1175,7 @@ class Backtester:
                             logger.warning(f"辅助周期 {period_key} 指标更新失败: {e}")
 
                 # Get completed bar (second to last)
-                bar = klines.iloc[-2]
+                bar = klines.iloc[-1]
                 bar_time = tafunc.time_to_datetime(bar["datetime"])
 
                 # Warmup: skip decisions until critical indicators are ready
@@ -1416,7 +1615,7 @@ class Backtester:
             包含决策结果的字典
         """
         try:
-            from tqsdk import TqApi, TqAuth, TqSim
+            from tqsdk import TqApi, TqAuth, TqSim, TqBacktest
             from tqsdk.ta import MA, RSI, ATR, MACD
         except Exception as e:
             logger.error(f"未安装或无法导入TqSDK: {e}")
@@ -1425,10 +1624,42 @@ class Backtester:
         # Setup authentication
         auth = self._setup_tqsdk_auth(username, password)
 
-        # Create API (real-time mode, no backtest)
+        # First check if we're in trading time with a temporary connection
+        logger.info("检查当前是否在交易时间...")
+        temp_api_params = {}
+        if auth:
+            temp_api_params['auth'] = auth
+        
+        temp_api = TqApi(**temp_api_params)
+        try:
+            symbol_tq_data = self._normalize_symbol(self.cfg.symbol)
+            temp_quote = temp_api.get_quote(symbol_tq_data)
+            temp_api.wait_update()
+            is_trading = self._is_in_trading_time(temp_quote)
+        finally:
+            temp_api.close()
+        
+        # Create API with appropriate mode
         api_params = {}
         if auth:
             api_params['auth'] = auth
+        
+        if not is_trading:
+            # Not in trading time - use backtest mode to get latest historical data
+            logger.info("当前不在交易时间，使用回测模式获取最新历史数据")
+            tz = self.cfg.get_timezone()
+            current_time = datetime.now(tz)
+
+            # Get the end time of the last trading session
+            backtest_end = self._get_last_trading_session_end(temp_quote, current_time)
+
+            # Backtest from the start of that trading day to the session end
+            backtest_start = backtest_end.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            logger.info(f"回测时间范围: {backtest_start.strftime('%Y-%m-%d %H:%M:%S')} ~ {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            api_params['backtest'] = TqBacktest(start_dt=backtest_start, end_dt=current_time)
+        else:
+            logger.info("当前在交易时间内，使用实时模式")
 
         api = TqApi(**api_params)
 
@@ -1466,22 +1697,8 @@ class Backtester:
             if len(klines) < 2:
                 raise RuntimeError("数据不足，无法分析")
 
-            # Check if currently in trading time using quote.trading_time
-            # According to TqSDK docs: trading_time contains time ranges like:
-            # {"day": [["09:00:00", "10:15:00"], ...], "night": [["21:00:00", "25:00:00"]]}
-            api.wait_update()
-            
-            is_trading = self._is_in_trading_time(quote)
-            
-            if is_trading:
-                # In trading time: -1 is forming, -2 is latest completed
-                bar_idx = -2
-                logger.info(f"当前在交易时间内，使用前一根已完成K线(iloc[-2])")
-            else:
-                # Not in trading time: -1 might be empty future bar, use -2 for safety
-                bar_idx = -2
-                logger.info(f"当前不在交易时间，使用最新已完成K线(iloc[-2])")
-            
+            # Determine which bar to use based on trading time
+            bar_idx = -1
             bar = klines.iloc[bar_idx]
             bar_time = tafunc.time_to_datetime(bar["datetime"])
 
@@ -1533,17 +1750,64 @@ class Backtester:
             else:
                 current_pos_qty = 0
 
-            # Inject position state to decision engine (no position for latest mode)
-            if hasattr(self.engine, "current_pos"):
-                self.engine.current_pos = None
-                setattr(self.engine, "current_balance", self.cfg.initial_capital)
-                setattr(self.engine, "active_stop_loss", 0.0)
-                setattr(self.engine, "active_take_profit", 0.0)
-            elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
-                self.engine.llm_direct.current_pos = None
-                setattr(self.engine.llm_direct, "current_balance", self.cfg.initial_capital)
-                setattr(self.engine.llm_direct, "active_stop_loss", 0.0)
-                setattr(self.engine.llm_direct, "active_take_profit", 0.0)
+            # Inject position state to decision engine
+            # If initial position is configured, use it; otherwise check TqSDK position or default to None
+            if self.cfg.initial_position != 0 and self.cfg.entry_price > 0:
+                # Use configured initial position
+                initial_pos_qty = abs(self.cfg.initial_position)
+                if hasattr(self.engine, "current_pos"):
+                    if self.cfg.initial_position > 0:
+                        self.engine.current_pos = Position(
+                            direction="long", 
+                            qty=initial_pos_qty, 
+                            entry_price=self.cfg.entry_price, 
+                            stop=0, 
+                            take=0
+                        )
+                    else:
+                        self.engine.current_pos = Position(
+                            direction="short", 
+                            qty=initial_pos_qty, 
+                            entry_price=self.cfg.entry_price, 
+                            stop=0, 
+                            take=0
+                        )
+                    setattr(self.engine, "current_balance", self.cfg.initial_capital)
+                    setattr(self.engine, "active_stop_loss", 0.0)
+                    setattr(self.engine, "active_take_profit", 0.0)
+                elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
+                    if self.cfg.initial_position > 0:
+                        self.engine.llm_direct.current_pos = Position(
+                            direction="long", 
+                            qty=initial_pos_qty, 
+                            entry_price=self.cfg.entry_price, 
+                            stop=0, 
+                            take=0
+                        )
+                    else:
+                        self.engine.llm_direct.current_pos = Position(
+                            direction="short", 
+                            qty=initial_pos_qty, 
+                            entry_price=self.cfg.entry_price, 
+                            stop=0, 
+                            take=0
+                        )
+                    setattr(self.engine.llm_direct, "current_balance", self.cfg.initial_capital)
+                    setattr(self.engine.llm_direct, "active_stop_loss", 0.0)
+                    setattr(self.engine.llm_direct, "active_take_profit", 0.0)
+                logger.info(f"✅ 使用配置的初始持仓: {'多头' if self.cfg.initial_position > 0 else '空头'} {initial_pos_qty}手 @ {self.cfg.entry_price:.2f}")
+            else:
+                # No configured position, check TqSDK or default to None
+                if hasattr(self.engine, "current_pos"):
+                    self.engine.current_pos = None
+                    setattr(self.engine, "current_balance", self.cfg.initial_capital)
+                    setattr(self.engine, "active_stop_loss", 0.0)
+                    setattr(self.engine, "active_take_profit", 0.0)
+                elif hasattr(self.engine, "llm_direct") and hasattr(self.engine.llm_direct, "current_pos"):
+                    self.engine.llm_direct.current_pos = None
+                    setattr(self.engine.llm_direct, "current_balance", self.cfg.initial_capital)
+                    setattr(self.engine.llm_direct, "active_stop_loss", 0.0)
+                    setattr(self.engine.llm_direct, "active_take_profit", 0.0)
 
             # Make decision
             logger.info(f"分析最新K线: {bar_time}")

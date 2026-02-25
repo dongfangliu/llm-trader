@@ -22,6 +22,10 @@ class BTConfig:
     # Multi-timeframe configuration
     decision_period: Optional[int] = None  # Primary decision period in MINUTES (if None, use period)
     auxiliary_periods: Optional[List[int]] = None  # Auxiliary periods for multi-timeframe analysis [60, 240, 1440] etc.
+    
+    # Initial position configuration
+    initial_position: int = 0  # 初始持仓数量（正数=多头，负数=空头，0=空仓）
+    entry_price: float = 0.0  # 初始持仓的开仓价格
 
     def __post_init__(self):
         """Initialize multi-timeframe configuration."""

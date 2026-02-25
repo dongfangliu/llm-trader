@@ -41,6 +41,12 @@ def main():
        
     3. 多周期分析:
        python src/backtest/llm_decision_backtest.py --latest --decision-period 1440 --auxiliary-periods 60,240
+    
+    4. 带初始持仓的回测（多头2手，开仓价5000）:
+       python src/backtest/llm_decision_backtest.py --start 2024-09-01 --end 2024-10-31 --initial-position 2 --entry-price 5000
+    
+    5. 带初始持仓的最新分析（空头3手，开仓价5200）:
+       python src/backtest/llm_decision_backtest.py --latest --initial-position -3 --entry-price 5200
     """
     parser = argparse.ArgumentParser(description="LLM Direct Decision Backtest using TqSDK")
     parser.add_argument("--mode", choices=[m.value for m in DecisionMode], default=DecisionMode.LLM_DIRECT.value, help="Decision mode")
@@ -53,6 +59,8 @@ def main():
     parser.add_argument("--end", help="Backtest end datetime, e.g. 2024-10-31 15:00")
     parser.add_argument("--initial_units", type=float, default=2.0, help="Initial position units (default: 2.0 lots)")
     parser.add_argument("--margin_ratio", type=float, default=0.18, help="Margin ratio for futures (default: 0.18 = 18%%)")
+    parser.add_argument("--initial-position", type=int, default=0, help="Initial position quantity (positive for long, negative for short, default: 0)")
+    parser.add_argument("--entry-price", type=float, default=0.0, help="Entry price for initial position (default: 0.0, required if initial-position is set)")
     parser.add_argument("--show_rationale", action="store_true", help="Show detailed rationale for each decision (default: False)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging for LLM responses (default: False)")
     parser.add_argument("--web-gui", type=str, nargs='?', const=True, default=None, help="Enable TqSDK web GUI for visualization. Use --web-gui for default (True), or specify address like --web-gui=http://192.168.1.100:9876")
@@ -104,13 +112,20 @@ def main():
     except Exception as e:
         logger.warning(f"加载时区配置失败，使用默认值 {timezone}: {e}")
 
+    # Validate initial position parameters
+    if args.initial_position != 0 and args.entry_price <= 0:
+        logger.error("当设置初始持仓时，必须同时指定有效的开仓价格（--entry-price）")
+        sys.exit(1)
+    
     cfg = BTConfig(
         symbol=args.symbol or "KQ.m@CZCE.SA",
         decision_period=args.decision_period,  # Will use period if None
         auxiliary_periods=auxiliary_periods,
         count=args.count,
         margin_ratio=args.margin_ratio,
-        timezone=timezone
+        timezone=timezone,
+        initial_position=args.initial_position,
+        entry_price=args.entry_price
     )
 
     # Add file handler with configured timezone
@@ -124,7 +139,14 @@ def main():
 
     # 使用TqSDK回测
     mode = DecisionMode(args.mode)
-    bt = Backtester(cfg, mode, cache_path=cache_path,initial_units=args.initial_units, show_rationale=args.show_rationale, margin_ratio=args.margin_ratio)
+    bt = Backtester(
+        cfg, 
+        mode, 
+        cache_path=cache_path,
+        initial_units=args.initial_units, 
+        show_rationale=args.show_rationale, 
+        margin_ratio=args.margin_ratio
+    )
     # 回测区间：参考 TqSDK 教程，支持命令行指定开始/结束时间
     def _parse_dt(s, default):
         if not s:
