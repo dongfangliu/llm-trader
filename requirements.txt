@@ -31,6 +31,9 @@ pydantic-settings>=2.0.0
 python-multipart>=0.0.6
 websockets>=12.0
 
+# ========== Web UI ==========
+gradio>=4.0.0
+
 # ========== Data Visualization ==========
 matplotlib>=3.7.0
 

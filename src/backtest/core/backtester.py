@@ -2,7 +2,7 @@
 Backtester Module
 
 This module provides the core backtesting engine for trading strategies.
-Supports multiple decision modes (quant-only, hybrid, LLM-direct) and
+Supports multiple decision modes (quant-only, LLM-direct) and
 comprehensive stop-loss/take-profit management with both hard and soft levels.
 """
 
@@ -25,7 +25,6 @@ from src.backtest.models.position import Position
 from src.backtest.models.config import BTConfig
 from src.backtest.engines.quant_engine import SimpleQuantEngine
 from src.backtest.engines.llm_engine import LLMDirectEngine
-from src.backtest.engines.hybrid_engine import HybridEngine
 
 
 class Backtester:
@@ -71,6 +70,7 @@ class Backtester:
         self.cache_path = cache_path
         self.initial_units = initial_units
         self.show_rationale = show_rationale
+        self.is_stock = self._is_stock_symbol(cfg.symbol)
 
         # Override margin ratio if provided
         if margin_ratio is not None:
@@ -100,8 +100,15 @@ class Backtester:
             logger.warning(f"加载缓存失败: {e}")
             return {}
 
+    @staticmethod
+    def _is_stock_symbol(symbol: str) -> bool:
+        """检测是否为A股股票（SSE./SZSE.前缀）"""
+        s = (symbol or "").strip().upper()
+        return s.startswith("SSE.") or s.startswith("SZSE.")
+
     def _build_trade_meta(self) -> Dict[str, Any]:
         """构建交易元数据（供LLM使用）"""
+        is_stock = self._is_stock_symbol(self.cfg.symbol)
         return {
             "tick_size": self.cfg.tick_size,
             "slippage_ticks": self.cfg.slippage_ticks,
@@ -112,19 +119,13 @@ class Backtester:
             "hard_stop_loss_atr_multiple": self.HARD_STOP_LOSS_ATR,
             "soft_stop_loss_atr_multiple": self.SOFT_STOP_LOSS_ATR,
             "hard_take_profit_atr_multiple": self.HARD_TAKE_PROFIT_ATR,
+            "is_stock": is_stock,
         }
 
     def _create_engine(self, cache: Dict[str, Any], trade_meta: Dict[str, Any]):
         """创建决策引擎"""
         if self.mode == DecisionMode.QUANT_ONLY:
             return SimpleQuantEngine(max_pos=self.cfg.max_position)
-        elif self.mode == DecisionMode.HYBRID:
-            return HybridEngine(
-                cache=cache,
-                cache_write=self.cache_path,
-                max_pos=self.cfg.max_position,
-                trade_meta=trade_meta
-            )
         else:
             engine = LLMDirectEngine(
                 cache=cache,
@@ -865,11 +866,7 @@ class Backtester:
 
     def _update_engine_trade_meta(self, updates: Dict[str, Any]):
         """更新引擎的交易元数据"""
-        # Try llm_direct first (for LLMDirectEngine)
-        if hasattr(self.engine, 'llm_direct') and hasattr(self.engine.llm_direct, 'trade_meta'):
-            self.engine.llm_direct.trade_meta.update(updates)
-        # Fallback to engine directly (for HybridEngine)
-        elif hasattr(self.engine, 'trade_meta'):
+        if hasattr(self.engine, 'trade_meta'):
             self.engine.trade_meta.update(updates)
 
     def _calculate_initial_capital_from_units(self, auth) -> float:
@@ -1475,6 +1472,18 @@ class Backtester:
                 try:
                     new_target_pos = current_pos_qty  # Default: maintain current position
 
+                    # For A-share stocks: enforce long-only rule
+                    if self.is_stock:
+                        if decision.action == "open_short":
+                            logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️ A股不支持做空，忽略 open_short")
+                            decision.action = "hold"
+                        elif decision.action == "close_short":
+                            logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️ A股无空仓，忽略 close_short")
+                            decision.action = "hold"
+                        elif decision.action == "adjust_position" and decision.target_position < 0:
+                            logger.warning(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] ⚠️ A股不支持负仓位({decision.target_position})，调整为0")
+                            decision.target_position = 0
+
                     if decision.action == "open_long" and current_pos_qty == 0 and decision.position_size > 0:
                         logger.info(f"[{bar_time.strftime('%Y-%m-%d %H:%M')}] 📈 开多 {decision.position_size}手 (决策价: {current_price:.2f})")
                         if self.show_rationale and decision.rationale:
@@ -1825,6 +1834,9 @@ class Backtester:
                 "timestamp": bar_time.strftime("%Y-%m-%d %H:%M:%S"),
                 "current_price": current_price,
                 "decision": decision.action,
+                "decision_obj": decision,   # full Decision object for UI
+                "row": row,                 # latest bar Series
+                "df": df_ctx,              # context DataFrame
                 "position_size": decision.position_size,
                 "confidence": decision.confidence,
                 "stop_loss": decision.stop_loss,

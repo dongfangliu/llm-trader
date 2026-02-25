@@ -1,7 +1,7 @@
 """Stock Backtest using AKShare data.
 
 Lightweight backtester for A-shares, HK stocks, and US stocks.
-Reuses existing decision engines (quant / hybrid / llm_direct) unchanged.
+Reuses existing decision engines (quant / llm_direct) unchanged.
 No TqSDK dependency for data or execution.
 
 Usage examples:
@@ -102,13 +102,6 @@ class StockBacktester:
         if self.mode == DecisionMode.QUANT_ONLY:
             from src.backtest.engines.quant_engine import SimpleQuantEngine
             return SimpleQuantEngine(max_pos=self.max_position)
-
-        elif self.mode == DecisionMode.HYBRID:
-            from src.backtest.engines.hybrid_engine import HybridEngine
-            return HybridEngine(
-                cache=cache, cache_write=self.cache_path,
-                max_pos=self.max_position, trade_meta=trade_meta
-            )
 
         else:  # llm_direct
             from src.backtest.engines.llm_engine import LLMDirectEngine

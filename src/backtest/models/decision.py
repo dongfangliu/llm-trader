@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 
 class DecisionMode(str, Enum):
     QUANT_ONLY = "quant_only"
-    HYBRID = "hybrid"
     LLM_DIRECT = "llm_direct"
 
 

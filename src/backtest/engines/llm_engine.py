@@ -25,17 +25,20 @@ from src.llm_engine.response_parser import ResponseParser
 
 
 class LLMDirectEngine:
-    def __init__(self, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None):
+    def __init__(self, cache: Optional[Dict[str, Any]] = None, cache_write: Optional[Path] = None, max_pos: int = 1, feature_mode: str = "neutral", trade_meta: Optional[Dict[str, Any]] = None, llm_client=None):
         self.max_pos = max_pos
         self.cache = cache or {}
         self.cache_write = cache_write
         self.feature_mode = feature_mode
         self.trade_meta = trade_meta or {}
-        try:
-            self.client = LLMFactory.create_client()
-        except Exception as e:
-            logger.warning(f"LLM client init failed, fallback to quant baseline: {e}")
-            self.client = None
+        if llm_client is not None:
+            self.client = llm_client
+        else:
+            try:
+                self.client = LLMFactory.create_client()
+            except Exception as e:
+                logger.warning(f"LLM client init failed, fallback to quant baseline: {e}")
+                self.client = None
         self.quant_fallback = SimpleQuantEngine(max_pos=self.max_pos)
         self.current_pos = None  # Backtester会在每根bar前注入当前持仓
         self.current_balance = None  # Backtester会在每根bar前注入当前资金
@@ -91,6 +94,10 @@ class LLMDirectEngine:
         except Exception as e:
             logger.warning(f"write cache failed: {e}")
 
+    def _is_stock_mode(self) -> bool:
+        """检查是否为A股股票模式（用于切换 prompt 风格）"""
+        return bool(self.trade_meta.get("is_stock", False))
+
     def _format_timeframe_data(self, klines: pd.DataFrame, period_name: str, is_primary: bool = False) -> str:
         """Format single timeframe data for prompt.
 
@@ -138,7 +145,7 @@ class LLMDirectEngine:
 
         return "\n".join(info_lines)
 
-    def _build_multi_timeframe_section(self, klines_dict: Dict[str, pd.DataFrame], cfg) -> str:
+    def _build_multi_timeframe_section(self, klines_dict: Dict[str, pd.DataFrame], cfg, is_stock: bool = False) -> str:
         """Build multi-timeframe analysis section for prompt.
 
         Args:
@@ -198,7 +205,10 @@ class LLMDirectEngine:
                 sections.append("- **交易约束**: 建议仅做多或空仓观望")
             elif all_bearish:
                 sections.append("- 多周期趋势: ✓ **一致向下**（所有周期MA10<MA30）")
-                sections.append("- **交易约束**: 建议仅做空或空仓观望")
+                if is_stock:
+                    sections.append("- **交易约束**: 建议空仓观望（A股不支持做空）")
+                else:
+                    sections.append("- **交易约束**: 建议仅做空或空仓观望")
             else:
                 sections.append("- 多周期趋势: ✗ **不一致**（不同周期趋势方向不同）")
                 sections.append("- **交易约束**: 谨慎交易，优先观望")
@@ -224,10 +234,12 @@ class LLMDirectEngine:
             cfg: Optional BTConfig instance (needed for multi-timeframe)
         """
 
+        is_stock = self._is_stock_mode()
+
         # 生成市场分析部分
         if klines_dict and cfg:
             # 使用多周期分析
-            market_analysis = self._build_multi_timeframe_section(klines_dict, cfg)
+            market_analysis = self._build_multi_timeframe_section(klines_dict, cfg, is_stock=is_stock)
         else:
             # 单周期改为“指标快照”风格（与多周期一致的单周期版本）
             period_name = cfg.get_period_name(cfg.decision_period) if cfg else "决策周期"
@@ -237,6 +249,7 @@ class LLMDirectEngine:
         pos_obj = self.current_pos
         balance = self.current_balance
         initial_capital = self.trade_meta.get('initial_capital', 100000)
+        is_stock = self.trade_meta.get('is_stock', False)
 
         # 初始化可能在prompt中使用的变量
         pnl_pct = 0.0
@@ -274,16 +287,25 @@ class LLMDirectEngine:
                     else:
                         # Fallback: 手工计算多头盈亏
                         price_diff = current_price - entry_price
-                        float_pnl = price_diff * contract_multiplier * qty
-                        logger.debug(f"TqSDK多头浮动盈亏为None，使用手工计算: ({current_price:.2f} - {entry_price:.2f}) × {contract_multiplier} × {qty} = {float_pnl:.2f}")
+                        if is_stock:
+                            # 股票: qty为股数，价格为每股
+                            float_pnl = price_diff * qty
+                            logger.debug(f"股票多头盈亏手工计算: ({current_price:.2f} - {entry_price:.2f}) × {qty}股 = {float_pnl:.2f}")
+                        else:
+                            float_pnl = price_diff * contract_multiplier * qty
+                            logger.debug(f"期货多头盈亏手工计算: ({current_price:.2f} - {entry_price:.2f}) × {contract_multiplier} × {qty} = {float_pnl:.2f}")
                 else:
                     if tq_pos_pnl_short is not None:
                         float_pnl = tq_pos_pnl_short
                     else:
                         # Fallback: 手工计算空头盈亏
                         price_diff = entry_price - current_price
-                        float_pnl = price_diff * contract_multiplier * qty
-                        logger.debug(f"TqSDK空头浮动盈亏为None，使用手工计算: ({entry_price:.2f} - {current_price:.2f}) × {contract_multiplier} × {qty} = {float_pnl:.2f}")
+                        if is_stock:
+                            float_pnl = price_diff * qty
+                            logger.debug(f"股票空头盈亏手工计算: ({entry_price:.2f} - {current_price:.2f}) × {qty}股 = {float_pnl:.2f}")
+                        else:
+                            float_pnl = price_diff * contract_multiplier * qty
+                            logger.debug(f"期货空头盈亏手工计算: ({entry_price:.2f} - {current_price:.2f}) × {contract_multiplier} × {qty} = {float_pnl:.2f}")
             elif tq_acc_float_profit is not None:
                 # 无持仓时，回退到账户级浮盈
                 float_pnl = tq_acc_float_profit
@@ -294,12 +316,29 @@ class LLMDirectEngine:
             pct_base = float(tq_static_balance) if tq_static_balance is not None else float(initial_capital)
             pnl_pct = (float_pnl / pct_base * 100.0) if pct_base > 0 else 0.0
 
+            # 股票：额外计算持仓成本收益率（更直观）
+            if is_stock:
+                cost_basis = entry_price * qty  # 总持仓成本（元，qty为股数）
+                position_pct = (float_pnl / cost_basis * 100.0) if cost_basis > 0 else 0.0
+            else:
+                position_pct = price_change_pct  # 期货用价格变动%
+
             # 获取止盈止损信息（从 backtester 注入）
             active_stop_loss = getattr(self, 'active_stop_loss', 0.0)
             active_take_profit = getattr(self, 'active_take_profit', 0.0)
 
             # 构建持仓基本信息
-            position_info = f"""
+            if is_stock:
+                position_info = f"""
+## 📋 当前持仓状态（股票）
+- 持仓: {qty}股
+- 开仓均价: {entry_price:.2f}元
+- 当前价格: {current_price:.2f}元
+- 持仓收益率: {position_pct:+.2f}%（{float_pnl:+.0f}元）
+- 价格涨跌: {price_change_pct:+.2f}%
+"""
+            else:
+                position_info = f"""
 ## 📋 当前持仓状态
 - 方向: {pos_obj.direction.upper()}
 - 持仓: {qty}手
@@ -370,14 +409,36 @@ class LLMDirectEngine:
   5. **谨慎使用**：调整止盈止损意味着承担更大风险，所有调整都会被记录到审计日志，请三思而后行！
 """
         else:
-            position_info = """
+            if is_stock:
+                position_info = """
+## 📋 当前持仓状态（股票）
+- 当前无持仓（空仓）
+"""
+            else:
+                position_info = """
 ## 📋 当前持仓状态
 - 当前无持仓（空仓）
 """
 
         # 账户信息
         margin_ratio = self.trade_meta.get('margin_ratio', 0.18)
-        account_info = f"""
+        if is_stock:
+            account_info = f"""
+## 💰 账户状态
+- 初始资金: {initial_capital:,.2f}
+- 当前权益: {balance:,.2f}
+- 最大持仓: {self.max_pos}股
+- 交易限制: ⚠️ 股票只能做多，不支持做空
+- 总收益率: {((balance / initial_capital - 1) * 100):+.2f}%
+"""
+            costs_info = f"""
+## 💸 交易成本
+- 交易方式: 股票全额买入（无保证金/杠杆）
+- 手续费: {self.trade_meta.get('commission_per_lot', 0.0)}元/笔（或按比例收取）
+- 印花税: 0.1%（卖出单边征收，A股适用）
+"""
+        else:
+            account_info = f"""
 ## 💰 账户状态
 - 初始资金: {initial_capital:,.2f}
 - 当前权益: {balance:,.2f}
@@ -385,9 +446,7 @@ class LLMDirectEngine:
 - 保证金比例: {margin_ratio:.1%}
 - 总收益率: {((balance / initial_capital - 1) * 100):+.2f}%
 """
-
-        # 交易成本信息
-        costs_info = f"""
+            costs_info = f"""
 ## 💸 交易成本
 - 保证金比例: {margin_ratio:.1%}（每手占用合约价值的{margin_ratio:.1%}作为保证金）
 - 手续费: {self.trade_meta.get('commission_per_lot', 3.0)}元/手
@@ -395,100 +454,99 @@ class LLMDirectEngine:
 - 最小变动: {self.trade_meta.get('tick_size', 1.0)}元/吨
 """
 
-        # 组装完整prompt
-        prompt = f"""# 期货交易决策系统 - {symbol}
+        _sys_type = "股票" if is_stock else "期货"
+        _expert_desc = "股票投资专家，精通技术分析与择时" if is_stock else "期货交易专家"
+        _size_label = "股" if is_stock else "手"
 
-你是一位经验丰富的期货交易专家，需要基于市场数据做出专业的交易决策。
+        # Pre-compute inline conditional strings to avoid nested f-expressions
+        _unit = "股" if is_stock else "手"
+        _pos_str = (
+            f'- 当前持仓: {pos_obj.qty}股'
+            if (is_stock and pos_obj and pos_obj.direction != "none")
+            else (f'- 当前持仓: {pos_obj.direction.upper()} {pos_obj.qty}手'
+                  if (pos_obj and pos_obj.direction != "none") else '- 当前无持仓')
+        )
+        _pnl_pct_val = position_pct if (is_stock and pos_obj and pos_obj.direction != "none") else pnl_pct
+        _pnl_str = f'- 浮动盈亏: {_pnl_pct_val:+.2f}%' if pos_obj and pos_obj.direction != "none" else ''
+        _stop_dist_str = (
+            f'- 距离止损: {abs(stop_distance_pct):.2f}%'
+            if (pos_obj and pos_obj.direction != "none" and active_stop_loss > 0) else ''
+        )
+        _avail_str = (
+            f'- 当前可用: {self.max_pos - abs(pos_obj.qty)}{_unit}（剩余可加仓额度）'
+            if (pos_obj and pos_obj.direction != "none")
+            else f'- 当前可用: {self.max_pos}{_unit}（全部额度）'
+        )
 
-{market_analysis}
+        if is_stock:
+            _action_enum = "open_long|close_long|adjust_position|hold"
+            _tgt_pos_desc = "必须≥0（股票不支持做空！）示例：200=目标持有200股，0=空仓"
+            _action_defs_str = f"""## ⚠️ 重要提示 - 股票交易规则
 
-{position_info}
+⚠️ **股票限制：不支持做空（卖空）！只能买入做多或卖出平仓！**
 
-{account_info}
+### 📋 可执行操作定义（必须严格遵守）
 
-{costs_info}
+#### 1. 开仓操作
+
+**open_long** - 买入建仓（做多）
+- **前置条件**: 当前持仓为0
+- **必须提供参数**:
+  * `position_size`: 买入股数，必须 > 0 且 ≤ {self.max_pos}
+  * `stop_loss`: 止损价格（绝对价格），必须 < 当前价
+  * `take_profit`: 止盈价格（绝对价格），必须 > 当前价
+- **约束**: position_size不能超过最大持仓限制{self.max_pos}股
+
+#### 2. 平仓操作
+
+**close_long** - 卖出平仓（卖出股票）
+- **前置条件**: 当前持有多仓（持有股票）
+- **作用**: 全部或部分卖出持仓
+
+#### 3. 调仓操作
+
+**adjust_position** - 调整持仓
+- **前置条件**: 无（任何持仓状态都可以调整）
+- **必须提供参数**:
+  * `target_position`: 目标持仓股数（**必须≥0**，股票不支持做空，负数会被系统拒绝并置为0）
+- **约束**:
+  * **target_position ≥ 0**（股票无做空机制）
+  * target_position ≤ {self.max_pos}（最大持仓限制）
+- **示例**:
+  * 当前0股 → target_position=200 → 买入200股
+  * 当前200股 → target_position=300 → 加仓100股
+  * 当前300股 → target_position=100 → 减仓200股
+  * 当前200股 → target_position=0 → 全部卖出（清仓）
+
+#### 4. 观望操作
+
+**hold** - 保持当前状态
+- **前置条件**: 无
+- **使用场景**:
+  * 无明确交易信号
+  * 等待更好入场点
+  * 当前持仓继续持有
 
 ---
 
-# 🎯 决策任务
+### 决策时必须考虑的约束
 
-请按照专业交易员的思维框架，系统性地分析并输出交易决策。
+**基于当前持仓状态**:
+{_pos_str}
+{_pnl_str}
+{_stop_dist_str}
 
-## 第一步：市场状态诊断 🔍
+**仓位限制约束**:
+- 最大持仓: {self.max_pos}股
+{_avail_str}
 
-请分析：
-- 当前市场处于什么状态？（强势趋势/温和趋势/震荡/反转）
-- 主要驱动因素是什么？（价格突破/成交量确认/技术指标/时间周期）
-- 市场情绪如何？（恐慌/贪婪/犹豫/理性）
-- 波动率处于什么状态？（扩张/收缩/正常）
-
-## 第二步：交易机会评估 💡
-
-请评估：
-- 识别到的机会是什么？（趋势跟随/均值回归/突破/套利）
-- 信号强度如何？（强/中/弱）
-- 确认程度如何？（多重确认/部分确认/单一信号）
-- 时间窗口如何？（立即/短期观察/长期跟踪）
-- 机会质量评级？（A级优质/B级良好/C级一般/D级观望）
-
-## 第三步：风险收益分析 ⚖️
-
-请分析：
-- 预期收益是多少？（目标价位和预期收益率）
-- 潜在风险是多少？（止损价位和最大亏损）
-- 风险收益比是否合适？当前应该激进、稳健还是保守？
-- 主要风险因素有哪些？（技术风险/基本面风险/流动性风险）
-- 如何管理这些风险？（止损策略/分批建仓/仓位控制）
-
-## 第四步：执行方案制定 📝
-
-请制定：
-- 具体操作：开仓/平仓/调仓/观望？
-- 仓位大小：建议持仓手数和账户占比
-- 入场时机：立即入场还是等待确认？
-- 出场计划：止损价位、止盈价位
-- 风险控制：最大亏损限额
-
----
-
-# 📤 决策输出格式
-
-基于以上四步分析，请仅仅输出以下标准JSON格式的最终决策：
-
-```json
-{{
-  "action": "open_long|open_short|close_long|close_short|adjust_position|hold",
-  "position_size": <int, 本次操作手数（必须是整数，不能是0.5手）>,
-  "target_position": <int, 目标总持仓手数（仅用于adjust_position）
-                      ⚠️ 重要：正数=多仓，负数=空仓，0=空仓
-                      示例：2表示目标持有2手多仓，-1表示目标持有1手空仓>,
-  "stop_loss": <float, 止损价格（绝对价格）>,
-  "take_profit": <float, 止盈价格（绝对价格）>,
-  "confidence": <float 0.0-1.0, 决策置信度>,
-  "position_percent": <float 0.0-1.0, 目标仓位占账户比例>,
-  "market_regime": "<string, 市场状态诊断结果>",
-  "opportunity_quality": "<string, 机会质量评级 A/B/C/D>",
-  "rationale": ["<brief reason1>", "<brief reason2>", "<brief reason3>"],
-  "risk_factors": ["<risk1>", "<risk2>"],
-  "market_diagnosis": "<string, 第一步分析摘要>",
-  "opportunity_assessment": "<string, 第二步分析摘要>",
-  "risk_analysis": "<string, 第三步分析摘要>",
-  "execution_plan": "<string, 第四步执行方案摘要>",
-
-  // **可选字段：止盈止损调整**
-  "override_stop_loss": <bool, 是否忽略当前软止损，default: false>,
-  "adjust_stop_loss": <float, 建议的新止损价（绝对价格），不填表示不调整>,
-  "adjust_take_profit": <float, 建议的新止盈价（绝对价格），不填表示不调整>,
-  "adjustment_reason": "<string, 调整原因（如果调整则必填！）>"
-}}
-```
-
-**⚠️ 手数约束说明**：
-- **position_size** 和 **target_position** 都必须是整数（1, 2, 3等）
-- **不允许小数**（如0.5手、1.5手等），系统会自动取整
-- 如果你输出了小数，系统会向下取整（如1.8手 → 1手）
-
-## ⚠️ 重要提示
+**股票核心规则**:
+- **只能做多（买入）或平仓（卖出）**，不能做空
+- target_position 必须 ≥ 0，负数无效"""
+        else:
+            _action_enum = "open_long|open_short|close_long|close_short|adjust_position|hold"
+            _tgt_pos_desc = "正数=多仓，负数=空仓，0=空仓。示例：2=目标持有2手多仓，-1=目标持有1手空仓"
+            _action_defs_str = f"""## ⚠️ 重要提示
 
 ### 📋 可执行操作定义（必须严格遵守）
 
@@ -550,19 +608,112 @@ class LLMDirectEngine:
 ### 决策时必须考虑的约束
 
 **基于当前持仓状态**:
-{f'- 当前持仓: {pos_obj.direction.upper()} {pos_obj.qty}手' if pos_obj and pos_obj.direction != "none" else '- 当前无持仓'}
-{f'- 浮动盈亏: {pnl_pct:+.2f}%' if pos_obj and pos_obj.direction != "none" else ''}
-{f'- 距离止损: {abs(stop_distance_pct):.2f}%' if pos_obj and pos_obj.direction != "none" and active_stop_loss > 0 else ''}
+{_pos_str}
+{_pnl_str}
+{_stop_dist_str}
 
 **仓位限制约束**:
 - 最大持仓: {self.max_pos}手（硬性限制，任何操作后不可超过）
-{f'- 当前可用: {self.max_pos - abs(pos_obj.qty)}手（剩余可加仓额度）' if pos_obj and pos_obj.direction != "none" else f'- 当前可用: {self.max_pos}手（全部额度）'}
+{_avail_str}
 
 **方向变更规则**:
 - **推荐方式1（简单）**: 使用 `adjust_position` 设置目标仓位，系统自动处理平仓和开仓
   * 示例：当前2手多想转1手空 → `action: "adjust_position", target_position: -1`
 - **推荐方式2（明确）**: 先 `close_long`/`close_short` 平仓，下一个bar再 `open_long`/`open_short` 开仓
-  * 示例：当前2手多想转空 → 本bar `action: "close_long"`，下个bar `action: "open_short"`
+  * 示例：当前2手多想转空 → 本bar `action: "close_long"`，下个bar `action: "open_short"`"""
+
+        prompt = f"""# {_sys_type}交易决策系统 - {symbol}
+
+你是一位经验丰富的{_expert_desc}，需要基于市场数据做出专业的交易决策。
+
+{market_analysis}
+
+{position_info}
+
+{account_info}
+
+{costs_info}
+
+---
+
+# 🎯 决策任务
+
+请按照专业交易员的思维框架，系统性地分析并输出交易决策。
+
+## 第一步：市场状态诊断 🔍
+
+请分析：
+- 当前市场处于什么状态？（强势趋势/温和趋势/震荡/反转）
+- 主要驱动因素是什么？（价格突破/成交量确认/技术指标/时间周期）
+- 市场情绪如何？（恐慌/贪婪/犹豫/理性）
+- 波动率处于什么状态？（扩张/收缩/正常）
+
+## 第二步：交易机会评估 💡
+
+请评估：
+- 识别到的机会是什么？（趋势跟随/均值回归/突破/套利）
+- 信号强度如何？（强/中/弱）
+- 确认程度如何？（多重确认/部分确认/单一信号）
+- 时间窗口如何？（立即/短期观察/长期跟踪）
+- 机会质量评级？（A级优质/B级良好/C级一般/D级观望）
+
+## 第三步：风险收益分析 ⚖️
+
+请分析：
+- 预期收益是多少？（目标价位和预期收益率）
+- 潜在风险是多少？（止损价位和最大亏损）
+- 风险收益比是否合适？当前应该激进、稳健还是保守？
+- 主要风险因素有哪些？（技术风险/基本面风险/流动性风险）
+- 如何管理这些风险？（止损策略/分批建仓/仓位控制）
+
+## 第四步：执行方案制定 📝
+
+请制定：
+- 具体操作：开仓/平仓/调仓/观望？
+- 仓位大小：建议持仓{_size_label}和账户占比
+- 入场时机：立即入场还是等待确认？
+- 出场计划：止损价位、止盈价位
+- 风险控制：最大亏损限额
+
+---
+
+# 📤 决策输出格式
+
+基于以上四步分析，请仅仅输出以下标准JSON格式的最终决策：
+
+```json
+{{
+  "action": "{_action_enum}",
+  "position_size": <int, 本次操作{_size_label}（必须是整数）>,
+  "target_position": <int, 目标总持仓{_size_label}（仅用于adjust_position）
+                      ⚠️ 重要：{_tgt_pos_desc}>,
+  "stop_loss": <float, 止损价格（绝对价格）>,
+  "take_profit": <float, 止盈价格（绝对价格）>,
+  "confidence": <float 0.0-1.0, 决策置信度>,
+  "position_percent": <float 0.0-1.0, 目标仓位占账户比例>,
+  "market_regime": "<string, 市场状态诊断结果>",
+  "opportunity_quality": "<string, 机会质量评级 A/B/C/D>",
+  "rationale": ["<brief reason1>", "<brief reason2>", "<brief reason3>"],
+  "risk_factors": ["<risk1>", "<risk2>"],
+  "market_diagnosis": "<string, 第一步分析摘要>",
+  "opportunity_assessment": "<string, 第二步分析摘要>",
+  "risk_analysis": "<string, 第三步分析摘要>",
+  "execution_plan": "<string, 第四步执行方案摘要>",
+
+  // **可选字段：止盈止损调整**
+  "override_stop_loss": <bool, 是否忽略当前软止损，default: false>,
+  "adjust_stop_loss": <float, 建议的新止损价（绝对价格），不填表示不调整>,
+  "adjust_take_profit": <float, 建议的新止盈价（绝对价格），不填表示不调整>,
+  "adjustment_reason": "<string, 调整原因（如果调整则必填！）>"
+}}
+```
+
+**⚠️ 手数约束说明**：
+- **position_size** 和 **target_position** 都必须是整数（1, 2, 3等）
+- **不允许小数**（如0.5手、1.5手等），系统会自动取整
+- 如果你输出了小数，系统会向下取整（如1.8手 → 1手）
+
+{_action_defs_str}
 
 ---
 
@@ -656,6 +807,12 @@ class LLMDirectEngine:
                 logger.warning(f"Invalid action '{action}', 使用量化回退策略")
                 return self.quant_fallback.decide(row, df)
 
+            # A股：不允许做空
+            if self._is_stock_mode() and action in ("open_short", "close_short"):
+                logger.warning(f"A股模式不支持 {action}，已转为 hold")
+                return Decision(action="hold", position_size=0, confidence=0.0,
+                                rationale=[f"a_share_no_short:{action}"])
+
             # Parse enhanced fields with proper constraints
             # ✅ 强制手数为整数（向下取整）
             raw_position_size = data.get("position_size", 0)
@@ -666,8 +823,11 @@ class LLMDirectEngine:
             raw_target_position = data.get("target_position", 0)
             if isinstance(raw_target_position, float):
                 logger.warning(f"target_position 为小数 ({raw_target_position})，向下取整为 {int(raw_target_position)}")
-            # ✅ Clamp target_position to [-max_pos, max_pos] range
-            clamped_target_position = int(max(-self.max_pos, min(self.max_pos, int(raw_target_position))))
+            # A股 target_position 不允许负数（不能做空）
+            if self._is_stock_mode():
+                clamped_target_position = int(max(0, min(self.max_pos, int(raw_target_position))))
+            else:
+                clamped_target_position = int(max(-self.max_pos, min(self.max_pos, int(raw_target_position))))
 
             # Parse LLM adjustment fields
             raw_override_stop_loss = bool(data.get("override_stop_loss", False))
