@@ -129,6 +129,17 @@ def _run_akshare(params: Dict[str, Any]) -> Dict[str, Any]:
     history_days = int(params.get("history_days", 90))
     mode = DecisionMode(params.get("mode", "llm_direct"))
 
+    # Auto-detect market when the user-selected market looks wrong for the symbol.
+    # Rules: all-letter (e.g. AAPL/SNDK) → us; 5-digit number (e.g. 00700) → hk;
+    # 6-digit number (e.g. 600519) → a.  Only override when market=="a" and symbol
+    # doesn't look like an A-share code, to avoid overriding explicit user choices.
+    if market == "a" and symbol.isalpha():
+        logger.warning(f"Symbol {symbol!r} 全为字母，自动切换市场: a → us")
+        market = "us"
+    elif market == "a" and symbol.isdigit() and len(symbol) == 5:
+        logger.warning(f"Symbol {symbol!r} 为5位数字，自动切换市场: a → hk")
+        market = "hk"
+
     end_date = datetime.now().strftime("%Y%m%d")
     start_date = (datetime.now() - timedelta(days=history_days)).strftime("%Y%m%d")
 

@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🤖 LLM 交易策略分析器</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; background: #f0f2f5; color: #333; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    header { background: #1a1a2e; color: #eee; padding: 10px 20px; display: flex; align-items: baseline; gap: 16px; flex-shrink: 0; }
+    header h1 { font-size: 17px; }
+    header p { font-size: 12px; color: #888; }
+    .main { display: flex; gap: 10px; padding: 10px; flex: 1; overflow: hidden; }
+
+    /* ── Panels ── */
+    .config-panel { width: 340px; min-width: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+    .results-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+    /* ── Cards ── */
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    .card-header { padding: 9px 14px; background: #f8f9fa; border-bottom: 1px solid #e9ecef; font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+    .card-body { padding: 12px 14px; }
+    details.card > summary { list-style: none; padding: 9px 14px; background: #f8f9fa; border-bottom: 1px solid #e9ecef; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    details.card > summary::-webkit-details-marker { display: none; }
+    details.card > summary::after { content: '▼'; font-size: 10px; color: #aaa; }
+    details.card[open] > summary::after { content: '▲'; }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 9px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 3px; }
+    .form-group input[type=text], .form-group input[type=number], .form-group input[type=password], .form-group select {
+      width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: #4a90e2; box-shadow: 0 0 0 2px rgba(74,144,226,.2); }
+    .form-group input[type=range] { width: 100%; accent-color: #4a90e2; }
+    .form-row { display: flex; gap: 8px; }
+    .form-row .form-group { flex: 1; min-width: 0; }
+    .radio-group { display: flex; gap: 14px; flex-wrap: wrap; }
+    .radio-group label { display: flex; align-items: center; gap: 5px; font-weight: normal; cursor: pointer; }
+
+    /* ── Button ── */
+    .btn-primary { background: #4a90e2; color: #fff; border: none; padding: 10px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; transition: background .15s; }
+    .btn-primary:hover { background: #357abd; }
+
+    /* ── Status bar ── */
+    .status-bar { margin-top: 8px; padding: 6px 10px; border-radius: 5px; font-size: 12px; background: #f0f4ff; border: 1px solid #d0dcf0; color: #4a70a2; min-height: 28px; word-break: break-all; }
+
+    /* ── Jobs table ── */
+    .jobs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .jobs-table th { background: #f1f3f5; padding: 6px 10px; text-align: left; font-weight: 600; color: #666; border-bottom: 2px solid #dee2e6; white-space: nowrap; }
+    .jobs-table td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+    .jobs-table tbody tr:hover td { background: #f5f8ff; cursor: pointer; }
+    .jobs-table tbody tr.selected td { background: #e8f0fe; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .badge-running { background: #fff3cd; color: #856404; }
+    .badge-done    { background: #d4edda; color: #155724; }
+    .badge-error   { background: #f8d7da; color: #721c24; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 2px; border-bottom: 2px solid #e9ecef; margin-bottom: 14px; }
+    .tab { padding: 6px 14px; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 13px; color: #666; border: 1px solid transparent; border-bottom: none; user-select: none; }
+    .tab.active { color: #4a90e2; border-color: #e9ecef; border-bottom-color: #fff; background: #fff; margin-bottom: -2px; font-weight: 600; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Decision summary ── */
+    .action-badge { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    .conf-bar { font-family: monospace; color: #4a90e2; letter-spacing: 1px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 12px; }
+    .metric { background: #f8f9fa; padding: 8px 12px; border-radius: 6px; }
+    .metric-label { font-size: 11px; color: #888; }
+    .metric-value { font-size: 15px; font-weight: 600; margin-top: 2px; }
+    .risk-box { margin-top: 10px; padding: 8px 12px; background: #fff8f0; border: 1px solid #ffe0b2; border-radius: 6px; font-size: 13px; color: #7a4f00; }
+
+    /* ── Indicators ── */
+    .ind-table { width: 100%; border-collapse: collapse; }
+    .ind-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    .ind-table td:first-child { color: #666; width: 45%; }
+    .ind-table td:last-child { font-weight: 600; }
+
+    /* ── Reasoning (markdown) ── */
+    .md-body h1, .md-body h2, .md-body h3 { font-size: 14px; font-weight: 700; margin: 12px 0 6px; color: #222; }
+    .md-body p { line-height: 1.65; color: #444; margin-bottom: 8px; }
+    .md-body ul, .md-body ol { padding-left: 20px; margin-bottom: 8px; }
+    .md-body li { margin-bottom: 3px; color: #444; }
+    .md-body hr { border: none; border-top: 1px solid #eee; margin: 14px 0; }
+    .md-body strong { color: #222; }
+    .md-body code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+    .md-body blockquote { border-left: 3px solid #ddd; padding-left: 10px; color: #666; }
+
+    /* ── K-lines ── */
+    .klines-wrap { overflow-x: auto; }
+    .kline-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+    .kline-table th { background: #f1f3f5; padding: 5px 8px; text-align: right; color: #666; border-bottom: 2px solid #dee2e6; }
+    .kline-table th:first-child { text-align: left; }
+    .kline-table td { padding: 4px 8px; border-bottom: 1px solid #f5f5f5; text-align: right; }
+    .kline-table td:first-child { text-align: left; color: #666; }
+
+    /* ── Error ── */
+    .error-box { background: #fff5f5; border: 1px solid #fcc; padding: 12px; border-radius: 6px; color: #721c24; font-size: 13px; }
+    .error-box pre { margin-top: 8px; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; background: #fdf0f0; padding: 8px; border-radius: 4px; }
+
+    /* ── Placeholder ── */
+    .placeholder { padding: 30px; text-align: center; color: #bbb; font-size: 14px; }
+
+    .hidden { display: none !important; }
+    code { font-family: monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 LLM 交易策略分析器</h1>
+    <p>提交查询后立即可以再次提交 — 所有查询并行运行，随时查看任意结果</p>
+  </header>
+
+  <div class="main">
+    <!-- ════════════ LEFT: Config ════════════ -->
+    <div class="config-panel">
+
+      <div class="card">
+        <div class="card-header">📊 数据源 & 品种</div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>数据源</label>
+            <div class="radio-group">
+              <label><input type="radio" name="data_source" value="akshare" checked onchange="onSourceChange()"> AKShare（股票）</label>
+              <label><input type="radio" name="data_source" value="tqsdk" onchange="onSourceChange()"> TqSDK（期货）</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>品种代码</label>
+            <input type="text" id="symbol" placeholder="A股: 600519  港股: 00700  美股: AAPL  期货: KQ.m@CZCE.SA">
+          </div>
+
+          <div id="akshare-fields">
+            <div class="form-row">
+              <div class="form-group">
+                <label>市场</label>
+                <select id="market">
+                  <option value="a">A 股</option>
+                  <option value="hk">港股</option>
+                  <option value="us">美股</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>K线周期</label>
+                <select id="period">
+                  <option value="daily">日线</option>
+                  <option value="60">60 分钟</option>
+                  <option value="30">30 分钟</option>
+                  <option value="15">15 分钟</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>历史K线天数：<strong id="history-days-val">90</strong></label>
+              <input type="range" id="history_days" min="30" max="365" value="90" step="10"
+                     oninput="document.getElementById('history-days-val').textContent=this.value">
+            </div>
+          </div>
+
+          <div id="tqsdk-fields" class="hidden">
+            <div class="form-row">
+              <div class="form-group">
+                <label>决策周期（分钟）</label>
+                <input type="number" id="decision_period" value="240" min="1">
+              </div>
+              <div class="form-group">
+                <label>辅助周期（逗号分隔）</label>
+                <input type="text" id="auxiliary_periods" placeholder="如 60,240">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">🔧 决策引擎</div>
+        <div class="card-body">
+          <div class="form-group">
+            <div class="radio-group">
+              <label><input type="radio" name="mode" value="llm_direct" checked> LLM 直接决策</label>
+              <label><input type="radio" name="mode" value="quant_only"> 纯量化（无需 LLM）</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <details class="card" open>
+        <summary>🤖 AI 模型配置</summary>
+        <div class="card-body">
+          <div class="form-group">
+            <label>预设方案</label>
+            <select id="llm_provider" onchange="onProviderChange(this.value)">
+              <option value="">加载中…</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="api_key" placeholder="sk-…">
+          </div>
+          <div class="form-group">
+            <label>Base URL</label>
+            <input type="text" id="base_url" placeholder="留空使用 OpenAI 官方">
+          </div>
+          <div class="form-group">
+            <label>模型名</label>
+            <input type="text" id="llm_model" placeholder="deepseek-reasoner / gpt-4o / claude-3-5-sonnet-20241022">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Max Tokens</label>
+              <input type="number" id="max_tokens" value="5000" min="100">
+            </div>
+            <div class="form-group">
+              <label>超时（秒）</label>
+              <input type="number" id="timeout" value="240" min="10">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Temperature：<strong id="temp-val">1.0</strong></label>
+            <input type="range" id="temperature" min="0" max="2" step="0.1" value="1.0"
+                   oninput="document.getElementById('temp-val').textContent=parseFloat(this.value).toFixed(1)">
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary>📋 初始持仓（可选）</summary>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label id="pos-label">当前持仓（股数）</label>
+              <input type="number" id="initial_position" value="0">
+            </div>
+            <div class="form-group">
+              <label>开仓价格</label>
+              <input type="number" id="entry_price" value="0" step="0.01">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="card">
+        <summary>📈 风险 & 交易参数</summary>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>初始资金</label>
+              <input type="number" id="initial_capital" value="100000">
+            </div>
+            <div class="form-group">
+              <label id="maxpos-label">最大持仓（股）</label>
+              <input type="number" id="max_position" value="100">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>置信度阈值：<strong id="conf-val">0.60</strong></label>
+            <input type="range" id="confidence_threshold" min="0" max="1" step="0.05" value="0.6"
+                   oninput="document.getElementById('conf-val').textContent=parseFloat(this.value).toFixed(2)">
+          </div>
+        </div>
+      </details>
+
+      <details class="card hidden" id="futures-card">
+        <summary>📉 期货专项参数</summary>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>保证金比例：<strong id="margin-val">0.18</strong></label>
+              <input type="range" id="margin_ratio" min="0.05" max="0.5" step="0.01" value="0.18"
+                     oninput="document.getElementById('margin-val').textContent=parseFloat(this.value).toFixed(2)">
+            </div>
+            <div class="form-group">
+              <label>合约乘数（元/点）</label>
+              <input type="number" id="contract_multiplier" value="20">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>手续费（元/手）</label>
+              <input type="number" id="commission_per_lot" value="3.0" step="0.1">
+            </div>
+            <div class="form-group">
+              <label>滑点（Tick）</label>
+              <input type="number" id="slippage_ticks" value="1">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="card hidden" id="tq-creds-card">
+        <summary>🔑 TqSDK 账户</summary>
+        <div class="card-body">
+          <div class="form-group">
+            <label>用户名</label>
+            <input type="text" id="tq_username">
+          </div>
+          <div class="form-group">
+            <label>密码</label>
+            <input type="password" id="tq_password">
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="tq_use_sim" checked> 使用模拟账户</label>
+          </div>
+        </div>
+      </details>
+
+      <div class="card">
+        <div class="card-body">
+          <button class="btn-primary" onclick="submitJob()">▶ 开始分析</button>
+          <div class="status-bar" id="submit-status">等待提交…</div>
+        </div>
+      </div>
+
+    </div><!-- /config-panel -->
+
+    <!-- ════════════ RIGHT: Results ════════════ -->
+    <div class="results-panel">
+
+      <!-- Job queue -->
+      <div class="card">
+        <div class="card-header">
+          📋 查询队列
+          <span style="font-size:11px;color:#999;font-weight:normal">每 2 秒自动刷新 · 点击行查看结果</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="jobs-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>品种</th><th>数据源</th><th>模式</th>
+                <th>状态</th><th>提交时间</th><th>决策</th><th>置信度</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-tbody">
+              <tr><td colspan="8" class="placeholder">暂无查询记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Result detail -->
+      <div class="card" style="flex:1">
+        <div class="card-header" id="result-header">📊 分析结果</div>
+        <div class="card-body">
+          <div class="placeholder" id="results-placeholder">← 点击上方查询行查看分析结果</div>
+          <div id="results-content" class="hidden">
+            <div class="tabs">
+              <div class="tab active" onclick="switchTab('summary')">📋 决策摘要</div>
+              <div class="tab" onclick="switchTab('indicators')">📈 技术指标</div>
+              <div class="tab" onclick="switchTab('reasoning')">💬 LLM 推理</div>
+              <div class="tab" onclick="switchTab('klines')">📊 K 线数据</div>
+            </div>
+            <div id="tab-summary"    class="tab-panel active"><div id="summary-content"></div></div>
+            <div id="tab-indicators" class="tab-panel"><table class="ind-table" id="indicators-table"></table></div>
+            <div id="tab-reasoning"  class="tab-panel"><div id="reasoning-content" class="md-body"></div></div>
+            <div id="tab-klines"     class="tab-panel"><div class="klines-wrap"><table class="kline-table" id="klines-table"></table></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /results-panel -->
+  </div><!-- /main -->
+
+  <script>
+    const ACTION_EMOJI = {
+      open_long:'🟢 开多', open_short:'🔴 开空',
+      close_long:'⬜ 平多', close_short:'⬜ 平空',
+      adjust_position:'🔄 调仓', hold:'⏸️ 观望'
+    };
+
+    let allJobs = [];
+    let selectedJobId = null;
+
+    /* ── Init ─────────────────────────────── */
+    async function init() {
+      try {
+        const d = await fetchJSON('/api/config/defaults');
+        const sel = document.getElementById('llm_provider');
+        sel.innerHTML = '';
+        (d.providers || []).forEach(p => {
+          const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o);
+        });
+        if (!(d.providers || []).length) {
+          const o = document.createElement('option'); o.value = ''; o.textContent = '自定义'; sel.appendChild(o);
+        }
+        if (d.provider) sel.value = d.provider;
+        setV('api_key', d.api_key||''); setV('base_url', d.base_url||''); setV('llm_model', d.model||'');
+        setV('max_tokens', d.max_tokens||5000); setV('timeout', d.timeout||240);
+        setV('temperature', d.temperature||1.0);
+        document.getElementById('temp-val').textContent = parseFloat(d.temperature||1.0).toFixed(1);
+        setV('symbol', d.symbol||'600519');
+        setV('initial_capital', d.initial_capital||100000);
+        setV('max_position', d.max_position||100);
+        setV('confidence_threshold', d.confidence_threshold||0.6);
+        document.getElementById('conf-val').textContent = parseFloat(d.confidence_threshold||0.6).toFixed(2);
+        setV('tq_username', d.tq_username||'');
+      } catch(e) { console.warn('load defaults failed', e); }
+    }
+
+    async function onProviderChange(name) {
+      if (!name) return;
+      try {
+        const d = await fetchJSON(`/api/config/provider/${encodeURIComponent(name)}`);
+        setV('api_key', d.api_key||''); setV('base_url', d.base_url||''); setV('llm_model', d.model||'');
+      } catch(e) {}
+    }
+
+    function onSourceChange() {
+      const isTQ = document.querySelector('input[name="data_source"]:checked').value === 'tqsdk';
+      tog('akshare-fields', !isTQ); tog('tqsdk-fields', isTQ);
+      tog('futures-card', isTQ); tog('tq-creds-card', isTQ);
+      document.getElementById('pos-label').textContent = isTQ ? '当前持仓（手数）' : '当前持仓（股数）';
+      document.getElementById('maxpos-label').textContent = isTQ ? '最大持仓（手）' : '最大持仓（股）';
+    }
+
+    /* ── Submit ───────────────────────────── */
+    async function submitJob() {
+      const symbol = document.getElementById('symbol').value.trim();
+      if (!symbol) { setStatus('❌ 请填写品种代码'); return; }
+
+      const body = {
+        data_source: document.querySelector('input[name="data_source"]:checked').value,
+        symbol,
+        market: gV('market'), period: gV('period'),
+        history_days: int('history_days'), decision_period: int('decision_period') || 240,
+        auxiliary_periods: gV('auxiliary_periods'),
+        mode: document.querySelector('input[name="mode"]:checked').value,
+        llm_provider: gV('llm_provider'), api_key: gV('api_key'),
+        base_url: gV('base_url'), llm_model: gV('llm_model'),
+        max_tokens: int('max_tokens')||5000, timeout: int('timeout')||240,
+        temperature: flt('temperature'),
+        initial_position: int('initial_position')||0, entry_price: flt('entry_price'),
+        initial_capital: flt('initial_capital')||100000,
+        max_position: int('max_position')||100,
+        confidence_threshold: flt('confidence_threshold'),
+        margin_ratio: flt('margin_ratio'), contract_multiplier: int('contract_multiplier')||20,
+        commission_per_lot: flt('commission_per_lot')||0, slippage_ticks: int('slippage_ticks')||0,
+        tq_username: gV('tq_username'), tq_password: gV('tq_password'),
+        tq_use_sim: document.getElementById('tq_use_sim').checked,
+      };
+
+      try {
+        setStatus('⏳ 提交中…');
+        const r = await fetch('/api/analyze', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+        });
+        if (!r.ok) { const e = await r.json(); setStatus(`❌ ${e.detail||'提交失败'}`); return; }
+        const data = await r.json();
+        setStatus(`✅ 已提交 [${data.job_id}] — ${symbol}，可继续提交下一条`);
+        await refreshJobs();
+        selectJob(data.job_id);
+      } catch(e) { setStatus(`❌ 网络错误: ${e.message}`); }
+    }
+
+    /* ── Job list refresh ─────────────────── */
+    async function refreshJobs() {
+      try {
+        const newJobs = await fetchJSON('/api/jobs');
+        // Detect selected job finishing → auto-reload result
+        if (selectedJobId) {
+          const prev = allJobs.find(j => j.id === selectedJobId);
+          const curr = newJobs.find(j => j.id === selectedJobId);
+          if (prev && curr && prev.status === 'running' && curr.status !== 'running') {
+            allJobs = newJobs; renderTable();
+            await loadJobResult(selectedJobId); return;
+          }
+        }
+        allJobs = newJobs; renderTable();
+      } catch(e) {}
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('jobs-tbody');
+      if (!allJobs.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="placeholder">暂无查询记录</td></tr>'; return;
+      }
+      tbody.innerHTML = allJobs.map(j => {
+        const badge = j.status === 'running' ? '<span class="badge badge-running">⏳ 运行中</span>'
+                    : j.status === 'done'    ? '<span class="badge badge-done">✅ 完成</span>'
+                    : '<span class="badge badge-error">❌ 出错</span>';
+        const decision = j.decision ? (ACTION_EMOJI[j.decision]||j.decision) : '—';
+        const conf = j.confidence != null ? `${(j.confidence<=1?j.confidence*100:j.confidence).toFixed(0)}%` : '—';
+        const sel = j.id === selectedJobId ? 'selected' : '';
+        return `<tr class="${sel}" onclick="selectJob('${j.id}')">
+          <td><code>${j.id}</code></td>
+          <td><strong>${j.symbol}</strong></td>
+          <td>${j.data_source||''}</td>
+          <td>${j.mode||''}</td>
+          <td>${badge}</td>
+          <td>${j.submitted_at}</td>
+          <td>${decision}</td>
+          <td>${conf}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function selectJob(jobId) {
+      selectedJobId = jobId; renderTable();
+      const job = allJobs.find(j => j.id === jobId);
+      if (!job) return;
+      if (job.status === 'running') {
+        showPlaceholder(`⏳ [${jobId}] 分析运行中，将自动刷新结果…`); return;
+      }
+      await loadJobResult(jobId);
+    }
+
+    async function loadJobResult(jobId) {
+      try {
+        const full = await fetchJSON(`/api/jobs/${jobId}`);
+        renderResults(full);
+      } catch(e) { showPlaceholder(`❌ 加载失败: ${e.message}`); }
+    }
+
+    /* ── Render results ───────────────────── */
+    function renderResults(job) {
+      document.getElementById('result-header').textContent =
+        `📊 分析结果  —  ${job.symbol || ''}  [${job.id}]`;
+
+      if (job.status === 'error') {
+        showPlaceholder(''); // clear
+        document.getElementById('results-placeholder').innerHTML =
+          `<div class="error-box">❌ 分析出错<br><pre>${esc(job.error||'')}${job.traceback?'\n\n'+esc(job.traceback):''}</pre></div>`;
+        document.getElementById('results-placeholder').classList.remove('hidden');
+        document.getElementById('results-content').classList.add('hidden');
+        return;
+      }
+
+      const result = job.result;
+      if (!result) { showPlaceholder('⚠️ 无结果数据'); return; }
+
+      const d = result.decision || {};
+      const row = result.row || {};
+      const klines = result.klines || [];
+      const src = result.data_source || 'akshare';
+      const unit = src === 'akshare' ? '股' : '手';
+
+      // ── Summary ──
+      const confPct = d.confidence != null ? (d.confidence <= 1 ? d.confidence * 100 : d.confidence) : 0;
+      const bar = '█'.repeat(Math.min(10, Math.floor(confPct / 10))) + '░'.repeat(Math.max(0, 10 - Math.floor(confPct / 10)));
+      let html = `<div class="action-badge">${ACTION_EMOJI[d.action]||d.action||'—'}</div>`;
+      html += `<div style="margin-bottom:12px"><span style="color:#888">置信度：</span><strong>${confPct.toFixed(1)}%</strong>&nbsp;<span class="conf-bar">${bar}</span></div>`;
+
+      const metrics = [];
+      if (d.position_size) metrics.push([`操作${unit}数`, `${d.position_size} ${unit}`]);
+      if (d.market_regime) metrics.push(['市场状态', d.market_regime]);
+      if (d.opportunity_quality) metrics.push(['机会质量', d.opportunity_quality]);
+      if (d.stop_loss) metrics.push(['止损价', fmt(d.stop_loss)]);
+      if (d.take_profit) metrics.push(['止盈价', fmt(d.take_profit)]);
+      if (metrics.length)
+        html += '<div class="metric-grid">' + metrics.map(([l,v]) =>
+          `<div class="metric"><div class="metric-label">${l}</div><div class="metric-value">${v}</div></div>`
+        ).join('') + '</div>';
+      if (d.risk_factors && d.risk_factors.length)
+        html += `<div class="risk-box">⚠️ <strong>风险因素：</strong>${d.risk_factors.join(' · ')}</div>`;
+      document.getElementById('summary-content').innerHTML = html;
+
+      // ── Indicators ──
+      const ma10 = parseFloat(row.ma10), ma30 = parseFloat(row.ma30);
+      const trend = (!isNaN(ma10) && !isNaN(ma30)) ? (ma10 > ma30 ? '📈 多头排列' : '📉 空头排列') : '—';
+      document.getElementById('indicators-table').innerHTML = [
+        ['收盘价', `<strong>${fmt(row.close)}</strong>`], ['MA10', fmt(row.ma10)],
+        ['MA30', fmt(row.ma30)], ['MA60', fmt(row.ma60)], ['MA趋势', trend],
+        ['RSI(14)', fmt(row.rsi,1)], ['ATR(14)', fmt(row.atr)],
+        ['MACD', fmt(row.macd)], ['MACD DEA', fmt(row.macd_dea)], ['MACD Bar', fmt(row.macd_bar)],
+      ].map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+      // ── Reasoning ──
+      const parts = [];
+      if (d.rationale && d.rationale.length) parts.push('**📌 信号依据**\n\n' + d.rationale.map(r=>`- ${r}`).join('\n'));
+      if (d.market_diagnosis) parts.push(`**🔍 第一步：市场诊断**\n\n${d.market_diagnosis}`);
+      if (d.opportunity_assessment) parts.push(`**💡 第二步：机会评估**\n\n${d.opportunity_assessment}`);
+      if (d.risk_analysis) parts.push(`**⚖️ 第三步：风险分析**\n\n${d.risk_analysis}`);
+      if (d.execution_plan) parts.push(`**📝 第四步：执行方案**\n\n${d.execution_plan}`);
+      const md = parts.join('\n\n---\n\n') || '（量化模式无 LLM 推理）';
+      document.getElementById('reasoning-content').innerHTML =
+        typeof marked !== 'undefined' ? marked.parse(md) : `<pre style="white-space:pre-wrap">${esc(md)}</pre>`;
+
+      // ── K-lines ──
+      if (klines.length) {
+        const cols = Object.keys(klines[0]);
+        document.getElementById('klines-table').innerHTML =
+          '<thead><tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr></thead>' +
+          '<tbody>' + klines.map(r =>
+            '<tr>' + cols.map(c=>`<td>${r[c]!=null?r[c]:''}</td>`).join('') + '</tr>'
+          ).join('') + '</tbody>';
+      } else {
+        document.getElementById('klines-table').innerHTML = '<tr><td>暂无K线数据</td></tr>';
+      }
+
+      document.getElementById('results-placeholder').classList.add('hidden');
+      document.getElementById('results-content').classList.remove('hidden');
+    }
+
+    /* ── Tabs ─────────────────────────────── */
+    function switchTab(name) {
+      const names = ['summary','indicators','reasoning','klines'];
+      document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id===`tab-${name}`));
+    }
+
+    /* ── Helpers ──────────────────────────── */
+    async function fetchJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+    function setV(id, val) { const el=document.getElementById(id); if(el) el.value=val; }
+    function gV(id) { const el=document.getElementById(id); return el?el.value:''; }
+    function int(id) { return parseInt(gV(id))||0; }
+    function flt(id) { return parseFloat(gV(id))||0; }
+    function fmt(v, dp=2) { const f=parseFloat(v); return (v==null||isNaN(f))?'N/A':f.toFixed(dp); }
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function tog(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
+    function setStatus(msg) { document.getElementById('submit-status').textContent = msg; }
+    function showPlaceholder(msg) {
+      const ph = document.getElementById('results-placeholder');
+      ph.textContent = msg; ph.classList.remove('hidden');
+      document.getElementById('results-content').classList.add('hidden');
+    }
+
+    setInterval(refreshJobs, 2000);
+    init();
+  </script>
+</body>
+</html>

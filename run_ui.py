@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Entry point: python run_ui.py [--port 7860] [--host 0.0.0.0] [--share]"""
+"""Entry point: python run_ui.py [--port 7860] [--host 127.0.0.1]"""
+import argparse
 import sys
 from pathlib import Path
 
@@ -7,23 +8,13 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.ui.app import build_ui
-import argparse
-import gradio as gr
+import uvicorn
+from src.api.server import app
 
-parser = argparse.ArgumentParser(description="LLM 交易策略分析器 UI")
+parser = argparse.ArgumentParser(description="LLM 交易策略分析器")
 parser.add_argument("--port", type=int, default=7860, help="监听端口 (默认 7860)")
-parser.add_argument("--host", default="0.0.0.0", help="监听地址 (默认 0.0.0.0)")
-parser.add_argument("--share", action="store_true", help="生成 Gradio 公网分享链接")
+parser.add_argument("--host", default="127.0.0.1", help="监听地址 (默认 127.0.0.1)")
 args = parser.parse_args()
 
-demo = build_ui()
-demo.queue(default_concurrency_limit=2)
-demo.launch(
-    server_name=args.host,
-    server_port=args.port,
-    share=args.share,
-    show_error=True,
-    theme=gr.themes.Soft(),
-    max_threads=10,
-)
+print(f"🚀  服务已启动: http://{args.host}:{args.port}")
+uvicorn.run(app, host=args.host, port=args.port)
