@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, Text, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+
+    # LLM configuration (set by operator, never exposed to frontend)
+    llm_provider: str = "openai"
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_model: str = "deepseek-chat"
+    llm_max_tokens: int = 1500
+    llm_temperature: float = 0.7
 
     class Config:
         env_file = ".env"
@@ -65,6 +73,9 @@ class User(Base):
     daily_usage = Column(Integer, default=0)
     last_usage_date = Column(DateTime, default=datetime.utcnow)
 
+    # User API Key (encrypted storage)
+    api_key = Column(Text, nullable=True)
+
 
 class AnalysisRequest(Base):
     """Analysis request log."""
@@ -82,6 +93,22 @@ class AnalysisRequest(Base):
     error_message = Column(Text, nullable=True)
 
 
+class AnalysisHistory(Base):
+    """Persisted analysis history for user/device result recall."""
+    __tablename__ = "analysis_histories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    device_id = Column(String(255), nullable=True, index=True)
+    symbol = Column(String(50), nullable=False, index=True)
+    market = Column(String(10), nullable=False)  # a, hk, us, futures
+    period = Column(String(20), nullable=False)
+    result = Column(Text, nullable=False)
+    analysis_date = Column(Date, nullable=False, index=True)
+    analyzed_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Subscription(Base):
     """Subscription record."""
     __tablename__ = "subscriptions"
@@ -94,6 +121,30 @@ class Subscription(Base):
     end_date = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UsageLog(Base):
+    """Device usage log (privacy-first, only stores device id and counters)."""
+    __tablename__ = "usage_logs"
+    __table_args__ = (UniqueConstraint("device_id", "date", name="uq_usage_logs_device_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String(255), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    count = Column(Integer, default=0)
+    subscription = Column(String(50), default="free")  # free, basic, premium
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DeviceSubscription(Base):
+    """Current subscription tier bound to device id."""
+    __tablename__ = "device_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String(255), nullable=False, unique=True, index=True)
+    subscription_tier = Column(String(50), default="free")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 async def init_db():

@@ -73,7 +73,7 @@ async def get_or_create_user(db: AsyncSession, openid: str, username: str = None
 # ===================== Usage Tracking =====================
 
 
-async def check_daily_limit(db: AsyncSession, user: User) -> tuple[bool, int]:
+async def check_daily_limit(db: Optional[AsyncSession], user: User) -> tuple[bool, int]:
     """Check if user has reached daily limit.
 
     Returns:
@@ -86,7 +86,8 @@ async def check_daily_limit(db: AsyncSession, user: User) -> tuple[bool, int]:
     if last_date != today:
         user.daily_usage = 0
         user.last_usage_date = datetime.utcnow()
-        await db.commit()
+        if db is not None:
+            await db.commit()
 
     # Get limit based on tier
     limits = {"free": 1, "basic": 5, "premium": 15}
@@ -115,3 +116,17 @@ async def update_subscription(db: AsyncSession, user_id: int, tier: str):
         update(User).where(User.id == user_id).values(subscription_tier=tier)
     )
     await db.commit()
+
+
+async def save_api_key(db: AsyncSession, user_id: int, api_key: str):
+    """Save user API key (encrypted)."""
+    await db.execute(
+        update(User).where(User.id == user_id).values(api_key=api_key)
+    )
+    await db.commit()
+
+
+async def get_api_key(db: AsyncSession, user_id: int) -> Optional[str]:
+    """Get user API key."""
+    user = await get_user_info(db, user_id)
+    return user.api_key if user else None

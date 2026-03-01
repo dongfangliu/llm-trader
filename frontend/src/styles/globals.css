@@ -25,6 +25,73 @@ body {
   line-height: 1.6;
 }
 
+.app-shell {
+  min-height: 100vh;
+  background: var(--background);
+}
+
+.app-header {
+  background: white;
+  border-bottom: 1px solid var(--border);
+  padding: 1rem;
+}
+
+.app-header-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app-main {
+  padding: 1.5rem 1rem;
+}
+
+.app-main-grid {
+  gap: 1.5rem;
+}
+
+.action-label {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.action-value {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.stack-on-mobile {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.touch-button {
+  min-height: 2.75rem;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.upgrade-card-grid {
+  max-width: 900px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
 .container {
   max-width: 1200px;
   margin: 0 auto;
@@ -196,5 +263,56 @@ body {
 @media (max-width: 768px) {
   .grid-2, .grid-3 {
     grid-template-columns: 1fr;
+  }
+
+  .app-header {
+    padding: 0.75rem;
+  }
+
+  .app-header-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .app-header-actions {
+    justify-content: flex-start;
+    gap: 0.5rem;
+  }
+
+  .app-main {
+    padding: 1rem 0.75rem 1.25rem;
+  }
+
+  .app-main-grid {
+    gap: 1rem;
+  }
+
+  .stack-on-mobile {
+    flex-direction: column;
+  }
+
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .upgrade-card-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 1rem;
+  }
+
+  .btn,
+  .input,
+  .select {
+    min-height: 2.75rem;
+  }
+
+  .action-value {
+    font-size: 1.625rem;
   }
 }

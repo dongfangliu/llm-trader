@@ -12,8 +12,13 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Generate a simple openid (in production, this would come from WeChat)
-    const openid = `user_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    // Keep a stable device id so login/会员等级 can persist on the same browser.
+    let deviceId = localStorage.getItem('device_id');
+    if (!deviceId) {
+      deviceId = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      localStorage.setItem('device_id', deviceId);
+    }
+    const openid = `device_${deviceId}`;
 
     try {
       await login({ openid, username: username || 'Anonymous' });
@@ -72,10 +77,18 @@ export default function LoginPage() {
 
         {/* Subscription Tiers */}
         <div className="mt-4">
-          <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1rem' }}>
-            订阅套餐
-          </h3>
-          <div className="grid grid-3" style={{ gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: '600' }}>
+              订阅套餐
+            </h3>
+            <a
+              href="/upgrade"
+              style={{ fontSize: '0.875rem', color: 'var(--primary)', textDecoration: 'none' }}
+            >
+              查看详情 →
+            </a>
+          </div>
+          <div className="pricing-grid">
             <div className="card" style={{ padding: '1rem', textAlign: 'center' }}>
               <span className="badge badge-free">免费版</span>
               <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>每天 1 次</p>
