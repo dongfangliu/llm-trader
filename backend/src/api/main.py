@@ -1,36 +1,74 @@
 """FastAPI main application."""
 
 import os
-import uuid
 import json
+import hashlib
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional, List
 import re
 
+import httpx
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.database.db import (
     init_db,
     get_db,
+    async_session,
     User,
     UsageLog,
     DeviceSubscription,
     AnalysisHistory,
+    AfdianOrder,
+    SystemSetting,
     settings,
 )
 from src.services.user import user_service
 from src.services.data import data_service
+from src.services.data.name_service import get_symbol_name
 from src.services.llm import llm_service
+from src.services.email_service import send_verification_email
 
-# Initialize database on startup
+logger = logging.getLogger(__name__)
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+
+def _startup_checks():
+    """Validate critical configuration on startup."""
+    warnings = []
+    if settings.secret_key == "change-me-in-production":
+        raise RuntimeError(
+            "SECRET_KEY is still the default value. "
+            "Set SECRET_KEY environment variable before running in production."
+        )
+    if not settings.llm_api_key:
+        warnings.append("LLM_API_KEY is not set — analysis endpoints will fail.")
+    if not settings.admin_token:
+        warnings.append("ADMIN_TOKEN is not set — admin endpoints are disabled.")
+    if not settings.afdian_webhook_token:
+        warnings.append("AFDIAN_WEBHOOK_TOKEN is not set — webhook token validation is skipped.")
+    for w in warnings:
+        logger.warning("CONFIG WARNING: %s", w)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _startup_checks()
     await init_db()
+    async with async_session() as db:
+        await _load_sys_settings(db)
     yield
 
 
@@ -41,10 +79,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS middleware — restrict to configured origins in production
+_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -54,8 +96,20 @@ app.add_middleware(
 
 
 class LoginRequest(BaseModel):
-    """WeChat login request."""
-    openid: str
+    """Email/password login request."""
+    email: str
+    password: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request to resend verification email."""
+    email: str
+
+
+class RegisterRequest(BaseModel):
+    """Email/password registration request."""
+    email: str
+    password: str
     username: Optional[str] = None
 
 
@@ -69,7 +123,7 @@ class AnalyzeRequest(BaseModel):
     cost_price: Optional[float] = None
     planned_investment: Optional[float] = None
     max_position: Optional[int] = None
-    holding_text: Optional[str] = None
+    holding_text: Optional[str] = Field(None, max_length=500)
     device_id: Optional[str] = None
 
 
@@ -86,9 +140,8 @@ class SubscriptionRequest(BaseModel):
     tier: str  # basic, premium
 
 
-class KoFiWebhookRequest(BaseModel):
-    """Ko-fi webhook request."""
-    # Ko-fi sends form data, we'll handle it manually
+class AfdianWebhookRequest(BaseModel):
+    """爱发电 webhook request placeholder."""
 
 
 # ===================== Dependencies =====================
@@ -144,11 +197,142 @@ async def get_optional_current_user(
 
 
 LIMITS = {"free": 1, "basic": 5, "premium": 15}
+USER_LIMITS = {"free": 3, "basic": 5, "premium": 15}  # registered users get 3/day on free tier
 ALLOWED_MARKETS = {
     "free": {"a"},
     "basic": {"a", "hk", "us", "futures"},
     "premium": {"a", "hk", "us", "futures"},
 }
+
+# ===================== Runtime Settings Cache =====================
+# All sections loaded from DB at startup; updated live via /api/admin/settings PUT.
+
+_sys_settings: dict = {}
+
+
+def _default_sys_settings() -> dict:
+    return {
+        "quota": {
+            "guest": {"free": LIMITS["free"], "basic": LIMITS["basic"], "premium": LIMITS["premium"]},
+            "user": {"free": USER_LIMITS["free"], "basic": USER_LIMITS["basic"], "premium": USER_LIMITS["premium"]},
+        },
+        "llm": {
+            "provider": settings.llm_provider,
+            "api_key": settings.llm_api_key,
+            "base_url": settings.llm_base_url,
+            "model": settings.llm_model,
+            "max_tokens": settings.llm_max_tokens,
+            "temperature": settings.llm_temperature,
+        },
+        "pricing": {
+            "period": os.environ.get("PRICING_PERIOD", "月"),
+            "basic": {
+                "price": os.environ.get("PRICING_BASIC_PRICE", "19.9"),
+                "daily": int(os.environ.get("PRICING_BASIC_DAILY", "5")),
+            },
+            "premium": {
+                "price": os.environ.get("PRICING_PREMIUM_PRICE", "49"),
+                "daily": int(os.environ.get("PRICING_PREMIUM_DAILY", "15")),
+            },
+            "features": [
+                {"text": "A股分析", "tiers": ["free", "basic", "premium"]},
+                {"text": "买卖建议", "tiers": ["free", "basic", "premium"]},
+                {"text": "深度研判", "tiers": ["free", "basic", "premium"]},
+                {"text": "历史查询记录", "tiers": ["free", "basic", "premium"]},
+                {"text": "研判分享卡片", "tiers": ["free", "basic", "premium"]},
+                {"text": "港股 / 美股 / 期货全市场", "tiers": ["basic", "premium"]},
+                {"text": "多周期叠加分析", "tiers": ["basic", "premium"]},
+                {"text": "风险指标详情", "tiers": ["basic", "premium"]},
+                {"text": "持仓参数智能分析", "tiers": ["basic", "premium"]},
+                {"text": "持仓参数不限次数", "tiers": ["premium"]},
+                {"text": "连续多标的查询", "tiers": ["premium"]},
+                {"text": "优先处理通道", "tiers": ["premium"]},
+            ],
+        },
+        "afdian": {
+            "webhook_token": settings.afdian_webhook_token,
+            "basic_plan_id": settings.afdian_basic_plan_id,
+            "premium_plan_id": settings.afdian_premium_plan_id,
+            "basic_link": settings.afdian_basic_link,
+            "premium_link": settings.afdian_premium_link,
+            "user_id": settings.afdian_user_id,
+            "api_token": settings.afdian_api_token,
+        },
+        "email": {
+            "resend_api_key": settings.resend_api_key,
+            "from": settings.email_from,
+            "app_base_url": settings.app_base_url,
+        },
+        "app": {
+            "name": settings.app_name,
+        },
+    }
+
+
+def _apply_quota_settings():
+    """Update LIMITS / USER_LIMITS in-place from the in-memory settings cache."""
+    quota = _sys_settings.get("quota", {})
+    for tier in ("free", "basic", "premium"):
+        guest_val = quota.get("guest", {}).get(tier)
+        user_val = quota.get("user", {}).get(tier)
+        if guest_val is not None:
+            LIMITS[tier] = int(guest_val)
+        if user_val is not None:
+            USER_LIMITS[tier] = int(user_val)
+
+
+async def _load_sys_settings(db: AsyncSession):
+    """Load all settings sections from DB, merging over defaults."""
+    global _sys_settings
+    _sys_settings = _default_sys_settings()
+    result = await db.execute(select(SystemSetting))
+    for row in result.scalars().all():
+        try:
+            db_val = json.loads(row.value)
+            default_val = _sys_settings.get(row.key, {})
+            if isinstance(default_val, dict) and isinstance(db_val, dict):
+                # Deep-merge: DB wins on existing keys, but default keys not in DB are kept
+                merged = dict(default_val)
+                for k, v in db_val.items():
+                    if isinstance(merged.get(k), dict) and isinstance(v, dict):
+                        merged[k] = {**merged[k], **v}
+                    else:
+                        merged[k] = v
+                _sys_settings[row.key] = merged
+            else:
+                _sys_settings[row.key] = db_val
+        except Exception:
+            pass
+    _apply_quota_settings()
+
+
+def _llm_config() -> dict:
+    """Current LLM config: DB settings > env vars > hardcoded defaults."""
+    cfg = _sys_settings.get("llm", {})
+    return {
+        "api_key": cfg.get("api_key") or settings.llm_api_key or os.getenv("LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", ""),
+        "provider": cfg.get("provider") or settings.llm_provider,
+        "base_url": cfg.get("base_url") or settings.llm_base_url,
+        "model": cfg.get("model") or settings.llm_model,
+        "max_tokens": int(cfg["max_tokens"]) if cfg.get("max_tokens") else settings.llm_max_tokens,
+        "temperature": float(cfg["temperature"]) if cfg.get("temperature") is not None else settings.llm_temperature,
+    }
+
+
+def _afdian(key: str) -> str:
+    """Current afdian setting: DB > env/settings."""
+    return _sys_settings.get("afdian", {}).get(key, "") or getattr(settings, f"afdian_{key}", "")
+
+
+def _email(key: str) -> str:
+    """Current email setting: DB > env/settings."""
+    _attr_map = {"resend_api_key": "resend_api_key", "from": "email_from", "app_base_url": "app_base_url"}
+    return _sys_settings.get("email", {}).get(key, "") or getattr(settings, _attr_map.get(key, ""), "")
+
+
+def _app(key: str) -> str:
+    """Current app setting: DB > env/settings."""
+    return _sys_settings.get("app", {}).get(key, "") or getattr(settings, key, "")
 
 
 def _tomorrow_reset_iso() -> str:
@@ -296,10 +480,51 @@ def _normalize_result(raw_result: dict, current_price: float, req: AnalyzeReques
     }
 
 
+def _mask_result_for_free_tier(result: dict) -> dict:
+    """Mask specific numeric fields in analysis result for free-tier users.
+
+    Strategy: show market diagnosis and opportunity direction fully (builds trust),
+    mask exact price numbers (target/stop/confidence) to create upgrade incentive.
+    """
+    import re
+    import copy
+
+    masked = copy.deepcopy(result)
+
+    def mask_prices(text: str) -> str:
+        """Replace decimal prices and large integers with ██ in text."""
+        text = re.sub(r'\b\d+\.\d+\b', '██', str(text))
+        text = re.sub(r'\b[1-9]\d{2,}\b', '██', text)
+        return text
+
+    # Null out numeric fields — frontend renders '—' or '██' based on _masked flag
+    masked["target_price"] = None
+    masked["stop_loss"] = None
+    masked["confidence"] = None
+
+    # Mask price numbers in step 3 (risk) and step 4 (execution plan) text
+    masked["risk_analysis"] = mask_prices(masked.get("risk_analysis", ""))
+    masked["execution_plan"] = mask_prices(masked.get("execution_plan", ""))
+
+    # Keep first 2 reasons, replace 3rd with masked placeholder
+    reasons = masked.get("reasons", [])
+    if len(reasons) > 2:
+        masked["reasons"] = reasons[:2] + ["████████（升级解锁完整研判）"]
+    masked["reason"] = masked["reasons"][0] if masked["reasons"] else masked.get("reason", "")
+
+    masked["_masked"] = True
+    return masked
+
+
 async def _get_device_subscription(db: AsyncSession, device_id: str) -> str:
     result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
     row = result.scalars().first()
-    return row.subscription_tier if row else "free"
+    if not row:
+        return "free"
+    # Treat expired subscriptions as free
+    if row.expires_at and row.expires_at < datetime.utcnow():
+        return "free"
+    return row.subscription_tier
 
 
 async def _get_or_create_usage_log(db: AsyncSession, device_id: str) -> UsageLog:
@@ -316,6 +541,24 @@ async def _get_or_create_usage_log(db: AsyncSession, device_id: str) -> UsageLog
     await db.commit()
     await db.refresh(usage)
     return usage
+
+
+async def _increment_device_usage(db: AsyncSession, device_id: str) -> UsageLog:
+    """Atomically increment device usage count using upsert to prevent race conditions."""
+    today = datetime.utcnow().date()
+    subscription = await _get_device_subscription(db, device_id)
+    stmt = sqlite_insert(UsageLog).values(
+        device_id=device_id, date=today, count=1, subscription=subscription
+    ).on_conflict_do_update(
+        index_elements=["device_id", "date"],
+        set_={"count": UsageLog.count + 1},
+    )
+    await db.execute(stmt)
+    await db.commit()
+    result = await db.execute(
+        select(UsageLog).where(UsageLog.device_id == device_id, UsageLog.date == today)
+    )
+    return result.scalars().first()
 
 
 async def _save_analysis_history(
@@ -347,22 +590,116 @@ async def _save_analysis_history(
 # ===================== Auth Routes =====================
 
 
+@app.post("/api/auth/register")
+@limiter.limit("2/day")
+async def register(
+    request: Request,
+    req: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Register a new user with email and password. Rate-limited to 2 registrations/day per IP."""
+    email = req.email.lower().strip()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    existing = await user_service.get_user_by_email(db, email)
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user = await user_service.register_user(db, email, req.password, req.username)
+
+    resend_key = _email("resend_api_key")
+    if resend_key:
+        # Send verification email (non-blocking failure)
+        await send_verification_email(
+            to_email=user.email,
+            username=user.username or user.email.split("@")[0],
+            token=user.email_verification_token,
+            resend_api_key=resend_key,
+            email_from=_email("from"),
+            app_base_url=_email("app_base_url"),
+            app_name=_app("name"),
+        )
+        return {
+            "pending_verification": True,
+            "email": user.email,
+            "message": "注册成功！请查收验证邮件并点击链接激活账号。",
+        }
+    else:
+        # No email service configured — auto-verify so users can log in immediately
+        await user_service.verify_email(db, user)
+        return {
+            "pending_verification": False,
+            "email": user.email,
+            "message": "注册成功！请直接登录。",
+        }
+
+
+@app.post("/api/auth/resend-verification")
+async def resend_verification(req: ResendVerificationRequest, db: AsyncSession = Depends(get_db)):
+    """Resend email verification link."""
+    email = req.email.lower().strip() if req.email else ""
+    if not email:
+        raise HTTPException(status_code=400, detail="请提供邮箱地址")
+
+    user = await user_service.get_user_by_email(db, email)
+    # Return success regardless to avoid user enumeration
+    if user and not user.email_verified:
+        token = await user_service.refresh_verification_token(db, user)
+        await send_verification_email(
+            to_email=user.email,
+            username=user.username or user.email.split("@")[0],
+            token=token,
+            resend_api_key=_email("resend_api_key"),
+            email_from=_email("from"),
+            app_base_url=_email("app_base_url"),
+            app_name=_app("name"),
+        )
+    return {"message": "若该邮箱已注册且未验证，验证邮件已重新发送。"}
+
+
+@app.get("/api/auth/verify-email")
+async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+    """Verify email address via token from verification email."""
+    if not token:
+        raise HTTPException(status_code=400, detail="缺少验证 token")
+
+    user = await user_service.get_user_by_verification_token(db, token)
+    if not user:
+        raise HTTPException(status_code=400, detail="验证链接无效或已被使用")
+    if user.email_verified:
+        return {"message": "邮箱已验证，请直接登录。", "already_verified": True}
+    if user.email_verification_expires and user.email_verification_expires < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="验证链接已过期，请重新发送验证邮件")
+
+    await user_service.verify_email(db, user)
+    return {"message": "邮箱验证成功！现在可以登录了。", "email": user.email}
+
+
 @app.post("/api/auth/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """WeChat login - get or create user."""
-    user = await user_service.get_or_create_user(db, req.openid, req.username)
+    """Email/password login."""
+    user = await user_service.authenticate_user(db, req.email, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
-    # Create access token
-    access_token = user_service.create_access_token(
-        data={"sub": str(user.id)},
-    )
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="邮箱尚未验证，请查收注册时发送的验证邮件",
+            headers={"X-Unverified-Email": user.email},
+        )
 
+    access_token = user_service.create_access_token(data={"sub": str(user.id)})
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
             "id": user.id,
             "username": user.username,
+            "email": user.email,
             "subscription_tier": user.subscription_tier,
         },
     }
@@ -374,9 +711,12 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return {
         "id": current_user.id,
         "username": current_user.username,
+        "email": current_user.email,
         "subscription_tier": current_user.subscription_tier,
         "daily_usage": current_user.daily_usage,
         "last_usage_date": current_user.last_usage_date.isoformat() if current_user.last_usage_date else None,
+        "invite_code": current_user.invite_code,
+        "bonus_quota": current_user.bonus_quota or 0,
     }
 
 
@@ -389,13 +729,54 @@ async def upgrade_subscription(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upgrade user subscription (manual for now, can integrate Ko-fi later)."""
+    """Upgrade user subscription (manual for now, can integrate 爱发电 later)."""
     if req.tier not in ["basic", "premium"]:
         raise HTTPException(status_code=400, detail="Invalid tier")
 
     await user_service.update_subscription(db, current_user.id, req.tier)
 
     return {"message": f"Subscription upgraded to {req.tier}"}
+
+
+# ===================== Invite Routes =====================
+
+
+class UseInviteRequest(BaseModel):
+    invite_code: str
+
+
+@app.post("/api/invite/use")
+async def use_invite_code(
+    req: UseInviteRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply an invite code. Both inviter and invitee get +10 bonus analyses."""
+    code = req.invite_code.strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="请输入邀请码")
+
+    # Can't use own code
+    if current_user.invite_code and current_user.invite_code.upper() == code:
+        raise HTTPException(status_code=400, detail="不能使用自己的邀请码")
+
+    # Find inviter
+    result = await db.execute(select(User).where(User.invite_code == code))
+    inviter = result.scalars().first()
+    if not inviter:
+        raise HTTPException(status_code=404, detail="邀请码无效，请检查后重试")
+
+    # Reward both parties
+    from sqlalchemy import update as _upd
+    await db.execute(
+        _upd(User).where(User.id == inviter.id).values(bonus_quota=User.bonus_quota + 10)
+    )
+    await db.execute(
+        _upd(User).where(User.id == current_user.id).values(bonus_quota=User.bonus_quota + 10)
+    )
+    await db.commit()
+    logger.info("invite_used inviter=%s invitee=%s code=%s", inviter.id, current_user.id, code)
+    return {"success": True, "message": "邀请码使用成功！您和邀请人各获得 +10 次分析次数", "bonus_added": 10}
 
 
 @app.get("/api/subscription/status")
@@ -405,8 +786,7 @@ async def get_subscription_status(
 ):
     """Get user subscription status."""
     _, remaining = await user_service.check_daily_limit(db, current_user)
-    limits = {"free": 1, "basic": 5, "premium": 15}
-    daily_limit = limits.get(current_user.subscription_tier, 1)
+    daily_limit = USER_LIMITS.get(current_user.subscription_tier, 1)
     return {
         "tier": current_user.subscription_tier,
         "daily_limit": daily_limit,
@@ -421,71 +801,233 @@ async def get_subscription_by_device(
     db: AsyncSession = Depends(get_db),
 ):
     """Get subscription status by device id (no login required)."""
+    effective_tier = await _get_device_subscription(db, device_id)
     usage = await _get_or_create_usage_log(db, device_id)
-    daily_limit = LIMITS.get(usage.subscription, 1)
+    daily_limit = LIMITS.get(effective_tier, 1)
     remaining = max(daily_limit - usage.count, 0)
+    sub_result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
+    sub_row = sub_result.scalars().first()
+    expires_at = sub_row.expires_at.isoformat() if (sub_row and sub_row.expires_at) else None
     return {
-        "subscription": usage.subscription,
+        "subscription": effective_tier,
         "remaining": remaining,
         "daily_limit": daily_limit,
         "used": usage.count,
         "resets_at": _tomorrow_reset_iso(),
+        "expires_at": expires_at,
     }
 
 
-# ===================== Ko-fi Webhook =====================
+# ===================== 爱发电 API 主动激活 =====================
 
 
-@app.post("/api/webhook/kofi")
-async def kofi_webhook(
+def _afdian_sign(token: str, user_id: str, params: str, ts: int) -> str:
+    """Compute Afdian API signature: md5(token + params{params} + ts{ts} + user_id{user_id})."""
+    raw = f"{token}params{params}ts{ts}user_id{user_id}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+def _afdian_tier_from_order(order: dict) -> str:
+    """Determine subscription tier from an Afdian order dict."""
+    plan_id = str(order.get("plan_id") or "")
+    if _afdian("premium_plan_id") and plan_id == _afdian("premium_plan_id"):
+        return "premium"
+    if _afdian("basic_plan_id") and plan_id == _afdian("basic_plan_id"):
+        return "basic"
+    # Fallback: determine by amount
+    amount = float(order.get("total_amount") or 0)
+    if amount >= 49:
+        return "premium"
+    if amount >= 19.9:
+        return "basic"
+    return "free"
+
+
+class ActivateRequest(BaseModel):
+    out_trade_no: str   # Afdian order number shown in order confirmation
+    device_id: str      # user's device_id
+
+
+@app.post("/api/subscription/activate")
+@limiter.limit("5/minute")
+async def activate_subscription(
+    request: Request,
+    req: ActivateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Activate device subscription by verifying an Afdian order number.
+    No webhook or public domain required — the backend queries Afdian API directly.
+    """
+    if not _afdian("user_id") or not _afdian("api_token"):
+        raise HTTPException(status_code=503, detail="Afdian API not configured")
+
+    out_trade_no = req.out_trade_no.strip()
+    device_id = req.device_id.strip()
+    if not out_trade_no or not device_id:
+        raise HTTPException(status_code=400, detail="out_trade_no and device_id are required")
+
+    # Check if this order was already activated
+    existing = await db.execute(
+        select(AfdianOrder).where(AfdianOrder.out_trade_no == out_trade_no)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="This order has already been activated")
+
+    # Query Afdian API
+    params_str = json.dumps({"out_trade_no": out_trade_no})
+    ts = int(datetime.utcnow().timestamp())
+    sign = _afdian_sign(_afdian("api_token"), _afdian("user_id"), params_str, ts)
+
+    payload = {
+        "user_id": _afdian("user_id"),
+        "params": params_str,
+        "ts": ts,
+        "sign": sign,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://afdian.net/api/open/query-order",
+                json=payload,
+            )
+            data = resp.json()
+    except Exception as e:
+        logger.error("Afdian API request failed: %s", e)
+        raise HTTPException(status_code=502, detail="Failed to reach Afdian API")
+
+    if data.get("ec") != 200:
+        logger.warning("Afdian API error: %s", data)
+        raise HTTPException(status_code=400, detail=f"Afdian API error: {data.get('em', 'unknown')}")
+
+    orders = (data.get("data") or {}).get("list") or []
+    matched = next((o for o in orders if str(o.get("out_trade_no")) == out_trade_no), None)
+
+    if not matched:
+        raise HTTPException(status_code=404, detail="Order not found — check your order number")
+    if matched.get("status") != 2:
+        raise HTTPException(status_code=400, detail="Order not yet paid (status != 2)")
+
+    tier = _afdian_tier_from_order(matched)
+    if tier == "free":
+        raise HTTPException(status_code=400, detail="Order amount does not match any subscription plan")
+
+    # Activate or renew device subscription
+    result = await db.execute(
+        select(DeviceSubscription).where(DeviceSubscription.device_id == device_id)
+    )
+    row = result.scalars().first()
+    now = datetime.utcnow()
+    new_expires = now + timedelta(days=30)
+    if row:
+        same_tier = (row.subscription_tier == tier)
+        still_active = (row.expires_at is not None and row.expires_at > now)
+        if same_tier and still_active:
+            # Renewal: stack 30 days onto current expiry
+            new_expires = row.expires_at + timedelta(days=30)
+        row.expires_at = new_expires
+        row.subscription_tier = tier
+    else:
+        db.add(DeviceSubscription(device_id=device_id, subscription_tier=tier, expires_at=new_expires))
+
+    # Update usage log
+    usage = await _get_or_create_usage_log(db, device_id)
+    usage.subscription = tier
+
+    # Record this order to prevent reuse
+    db.add(AfdianOrder(
+        out_trade_no=out_trade_no,
+        device_id=device_id,
+        plan_id=str(matched.get("plan_id") or ""),
+        tier=tier,
+        total_amount=str(matched.get("total_amount") or ""),
+    ))
+
+    await db.commit()
+    logger.info("afdian_activate device=%s tier=%s order=%s expires=%s", device_id, tier, out_trade_no, new_expires)
+    return {"status": "activated", "device_id": device_id, "tier": tier, "expires_at": new_expires.isoformat()}
+
+
+# ===================== 爱发电 Webhook =====================
+
+
+@app.post("/api/webhook/afdian")
+async def afdian_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle Ko-fi subscription webhook."""
-    body = await request.json()
-    if isinstance(body, dict) and isinstance(body.get("data"), str):
-        import json
-        try:
-            body = json.loads(body["data"])
-        except Exception:
-            pass
+    """Handle 爱发电 subscription webhook.
 
-    tier_raw = str(body.get("subscription_tier") or body.get("tier") or "").lower()
-    if "premium" in tier_raw or "19" in tier_raw:
+    爱发电 pushes a POST JSON to the configured URL on every new order.
+    Verify via ?token= query parameter; respond with {"ec": 200, "em": ""}.
+    """
+    # Verify token via URL query param
+    if settings.afdian_webhook_token:
+        req_token = request.query_params.get("token", "")
+        if req_token != _afdian("webhook_token"):
+            return {"ec": 403, "em": "invalid_token"}
+
+    body = await request.json()
+    data = body.get("data") or {}
+    if data.get("type") != "order":
+        return {"ec": 200, "em": ""}
+
+    order = data.get("order") or {}
+    if order.get("status") != 2:  # 2 = payment success
+        return {"ec": 200, "em": ""}
+
+    plan_id = str(order.get("plan_id") or "")
+    remark = str(order.get("remark") or "").strip()
+
+    # Determine tier from plan_id, fallback to amount
+    if _afdian("premium_plan_id") and plan_id == _afdian("premium_plan_id"):
         tier = "premium"
-    elif "basic" in tier_raw or "9" in tier_raw:
+    elif _afdian("basic_plan_id") and plan_id == _afdian("basic_plan_id"):
         tier = "basic"
     else:
-        tier = "free"
+        amount = float(order.get("total_amount") or 0)
+        if amount >= 49:
+            tier = "premium"
+        elif amount >= 19.9:
+            tier = "basic"
+        else:
+            tier = "free"
 
-    metadata = body.get("metadata") or {}
-    device_id = (
-        body.get("device_id")
-        or body.get("custom")
-        or (metadata.get("device_id") if isinstance(metadata, dict) else None)
-    )
+    device_id = remark
     if not device_id:
-        return {"status": "ignored", "reason": "missing_device_id"}
+        logger.warning("afdian_webhook: missing device_id in remark, order=%s", order.get("out_trade_no"))
+        return {"ec": 200, "em": "missing_device_id"}
 
     result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
     row = result.scalars().first()
+    now = datetime.utcnow()
+    new_expires = now + timedelta(days=30)
     if row:
+        same_tier = (row.subscription_tier == tier)
+        still_active = (row.expires_at is not None and row.expires_at > now)
+        if same_tier and still_active:
+            new_expires = row.expires_at + timedelta(days=30)
+        row.expires_at = new_expires
         row.subscription_tier = tier
     else:
-        db.add(DeviceSubscription(device_id=device_id, subscription_tier=tier))
+        db.add(DeviceSubscription(device_id=device_id, subscription_tier=tier, expires_at=new_expires))
     await db.commit()
 
     usage = await _get_or_create_usage_log(db, device_id)
     usage.subscription = tier
     await db.commit()
-    return {"status": "received", "device_id": device_id, "subscription": tier}
+    logger.info("afdian_webhook device=%s tier=%s plan_id=%s expires=%s", device_id, tier, plan_id, new_expires)
+    return {"ec": 200, "em": ""}
 
 
 # ===================== Analysis Routes =====================
 
 
 @app.post("/api/analyze")
+@limiter.limit("10/minute")
 async def analyze(
+    request: Request,
     req: AnalyzeRequest,
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
@@ -499,10 +1041,13 @@ async def analyze(
     if usage_mode == "account":
         subscription = current_user.subscription_tier
         has_limit, remaining = await user_service.check_daily_limit(db, current_user)
+        # registered users get 3/day on free tier (vs 1/day for guests)
+        limits_map = USER_LIMITS
     else:
+        subscription = await _get_device_subscription(db, device_id)
         usage = await _get_or_create_usage_log(db, device_id)
-        subscription = usage.subscription
-        limit = LIMITS.get(subscription, 1)
+        limits_map = LIMITS
+        limit = limits_map.get(subscription, 1)
         remaining = max(limit - usage.count, 0)
         has_limit = remaining > 0
 
@@ -511,39 +1056,90 @@ async def analyze(
     if not has_limit:
         raise HTTPException(
             status_code=429,
-            detail=f"Daily limit reached. Please upgrade to continue.",
+            detail="今日分析次数已用完，请升级套餐获取更多次数",
         )
 
-    # Validate inputs
-    if not req.symbol.strip():
-        raise HTTPException(status_code=400, detail="Symbol cannot be empty")
+    # --- Symbol format validation ---
+    symbol_clean = req.symbol.strip().upper()
+    if not symbol_clean:
+        raise HTTPException(status_code=400, detail="股票/期货代码不能为空")
+    if len(symbol_clean) > 20:
+        raise HTTPException(status_code=400, detail="代码格式错误：长度超出范围")
 
-    api_key = settings.llm_api_key or os.getenv("LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+    import re as _re
+    _SYMBOL_PATTERNS = {
+        "a":       (_re.compile(r"^\d{6}$"),       "A股代码应为6位数字，如 600519"),
+        "hk":      (_re.compile(r"^\d{4,5}$"),     "港股代码应为4-5位数字，如 00700"),
+        "us":      (_re.compile(r"^[A-Z]{1,5}$"),  "美股代码应为1-5个大写字母，如 AAPL"),
+        "futures": (_re.compile(r"^[A-Z]{1,3}$"),  "期货代码应为1-3个大写字母，如 MA、SA"),
+    }
+    if req.market in _SYMBOL_PATTERNS:
+        pattern, hint = _SYMBOL_PATTERNS[req.market]
+        if not pattern.match(symbol_clean):
+            raise HTTPException(status_code=400, detail=f"代码格式错误：{hint}")
+
+    # Validate numeric inputs when provided
+    if req.holding_quantity is not None and req.holding_quantity < 0:
+        raise HTTPException(status_code=400, detail="持有数量不能为负数")
+    if req.cost_price is not None and req.cost_price <= 0:
+        raise HTTPException(status_code=400, detail="成本价必须大于0")
+    if req.planned_investment is not None and req.planned_investment <= 0:
+        raise HTTPException(status_code=400, detail="计划投入金额必须大于0")
+    if req.max_position is not None and req.max_position <= 0:
+        raise HTTPException(status_code=400, detail="最大持仓必须大于0")
+
+    # Check position analysis daily limit for basic tier
+    has_position_params = any(
+        x is not None for x in [req.holding_quantity, req.cost_price, req.planned_investment, req.max_position]
+    )
+    if has_position_params and subscription == "basic":
+        if usage_mode == "device":
+            _pos_log = await _get_or_create_usage_log(db, device_id)
+            if (_pos_log.position_count or 0) >= 1:
+                raise HTTPException(
+                    status_code=429,
+                    detail="今日持仓参数分析次数已用完（标准版每日1次），升级专业版可无限使用",
+                )
+        else:
+            today = datetime.utcnow().date()
+            last_pos_date = current_user.last_position_date.date() if current_user.last_position_date else None
+            pos_used = current_user.daily_position_usage or 0
+            if last_pos_date == today and pos_used >= 1:
+                raise HTTPException(
+                    status_code=429,
+                    detail="今日持仓参数分析次数已用完（标准版每日1次），升级专业版可无限使用",
+                )
+
+    _llm = _llm_config()
+    api_key = _llm["api_key"]
     if not api_key:
-        raise HTTPException(status_code=500, detail="LLM API key not configured on server")
+        raise HTTPException(status_code=503, detail="AI 分析服务暂未配置，请联系管理员")
 
     try:
-        # Fetch market data
         df = await data_service.fetch_market_data(
-            symbol=req.symbol.strip(),
+            symbol=symbol_clean,
             market=req.market,
             period=req.period,
             start_date=None,
             end_date=None,
         )
 
-        if df.empty:
-            raise HTTPException(status_code=404, detail="No data found for symbol")
+        if df is None or df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f'未找到 "{symbol_clean}" 的市场数据，请检查代码是否正确',
+            )
 
         # Analyze with LLM
         result = await llm_service.analyze_with_llm(
             df=df,
-            provider=settings.llm_provider,
+            symbol=symbol_clean,
+            provider=_llm["provider"],
             api_key=api_key,
-            base_url=settings.llm_base_url,
-            model=settings.llm_model,
-            max_tokens=settings.llm_max_tokens,
-            temperature=settings.llm_temperature,
+            base_url=_llm["base_url"],
+            model=_llm["model"],
+            max_tokens=_llm["max_tokens"],
+            temperature=_llm["temperature"],
             user_context={
                 "holding_quantity": req.holding_quantity,
                 "cost_price": req.cost_price,
@@ -554,18 +1150,44 @@ async def analyze(
 
         latest_price = float(df.iloc[-1]["close"])
         normalized_result = _normalize_result(result, latest_price, req)
+
+        # Apply free-tier masking (after normalize but before response build)
+        if subscription == "free":
+            normalized_result = _mask_result_for_free_tier(normalized_result)
+
         if usage_mode == "account":
             await user_service.increment_usage(db, current_user)
             _, new_remaining = await user_service.check_daily_limit(db, current_user)
             used = current_user.daily_usage
         else:
-            usage = await _get_or_create_usage_log(db, device_id)
-            usage.count += 1
-            await db.commit()
+            usage = await _increment_device_usage(db, device_id)
             limit = LIMITS.get(subscription, 1)
             new_remaining = max(limit - usage.count, 0)
             used = usage.count
 
+        # Increment position analysis counter for basic tier
+        if has_position_params and subscription == "basic":
+            if usage_mode == "device":
+                _pos_log = await _get_or_create_usage_log(db, device_id)
+                _pos_log.position_count = (_pos_log.position_count or 0) + 1
+                await db.commit()
+            else:
+                from sqlalchemy import update as _update
+                now_dt = datetime.utcnow()
+                today_dt = now_dt.date()
+                last_pos = current_user.last_position_date.date() if current_user.last_position_date else None
+                new_pos_usage = 1 if last_pos != today_dt else (current_user.daily_position_usage or 0) + 1
+                await db.execute(
+                    _update(User).where(User.id == current_user.id).values(
+                        daily_position_usage=new_pos_usage,
+                        last_position_date=now_dt,
+                    )
+                )
+                await db.commit()
+
+        daily_limit_shown = limits_map.get(subscription, 1)
+
+        symbol_name = await get_symbol_name(symbol_clean, req.market)
         latest_row = df.iloc[-1]
         response_payload = {
             "success": True,
@@ -587,11 +1209,12 @@ async def analyze(
             "usage": {
                 "remaining": new_remaining,
                 "tier": subscription,
-                "daily_limit": LIMITS.get(subscription, 1),
+                "daily_limit": daily_limit_shown,
                 "used": used,
             },
             "data": {
-                "symbol": req.symbol,
+                "symbol": symbol_clean,
+                "name": symbol_name,
                 "market": req.market,
                 "latest_price": latest_price,
                 "latest_date": datetime.fromtimestamp(df.iloc[-1]["datetime"] / 1e9).isoformat(),
@@ -599,7 +1222,7 @@ async def analyze(
         }
         history_record = await _save_analysis_history(
             db=db,
-            req_symbol=req.symbol,
+            req_symbol=symbol_clean,
             req_market=req.market,
             req_period=req.period,
             result_payload=response_payload,
@@ -613,10 +1236,19 @@ async def analyze(
         }
         return response_payload
 
+    except HTTPException:
+        raise
+    except TimeoutError as e:
+        logger.error("LLM timeout for symbol=%s market=%s: %s", symbol_clean, req.market, e)
+        raise HTTPException(status_code=504, detail=str(e))
+    except RuntimeError as e:
+        logger.error("LLM runtime error for symbol=%s: %s", symbol_clean, e)
+        raise HTTPException(status_code=502, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        logger.exception("Unexpected analysis error for symbol=%s market=%s", symbol_clean, req.market)
+        raise HTTPException(status_code=500, detail=f"分析服务暂时不可用，请稍后重试")
 
 
 @app.get("/api/analyze/limits")
@@ -627,8 +1259,7 @@ async def get_limits(
     """Get user's daily usage limits."""
     _, remaining = await user_service.check_daily_limit(db=db, user=current_user)
 
-    limits = {"free": 1, "basic": 5, "premium": 15}
-    daily_limit = limits.get(current_user.subscription_tier, 1)
+    daily_limit = USER_LIMITS.get(current_user.subscription_tier, 1)
 
     return {
         "tier": current_user.subscription_tier,
@@ -655,7 +1286,9 @@ async def get_usage_by_device(
 
 
 @app.post("/api/analyze/batch")
+@limiter.limit("3/minute")
 async def analyze_batch(
+    request: Request,
     req: BatchAnalyzeRequest,
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
@@ -685,41 +1318,41 @@ async def analyze_batch(
     if not has_limit or remaining < len(symbols):
         raise HTTPException(status_code=429, detail=f"Not enough quota for batch analyze. Remaining: {remaining}")
 
-    api_key = settings.llm_api_key or os.getenv("LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+    _llm = _llm_config()
+    api_key = _llm["api_key"]
     if not api_key:
-        raise HTTPException(status_code=500, detail="LLM API key not configured on server")
+        raise HTTPException(status_code=503, detail="AI 分析服务暂未配置，请联系管理员")
 
     results = []
     failed = []
 
     for symbol in symbols:
+        sym_clean = symbol.strip().upper()
         if usage_mode == "account":
             await user_service.increment_usage(db, current_user)
         else:
-            usage = await _get_or_create_usage_log(db, device_id)
-            usage.count += 1
-            await db.commit()
+            await _increment_device_usage(db, device_id)
         try:
             df = await data_service.fetch_market_data(
-                symbol=symbol,
+                symbol=sym_clean,
                 market=req.market,
                 period=req.period,
                 start_date=None,
                 end_date=None,
             )
-            if df.empty:
-                failed.append({"symbol": symbol, "error": "No data found"})
+            if df is None or df.empty:
+                failed.append({"symbol": sym_clean, "error": f'未找到 "{sym_clean}" 的市场数据'})
                 continue
 
             result = await llm_service.analyze_with_llm(
                 df=df,
-                symbol=symbol,
-                provider=settings.llm_provider,
+                symbol=sym_clean,
+                provider=_llm["provider"],
                 api_key=api_key,
-                base_url=settings.llm_base_url,
-                model=settings.llm_model,
-                max_tokens=settings.llm_max_tokens,
-                temperature=settings.llm_temperature,
+                base_url=_llm["base_url"],
+                model=_llm["model"],
+                max_tokens=_llm["max_tokens"],
+                temperature=_llm["temperature"],
                 user_context={},
             )
 
@@ -727,19 +1360,21 @@ async def analyze_batch(
             normalized = _normalize_result(
                 result,
                 latest_price,
-                AnalyzeRequest(symbol=symbol, market=req.market, period=req.period),
+                AnalyzeRequest(symbol=sym_clean, market=req.market, period=req.period),
             )
-            results.append({"symbol": symbol, **normalized})
+            sym_name = await get_symbol_name(sym_clean, req.market)
+            results.append({"symbol": sym_clean, "name": sym_name, **normalized})
             await _save_analysis_history(
                 db=db,
-                req_symbol=symbol,
+                req_symbol=sym_clean,
                 req_market=req.market,
                 req_period=req.period,
                 result_payload={
                     "success": True,
                     "result": normalized,
                     "data": {
-                        "symbol": symbol,
+                        "symbol": sym_clean,
+                        "name": sym_name,
                         "market": req.market,
                         "latest_price": latest_price,
                         "latest_date": datetime.fromtimestamp(df.iloc[-1]["datetime"] / 1e9).isoformat(),
@@ -748,8 +1383,13 @@ async def analyze_batch(
                 current_user=current_user,
                 device_id=device_id if usage_mode == "device" else None,
             )
+        except TimeoutError as e:
+            failed.append({"symbol": sym_clean, "error": str(e)})
+        except RuntimeError as e:
+            failed.append({"symbol": sym_clean, "error": str(e)})
         except Exception as e:
-            failed.append({"symbol": symbol, "error": str(e)})
+            logger.exception("Batch analysis error for symbol=%s", sym_clean)
+            failed.append({"symbol": sym_clean, "error": "分析失败，请重试"})
 
     if usage_mode == "account":
         _, new_remaining = await user_service.check_daily_limit(db, current_user)
@@ -850,13 +1490,345 @@ async def get_market_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ===================== Health Check =====================
+# ===================== Admin Routes =====================
+
+
+def _verify_admin(x_admin_token: Optional[str] = Header(None)):
+    """Verify admin token."""
+    if not settings.admin_token:
+        raise HTTPException(status_code=503, detail="Admin endpoint not configured")
+    if x_admin_token != settings.admin_token:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+
+class AdminSubscriptionRequest(BaseModel):
+    device_id: str
+    tier: str  # free, basic, premium
+
+
+class AdminUpdateUserRequest(BaseModel):
+    subscription_tier: Optional[str] = None   # free, basic, premium
+    is_active: Optional[bool] = None
+    reset_usage: Optional[bool] = False
+
+
+@app.post("/api/admin/subscription")
+async def admin_set_subscription(
+    req: AdminSubscriptionRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Manually set device subscription tier (admin only)."""
+    if req.tier not in ("free", "basic", "premium"):
+        raise HTTPException(status_code=400, detail="Invalid tier")
+
+    result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == req.device_id))
+    row = result.scalars().first()
+    if row:
+        row.subscription_tier = req.tier
+    else:
+        db.add(DeviceSubscription(device_id=req.device_id, subscription_tier=req.tier))
+    await db.commit()
+
+    usage = await _get_or_create_usage_log(db, req.device_id)
+    usage.subscription = req.tier
+    await db.commit()
+    logger.info("admin set device=%s tier=%s", req.device_id, req.tier)
+    return {"status": "ok", "device_id": req.device_id, "tier": req.tier}
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Usage statistics (admin only)."""
+    today = datetime.utcnow().date()
+
+    # Active devices today
+    active_result = await db.execute(
+        select(func.count(UsageLog.id)).where(UsageLog.date == today, UsageLog.count > 0)
+    )
+    active_devices = active_result.scalar() or 0
+
+    # Total requests today
+    total_result = await db.execute(
+        select(func.sum(UsageLog.count)).where(UsageLog.date == today)
+    )
+    total_requests = total_result.scalar() or 0
+
+    # Tier distribution
+    tier_result = await db.execute(
+        select(DeviceSubscription.subscription_tier, func.count(DeviceSubscription.id))
+        .group_by(DeviceSubscription.subscription_tier)
+    )
+    tier_dist = {row[0]: row[1] for row in tier_result.all()}
+
+    # Analysis records in last 24h
+    since = datetime.utcnow() - timedelta(hours=24)
+    analysis_result = await db.execute(
+        select(func.count(AnalysisHistory.id)).where(AnalysisHistory.analyzed_at >= since)
+    )
+    analysis_24h = analysis_result.scalar() or 0
+
+    return {
+        "date": today.isoformat(),
+        "active_devices_today": active_devices,
+        "total_requests_today": total_requests,
+        "analysis_last_24h": analysis_24h,
+        "tier_distribution": tier_dist,
+    }
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(
+    search: Optional[str] = None,
+    tier: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """List all users with optional search and tier filter (admin only)."""
+    stmt = select(User)
+    if search:
+        stmt = stmt.where(
+            User.email.ilike(f"%{search}%") | User.username.ilike(f"%{search}%")
+        )
+    if tier:
+        stmt = stmt.where(User.subscription_tier == tier)
+
+    # Total count
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    # Paginated results
+    stmt = stmt.order_by(User.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "username": u.username,
+                "subscription_tier": u.subscription_tier,
+                "daily_usage": u.daily_usage,
+                "last_usage_date": u.last_usage_date.isoformat() if u.last_usage_date else None,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "invite_code": u.invite_code,
+                "bonus_quota": u.bonus_quota or 0,
+            }
+            for u in rows
+        ],
+    }
+
+
+@app.put("/api/admin/users/{user_id}")
+async def admin_update_user(
+    user_id: int,
+    req: AdminUpdateUserRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Update user subscription tier, active status, or reset daily usage (admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if req.subscription_tier is not None:
+        if req.subscription_tier not in ("free", "basic", "premium"):
+            raise HTTPException(status_code=400, detail="Invalid tier")
+        user.subscription_tier = req.subscription_tier
+
+    if req.is_active is not None:
+        user.is_active = req.is_active
+
+    if req.reset_usage:
+        user.daily_usage = 0
+        user.last_usage_date = None
+
+    await db.commit()
+    logger.info("admin updated user=%d tier=%s is_active=%s reset=%s", user_id, req.subscription_tier, req.is_active, req.reset_usage)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "subscription_tier": user.subscription_tier,
+        "is_active": user.is_active,
+        "daily_usage": user.daily_usage,
+    }
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Delete a user account (admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.delete(user)
+    await db.commit()
+    logger.info("admin deleted user=%d email=%s", user_id, user.email)
+    return {"status": "deleted", "user_id": user_id}
+
+
+@app.get("/api/admin/devices")
+async def admin_list_devices(
+    search: Optional[str] = None,
+    tier: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """List all device subscriptions (admin only)."""
+    stmt = select(DeviceSubscription)
+    if search:
+        stmt = stmt.where(DeviceSubscription.device_id.ilike(f"%{search}%"))
+    if tier:
+        stmt = stmt.where(DeviceSubscription.subscription_tier == tier)
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    stmt = stmt.order_by(DeviceSubscription.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r.id,
+                "device_id": r.device_id,
+                "subscription_tier": r.subscription_tier,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.delete("/api/admin/devices/{device_id}")
+async def admin_delete_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Delete a device subscription record (admin only)."""
+    result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
+    row = result.scalars().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Device not found")
+    await db.delete(row)
+    await db.commit()
+    logger.info("admin deleted device=%s", device_id)
+    return {"status": "deleted", "device_id": device_id}
+
+
+# ===================== Admin: System Settings =====================
+
+_ALLOWED_SECTIONS = {"quota", "llm", "pricing", "afdian", "email", "app"}
+
+
+@app.get("/api/admin/settings")
+async def admin_get_settings(_: None = Depends(_verify_admin)):
+    """Return all runtime-configurable system settings (admin only)."""
+    import copy
+    sanitized = copy.deepcopy(_sys_settings)
+    _SENSITIVE_KEYS = {"api_key", "api_token", "resend_api_key", "webhook_token"}
+    for section in sanitized.values():
+        if isinstance(section, dict):
+            for key in _SENSITIVE_KEYS:
+                if key in section and section[key]:
+                    section[key] = "***REDACTED***"
+    return sanitized
+
+
+@app.put("/api/admin/settings")
+async def admin_update_settings(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Update one or more settings sections and persist to DB (admin only).
+    Send only the sections you want to update, e.g. {"quota": {...}} or {"llm": {...}}.
+    """
+    global _sys_settings
+    updated_sections = []
+    for section, data in body.items():
+        if section not in _ALLOWED_SECTIONS or not isinstance(data, dict):
+            continue
+        # Deep-merge so callers can send partial updates
+        current = _sys_settings.get(section, {})
+        if isinstance(current, dict):
+            current.update(data)
+            _sys_settings[section] = current
+        else:
+            _sys_settings[section] = data
+        # Persist
+        row = await db.get(SystemSetting, section)
+        if row:
+            row.value = json.dumps(_sys_settings[section])
+            row.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemSetting(key=section, value=json.dumps(_sys_settings[section])))
+        updated_sections.append(section)
+
+    await db.commit()
+    _apply_quota_settings()
+    logger.info("admin updated settings sections: %s", updated_sections)
+    return {"success": True, "updated": updated_sections, "settings": _sys_settings}
 
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/config")
+async def get_config():
+    """Public config — app name and other frontend settings."""
+    return {
+        "app_name": _app("name"),
+        "version": "1.0.0",
+    }
+
+
+@app.get("/api/pricing")
+async def get_pricing():
+    """Return subscription pricing info (DB-configurable via admin settings)."""
+    p = _sys_settings.get("pricing", _default_sys_settings()["pricing"])
+    basic = p.get("basic", {})
+    premium = p.get("premium", {})
+    period = p.get("period", "月")
+    features = p.get("features", [])
+    return {
+        "features": features,
+        "free": {"daily_limit": 1},
+        "basic": {
+            "price": basic.get("price", "19.9"),
+            "period": period,
+            "daily_limit": int(basic.get("daily", 5)),
+        },
+        "premium": {
+            "price": premium.get("price", "49"),
+            "period": period,
+            "daily_limit": int(premium.get("daily", 15)),
+        },
+    }
 
 
 # ===================== Root =====================

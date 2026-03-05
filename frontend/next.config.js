@@ -2,8 +2,16 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000',
+  // 将 /api/* 请求在 Next.js 服务端代理给 backend 容器
+  // BACKEND_URL 是运行时环境变量，默认指向 Docker 内部网络的 backend 服务
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ];
   },
 }
 

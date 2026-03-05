@@ -26,10 +26,11 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./
 
-# Environment
 ENV NODE_ENV=production
-ENV NEXT_PUBLIC_API_URL=http://localhost:8000
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000 || exit 1
 
 CMD ["node", "server.js"]

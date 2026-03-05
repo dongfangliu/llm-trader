@@ -47,6 +47,9 @@ data/
 
 # API Keys (security)
 config/api_keys.yaml
+.env
+backend/.env
+*.env
 
 # Test & Coverage
 .pytest_cache/

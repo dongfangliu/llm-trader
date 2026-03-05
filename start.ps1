@@ -11,6 +11,16 @@ function Write-Green { param($msg) Write-Host $msg -ForegroundColor Green }
 function Write-Yellow { param($msg) Write-Host $msg -ForegroundColor Yellow }
 function Write-Red { param($msg) Write-Host $msg -ForegroundColor Red }
 
+# 递归杀进程树（避免子进程残留）
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue
+    foreach ($child in $children) {
+        Stop-ProcessTree -ProcessId $child.ProcessId
+    }
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
 # 获取脚本所在目录
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
@@ -24,17 +34,25 @@ Write-Host ""
 if ($Stop) {
     Write-Yellow "正在停止服务..."
 
-    # 停止 Python uvicorn 进程
-    Get-Process | Where-Object { $_.ProcessName -like "*python*" } | ForEach-Object {
-        try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
+    $pidFile = "$ScriptDir\.trader_pids"
+    if (Test-Path $pidFile) {
+        $savedPids = Get-Content $pidFile | Where-Object { $_ -match '^\d+$' }
+        foreach ($p in $savedPids) {
+            Stop-ProcessTree -ProcessId ([int]$p)
+        }
+        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+        Write-Green "服务已停止"
+    } else {
+        Write-Yellow "未找到 PID 记录，尝试按端口停止..."
+        foreach ($port in @(8000, 3000)) {
+            $conn = netstat -ano | Select-String ":$port\s.*LISTENING"
+            if ($conn) {
+                $pidStr = ($conn.ToString().Trim() -split '\s+')[-1]
+                if ($pidStr -match '^\d+$') { Stop-ProcessTree -ProcessId ([int]$pidStr) }
+            }
+        }
+        Write-Green "服务已停止"
     }
-
-    # 停止 Node.js 进程
-    Get-Process | Where-Object { $_.ProcessName -like "*node*" } | ForEach-Object {
-        try { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue } catch {}
-    }
-
-    Write-Green "服务已停止"
     exit 0
 }
 
@@ -76,12 +94,11 @@ if (Test-Port -Port 8000) {
     Write-Green "后端服务已在运行 (端口 8000)"
 } else {
     $env:PYTHONPATH = "src"
-    $backendJob = Start-Job -ScriptBlock {
-        Set-Location $using:ScriptDir\backend
-        $env:PYTHONPATH = "src"
-        python -m uvicorn src.api.main:app --port 8000
-    }
-    Write-Green "后端服务已启动 (端口 8000)"
+    $backendProcess = Start-Process -FilePath "python" `
+        -ArgumentList "-m uvicorn src.api.main:app --port 8000" `
+        -WorkingDirectory "$ScriptDir\backend" `
+        -WindowStyle Hidden -PassThru
+    Write-Green "后端服务已启动 (端口 8000, PID: $($backendProcess.Id))"
 }
 
 # 等待后端就绪
@@ -99,16 +116,29 @@ Write-Yellow "启动前端服务..."
 if (Test-Port -Port 3000) {
     Write-Green "前端服务已在运行 (端口 3000)"
 } else {
-    $frontendJob = Start-Job -ScriptBlock {
-        Set-Location $using:ScriptDir\frontend
-        npm run dev
-    }
-    Write-Green "前端服务已启动 (端口 3000)"
+    $env:BACKEND_URL = "http://localhost:8000"
+    $frontendProcess = Start-Process -FilePath "cmd.exe" `
+        -ArgumentList "/c npm run dev" `
+        -WorkingDirectory "$ScriptDir\frontend" `
+        -WindowStyle Hidden -PassThru
+    Write-Green "前端服务已启动 (端口 3000, PID: $($frontendProcess.Id))"
 }
 
-# 等待前端就绪
+# 保存 PID 到文件（供 -Stop 模式使用）
+$pidFile = "$ScriptDir\.trader_pids"
+@(
+    if ($backendProcess)  { $backendProcess.Id }
+    if ($frontendProcess) { $frontendProcess.Id }
+) | Set-Content $pidFile
+
+# 等待前端就绪 (TCP 端口检查，避免冷编译期间 HTTP 非 200 误判)
 Write-Yellow "等待前端服务就绪..."
-if (Wait-ForService -Url "http://localhost:3000" -Timeout 60) {
+$tcpReady = $false
+for ($i = 0; $i -lt 90; $i++) {
+    if (Test-Port -Port 3000) { $tcpReady = $true; break }
+    Start-Sleep -Seconds 1
+}
+if ($tcpReady) {
     Write-Green "前端服务就绪!"
 } else {
     Write-Yellow "前端服务可能需要更长时间启动，请稍后访问 http://localhost:3000"
@@ -135,7 +165,16 @@ try {
     Write-Host ""
     Write-Yellow "正在停止服务..."
 
-    # 清理 Job
+    # 停止后端和前端进程树（含所有子进程）
+    if ($backendProcess -and -not $backendProcess.HasExited) {
+        Stop-ProcessTree -ProcessId $backendProcess.Id
+    }
+    if ($frontendProcess -and -not $frontendProcess.HasExited) {
+        Stop-ProcessTree -ProcessId $frontendProcess.Id
+    }
+
+    # 清理 PID 文件和残留 Job
+    Remove-Item "$ScriptDir\.trader_pids" -Force -ErrorAction SilentlyContinue
     Get-Job | Stop-Job -ErrorAction SilentlyContinue
     Get-Job | Remove-Job -ErrorAction SilentlyContinue
 

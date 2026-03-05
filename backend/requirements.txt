@@ -28,6 +28,7 @@ websockets>=12.0
 
 # ========== Database ==========
 aiosqlite>=0.19.0
+asyncpg>=0.29.0
 sqlalchemy>=2.0.0
 
 # ========== Authentication ==========
@@ -36,6 +37,12 @@ passlib[bcrypt]>=1.7.4
 
 # ========== HTTP Client ==========
 httpx>=0.25.0
+
+# ========== Email ==========
+resend>=2.0.0
+
+# ========== Rate Limiting ==========
+slowapi>=0.1.9
 
 # ========== Testing ==========
 pytest>=7.4.0

@@ -1,24 +1,64 @@
 # Docker Compose configuration for LLM Trading Analyzer
-# For local testing and production deployment
+# Production deployment: Coolify + 宝塔 Linux
+#
+# 在 Coolify UI 的 Environment Variables 里填写以下变量：
+#   SECRET_KEY        → python -c "import secrets; print(secrets.token_hex(32))"
+#   ADMIN_TOKEN       → python -c "import secrets; print(secrets.token_hex(24))"
+#   LLM_API_KEY       → DeepSeek / OpenAI API key
+#   POSTGRES_PASSWORD → 数据库密码
+#
+# 无需配置 NEXT_PUBLIC_API_URL —— 前端通过 Next.js rewrites 在服务端代理 /api/* 到 backend 容器
 
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-trader}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - trader-network
+
   # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: trader-backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./backend/data:/app/data
+      - backend_data:/app/data
+      - backend_logs:/app/logs
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./data/trader.db
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
-    env_file:
-      - ./backend/.env
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trader}
+      - SECRET_KEY=${SECRET_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1500}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - AFDIAN_WEBHOOK_TOKEN=${AFDIAN_WEBHOOK_TOKEN:-}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - AFDIAN_BASIC_PLAN_ID=${AFDIAN_BASIC_PLAN_ID:-}
+      - AFDIAN_PREMIUM_PLAN_ID=${AFDIAN_PREMIUM_PLAN_ID:-}
+      - AFDIAN_BASIC_LINK=${AFDIAN_BASIC_LINK:-}
+      - AFDIAN_PREMIUM_LINK=${AFDIAN_PREMIUM_LINK:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -33,16 +73,22 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: trader-frontend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # 运行时变量：Next.js rewrites 用它代理 /api/* 到 backend
+      # Docker 内部网络直接用服务名访问，无需公网域名
+      - BACKEND_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped
     networks:
       - trader-network
+
+volumes:
+  postgres_data:
+  backend_data:
+  backend_logs:
 
 networks:
   trader-network:

@@ -33,6 +33,7 @@ async def analyze_with_llm(
     max_tokens: int = 2000,
     temperature: float = 0.7,
     user_context: Optional[Dict[str, Any]] = None,
+    timeout: float = 90.0,
 ) -> Dict[str, Any]:
     """Analyze market data using LLM.
 
@@ -44,49 +45,71 @@ async def analyze_with_llm(
         model: Model name
         max_tokens: Max tokens in response
         temperature: Temperature setting
+        timeout: Seconds before giving up on the LLM call
 
     Returns:
         Analysis result dict
+
+    Raises:
+        TimeoutError: when LLM does not respond within `timeout` seconds
+        RuntimeError: when LLM response cannot be parsed as JSON
+        Exception: for any other LLM-level failure
     """
     if df.empty:
-        return {"error": "No data available"}
+        raise ValueError("No market data available for analysis")
 
     # Build backtest-aligned enhanced prompt
     prompt = _build_enhanced_prompt(df, symbol=symbol, user_context=user_context)
 
-    # Call LLM
+    # Call LLM with timeout
     try:
+        import asyncio
         if provider == "anthropic":
-            result = await _call_anthropic(
-                api_key=api_key,
-                model=model,
-                system_prompt=SYSTEM_PROMPT,
-                user_prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
+            raw_result = await asyncio.wait_for(
+                _call_anthropic(
+                    api_key=api_key,
+                    model=model,
+                    system_prompt=SYSTEM_PROMPT,
+                    user_prompt=prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout,
             )
         else:
             # Default to OpenAI compatible
-            result = await _call_openai(
-                api_key=api_key,
-                base_url=base_url,
-                model=model,
-                system_prompt=SYSTEM_PROMPT,
-                user_prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
+            raw_result = await asyncio.wait_for(
+                _call_openai(
+                    api_key=api_key,
+                    base_url=base_url,
+                    model=model,
+                    system_prompt=SYSTEM_PROMPT,
+                    user_prompt=prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout,
             )
-
-        analysis = _parse_llm_json(result)
-        if analysis is not None:
-            return analysis
-
-        # If parsing fails, return raw result
-        return {"raw_result": result, "error": "Failed to parse JSON"}
-
+    except asyncio.TimeoutError:
+        logger.error("LLM analysis timed out after %.0fs for symbol=%s", timeout, symbol)
+        raise TimeoutError(f"LLM 响应超时（>{timeout:.0f}秒），请稍后重试")
     except Exception as e:
-        logger.error(f"LLM analysis failed: {e}")
-        return {"error": str(e)}
+        logger.error("LLM API call failed for symbol=%s: %s", symbol, e)
+        raise
+
+    if not raw_result or not raw_result.strip():
+        raise RuntimeError("LLM 返回了空响应，请重试")
+
+    analysis = _parse_llm_json(raw_result)
+    if analysis is not None:
+        return analysis
+
+    # JSON parse failed — log the raw response for debugging
+    logger.warning(
+        "LLM JSON parse failed for symbol=%s; raw response (first 500 chars): %s",
+        symbol, raw_result[:500],
+    )
+    raise RuntimeError("LLM 响应格式错误（无法解析 JSON），请重试")
 
 
 async def _call_openai(

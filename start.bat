@@ -34,13 +34,20 @@ if !errorlevel! equ 0 (
     echo [0;32m后端服务已启动 (端口 8000)[0m
 )
 
-:: 等待后端启动
+:: 等待后端启动 (最多等待30秒)
 echo 等待后端服务就绪...
+set wait_count=0
 :wait_backend
 timeout /t 1 /nobreak >nul
+set /a wait_count+=1
+if %wait_count% geq 30 (
+    echo [0;31m后端服务启动超时，请检查是否有错误[0m
+    goto start_frontend
+)
 curl -s http://127.0.0.1:8000/api/health >nul 2>&1
 if !errorlevel! neq 0 goto wait_backend
 echo [0;32m后端服务就绪![0m
+:start_frontend
 
 :: 检查并启动前端
 echo.
@@ -57,13 +64,20 @@ if !errorlevel! equ 0 (
     echo [0;32m前端服务已启动 (端口 3000)[0m
 )
 
-:: 等待前端启动
+:: 等待前端启动 (最多等待60秒)
 echo 等待前端服务就绪...
+set wait_count=0
 :wait_frontend
 timeout /t 2 /nobreak >nul
+set /a wait_count+=2
+if %wait_count% geq 60 (
+    echo [1;33m前端服务可能需要更长时间启动，请稍后访问 http://localhost:3000[0m
+    goto show_info
+)
 curl -s http://localhost:3000 >nul 2>&1
 if !errorlevel! neq 0 goto wait_frontend
 echo [0;32m前端服务就绪![0m
+:show_info
 
 :: 显示访问地址
 echo.
