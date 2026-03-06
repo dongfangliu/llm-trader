@@ -221,6 +221,7 @@ export default function RegisterPage() {
             <li>免费版每天 3 次分析（未注册仅 1 次）</li>
             <li>任意设备登录，数据不丢失</li>
             <li>查看历史分析记录</li>
+            <li>有好友邀请码？注册后在<a href="/account" style={{ color: 'var(--primary)', textDecoration: 'none' }}>账号页</a>兑换，双方各得 <strong>+10 次</strong>永久额度</li>
             <li>可升级到付费套餐，<a href="/upgrade" style={{ color: 'var(--primary)', textDecoration: 'none' }}>查看套餐详情 →</a></li>
           </ul>
         </div>

@@ -1,5 +1,6 @@
 """FastAPI main application."""
 
+import asyncio
 import os
 import json
 import hashlib
@@ -31,13 +32,24 @@ from src.database.db import (
     AnalysisHistory,
     AfdianOrder,
     SystemSetting,
+    MarketBar,
+    SymbolName,
     settings,
 )
 from src.services.user import user_service
 from src.services.data import data_service
-from src.services.data.name_service import get_symbol_name
+from src.services.data.name_service import get_symbol_name, preload_names, refresh_names
+from src.services.data.data_collector import (
+    run_collector,
+    run_collection_cycle,
+    load_watchlist,
+    save_watchlist,
+    get_market_data_status,
+    is_collecting,
+)
 from src.services.llm import llm_service
 from src.services.email_service import send_verification_email
+
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +81,13 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with async_session() as db:
         await _load_sys_settings(db)
+    # Preload stock name mappings in background — non-blocking, refreshes daily
+    asyncio.create_task(preload_names())
+    # Start embedded data collector when explicitly enabled (dev convenience).
+    # In production Docker, run the data-collector as a separate container instead.
+    if os.getenv("ENABLE_COLLECTOR", "").lower() in ("1", "true", "yes"):
+        logger.info("ENABLE_COLLECTOR=true — starting embedded data collector")
+        asyncio.create_task(run_collector())
     yield
 
 
@@ -717,6 +736,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "last_usage_date": current_user.last_usage_date.isoformat() if current_user.last_usage_date else None,
         "invite_code": current_user.invite_code,
         "bonus_quota": current_user.bonus_quota or 0,
+        "used_invite_code": current_user.used_invite_code,
     }
 
 
@@ -760,19 +780,26 @@ async def use_invite_code(
     if current_user.invite_code and current_user.invite_code.upper() == code:
         raise HTTPException(status_code=400, detail="不能使用自己的邀请码")
 
+    # Each user may only redeem one invite code ever
+    if current_user.used_invite_code:
+        raise HTTPException(status_code=400, detail="您已使用过邀请码，每个账号只能兑换一次")
+
     # Find inviter
     result = await db.execute(select(User).where(User.invite_code == code))
     inviter = result.scalars().first()
     if not inviter:
         raise HTTPException(status_code=404, detail="邀请码无效，请检查后重试")
 
-    # Reward both parties
+    # Reward both parties and mark invitee as having used a code
     from sqlalchemy import update as _upd
     await db.execute(
         _upd(User).where(User.id == inviter.id).values(bonus_quota=User.bonus_quota + 10)
     )
     await db.execute(
-        _upd(User).where(User.id == current_user.id).values(bonus_quota=User.bonus_quota + 10)
+        _upd(User).where(User.id == current_user.id).values(
+            bonus_quota=User.bonus_quota + 10,
+            used_invite_code=code,
+        )
     )
     await db.commit()
     logger.info("invite_used inviter=%s invitee=%s code=%s", inviter.id, current_user.id, code)
@@ -1188,6 +1215,11 @@ async def analyze(
         daily_limit_shown = limits_map.get(subscription, 1)
 
         symbol_name = await get_symbol_name(symbol_clean, req.market)
+        # Persist the name so it survives restarts and is available even before
+        # the bulk name-refresh completes on the next boot.
+        if symbol_name:
+            from src.services.data.name_service import save_symbol_name
+            asyncio.create_task(save_symbol_name(symbol_clean, req.market, symbol_name))
         latest_row = df.iloc[-1]
         response_payload = {
             "success": True,
@@ -1363,6 +1395,9 @@ async def analyze_batch(
                 AnalyzeRequest(symbol=sym_clean, market=req.market, period=req.period),
             )
             sym_name = await get_symbol_name(sym_clean, req.market)
+            if sym_name:
+                from src.services.data.name_service import save_symbol_name
+                asyncio.create_task(save_symbol_name(sym_clean, req.market, sym_name))
             results.append({"symbol": sym_clean, "name": sym_name, **normalized})
             await _save_analysis_history(
                 db=db,
@@ -1737,6 +1772,69 @@ async def admin_delete_device(
     return {"status": "deleted", "device_id": device_id}
 
 
+@app.post("/api/admin/refresh-names")
+async def admin_refresh_names(
+    market: Optional[str] = None,
+    _: None = Depends(_verify_admin),
+):
+    """Refresh stock name mappings (admin only).
+
+    Query param ``?market=a``, ``?market=hk``, or ``?market=us`` to refresh a
+    single market; omit to refresh all three.
+    Returns the number of names loaded per market.
+    """
+    counts = await refresh_names(market)
+    logger.info("admin triggered name refresh: %s", counts)
+    return {"success": True, "counts": counts}
+
+
+@app.get("/api/admin/symbol-names")
+async def admin_get_symbol_names(
+    market: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 500,
+    _: None = Depends(_verify_admin),
+):
+    """Return stored symbol name mappings from the DB (admin only).
+
+    Supports optional ``?market=a|hk|us|futures`` filter and
+    ``?search=keyword`` for fuzzy match on symbol or name.
+    """
+    from sqlalchemy import select as _sel, or_, func as _func
+
+    stmt = _sel(SymbolName)
+    if market:
+        stmt = stmt.where(SymbolName.market == market)
+    if search:
+        s = f"%{search}%"
+        stmt = stmt.where(
+            or_(SymbolName.symbol.ilike(s), SymbolName.name.ilike(s))
+        )
+    stmt = stmt.order_by(SymbolName.market, SymbolName.symbol).limit(limit)
+
+    # Also fetch per-market totals
+    count_stmt = _sel(SymbolName.market, _func.count().label("cnt")).group_by(SymbolName.market)
+
+    async with async_session() as db:
+        rows = (await db.execute(stmt)).scalars().all()
+        count_rows = (await db.execute(count_stmt)).all()
+
+    market_totals = {r.market: r.cnt for r in count_rows}
+    return {
+        "total": sum(market_totals.values()),
+        "market_totals": market_totals,
+        "items": [
+            {
+                "symbol": r.symbol,
+                "market": r.market,
+                "name": r.name,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 # ===================== Admin: System Settings =====================
 
 _ALLOWED_SECTIONS = {"quota", "llm", "pricing", "afdian", "email", "app"}
@@ -1790,6 +1888,79 @@ async def admin_update_settings(
     _apply_quota_settings()
     logger.info("admin updated settings sections: %s", updated_sections)
     return {"success": True, "updated": updated_sections, "settings": _sys_settings}
+
+
+
+# ===================== Admin: Market Data Pipeline =====================
+
+
+@app.get("/api/admin/market-data/status")
+async def admin_market_data_status(_: None = Depends(_verify_admin)):
+    """Return DB coverage for every symbol in the watchlist (admin only)."""
+    status = await get_market_data_status()
+    return {"collecting": is_collecting(), "symbols": status}
+
+
+class WatchlistRefreshRequest(BaseModel):
+    symbols: Optional[List[dict]] = Field(
+        None,
+        description=(
+            "Subset of watchlist entries to refresh. "
+            "Each dict: {symbol, market, periods?, adjust?}. "
+            "Omit to refresh the full watchlist."
+        ),
+    )
+
+
+@app.post("/api/admin/market-data/refresh")
+async def admin_market_data_refresh(
+    req: WatchlistRefreshRequest,
+    _: None = Depends(_verify_admin),
+):
+    """Trigger an immediate data collection cycle (admin only).
+
+    Runs as a background task — returns immediately with ``triggered: true``.
+    Poll ``/api/admin/market-data/status`` to track progress.
+    """
+    if is_collecting():
+        return {"triggered": False, "reason": "采集任务正在运行中，请稍后再试"}
+
+    target = req.symbols  # None → use full watchlist
+    asyncio.create_task(run_collection_cycle(target))
+    logger.info("admin triggered market-data refresh, target=%s", target)
+    return {"triggered": True}
+
+
+@app.get("/api/admin/watchlist")
+async def admin_get_watchlist(_: None = Depends(_verify_admin)):
+    """Return the current data-collector watchlist (admin only)."""
+    watchlist = await load_watchlist()
+    return {"watchlist": watchlist}
+
+
+class WatchlistUpdateRequest(BaseModel):
+    watchlist: List[dict] = Field(
+        ...,
+        description=(
+            "Full replacement watchlist. "
+            "Each entry: {symbol, market, periods: [...], adjust?: 'qfq'}."
+        ),
+    )
+
+
+@app.put("/api/admin/watchlist")
+async def admin_update_watchlist(
+    req: WatchlistUpdateRequest,
+    _: None = Depends(_verify_admin),
+):
+    """Replace the data-collector watchlist (admin only).
+
+    The new list is persisted to ``system_settings`` and takes effect on the
+    next collection cycle.
+    """
+    await save_watchlist(req.watchlist)
+    logger.info("admin updated watchlist: %d symbols", len(req.watchlist))
+    return {"success": True, "count": len(req.watchlist), "watchlist": req.watchlist}
 
 
 @app.get("/api/health")

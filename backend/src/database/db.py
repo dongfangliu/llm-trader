@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, Text, UniqueConstraint, text
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Date, Boolean, Text, UniqueConstraint, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -111,6 +111,7 @@ class User(Base):
     # Invite & bonus
     invite_code = Column(String(16), nullable=True, unique=True, index=True)
     bonus_quota = Column(Integer, default=0)
+    used_invite_code = Column(String(16), nullable=True)  # non-null = already redeemed once
 
     # Position analysis tracking (basic tier daily limit)
     daily_position_usage = Column(Integer, default=0)
@@ -214,6 +215,49 @@ class AfdianOrder(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class MarketBar(Base):
+    """OHLCV bar cached from external data sources.
+
+    The ``bar_ts`` attribute maps to the DB column named ``datetime`` so that
+    SELECT results convert cleanly to the same DataFrame schema used throughout
+    the codebase (datetime, open, high, low, close, volume).
+    """
+
+    __tablename__ = "market_bars"
+    __table_args__ = (
+        UniqueConstraint("symbol", "market", "period", "datetime", name="uq_market_bars_key"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(50), nullable=False, index=True)
+    market = Column(String(10), nullable=False, index=True)   # a, hk, us, futures
+    period = Column(String(20), nullable=False, index=True)   # daily, 1, 5, 15, 30, 60
+    # nanosecond int64 timestamp — DB column is "datetime" to match DataFrame convention
+    bar_ts = Column("datetime", BigInteger, nullable=False, index=True)
+    open = Column(Float, nullable=False)
+    high = Column(Float, nullable=False)
+    low = Column(Float, nullable=False)
+    close = Column(Float, nullable=False)
+    volume = Column(Float, nullable=True, default=0.0)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SymbolName(Base):
+    """Persistent symbol → display-name mapping.
+
+    Populated by name_service bulk refreshes and on-demand analyze calls so that
+    names survive server restarts and are available even before AKShare bulk
+    fetch completes.
+    """
+
+    __tablename__ = "symbol_names"
+
+    symbol = Column(String(50), primary_key=True)
+    market = Column(String(10), primary_key=True)
+    name = Column(String(255), nullable=False, default="")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SystemSetting(Base):
     """Runtime-configurable system settings stored as JSON blobs, one row per section."""
     __tablename__ = "system_settings"
@@ -245,6 +289,7 @@ async def _migrate_db():
             "ALTER TABLE users ADD COLUMN email_verification_expires DATETIME",
             "ALTER TABLE users ADD COLUMN invite_code VARCHAR(16)",
             "ALTER TABLE users ADD COLUMN bonus_quota INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN used_invite_code VARCHAR(16)",
             "ALTER TABLE users ADD COLUMN daily_position_usage INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_position_date DATETIME",
             "ALTER TABLE usage_logs ADD COLUMN position_count INTEGER DEFAULT 0",

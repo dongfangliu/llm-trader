@@ -85,6 +85,39 @@ services:
     networks:
       - trader-network
 
+  # Data Collector — periodically fetches market bars into PostgreSQL.
+  # The backend API reads from the DB first; AKShare is only called as a
+  # fallback when the DB has no data for a given symbol.
+  #
+  # Configure the watchlist via: POST /api/admin/watchlist
+  # Monitor status via:          GET  /api/admin/market-data/status
+  # Trigger manual refresh via:  POST /api/admin/market-data/refresh
+  data-collector:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "src.services.data.data_collector"]
+    volumes:
+      - backend_logs:/app/logs
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trader}
+      # How often the scheduler wakes to check trading hours / run intraday refresh (minutes)
+      - COLLECTOR_INTRADAY_INTERVAL_MINUTES=${COLLECTOR_INTRADAY_INTERVAL_MINUTES:-5}
+      # Sleep between AKShare calls during intraday refresh (seconds, shorter = fresher data)
+      - COLLECTOR_INTRADAY_REQUEST_SLEEP=${COLLECTOR_INTRADAY_REQUEST_SLEEP:-1.0}
+      # Sleep between AKShare calls during EOD/history refresh (seconds)
+      - COLLECTOR_REQUEST_SLEEP=${COLLECTOR_REQUEST_SLEEP:-2.0}
+      # Days of history to pull on a cold start (no existing data)
+      - COLLECTOR_HISTORY_DAYS=${COLLECTOR_HISTORY_DAYS:-730}
+      # Minutes after market close before running EOD daily-bar refresh
+      - COLLECTOR_EOD_DELAY_MINUTES=${COLLECTOR_EOD_DELAY_MINUTES:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - trader-network
+
 volumes:
   postgres_data:
   backend_data:

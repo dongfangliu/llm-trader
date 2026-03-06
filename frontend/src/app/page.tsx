@@ -17,6 +17,8 @@ import {
 } from '@/lib/api';
 
 import { generateShareCardBlob, downloadBlob } from '@/lib/shareCard';
+import { Toast, useToast } from '@/components/Toast';
+import { ErrorReportDialog, isSystemError } from '@/components/ErrorReportDialog';
 
 const ENV_APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || '财财技术洞见';
 
@@ -85,7 +87,7 @@ function validatePositiveFloat(val: string, label: string): string | null {
 }
 
 // ── Error message mapping ─────────────────────────────────────────
-function getErrorMessage(err: any): string {
+function getErrorMessage(err: any, currentTier?: string): string {
   const status = err?.response?.status;
   const detail = err?.response?.data?.detail as string | undefined;
   if (!status && !err?.response) return '⚠️ 网络连接失败，请检查网络后重试';
@@ -93,7 +95,11 @@ function getErrorMessage(err: any): string {
   if (status === 401) return '🔒 登录已过期，请重新登录';
   if (status === 403) return `🚫 ${detail || '当前版本不支持该功能，请升级套餐'}`;
   if (status === 404) return `🔍 ${detail || '未找到该股票/期货数据，请检查代码'}`;
-  if (status === 429) return '⏱ 今日分析次数已用完，升级会员获取更多次数';
+  if (status === 429) {
+    if (currentTier === 'premium') return '⏱ 今日 15 次分析已全部用完，额度将于次日 0 点重置';
+    if (currentTier === 'basic') return `⏱ ${detail || '今日分析次数已用完，升级专业版每天可分析 15 次'}`;
+    return '⏱ 今日分析次数已用完，升级会员获取更多次数';
+  }
   if (status === 502) return `🤖 ${detail || 'AI 响应格式异常，请重试'}`;
   if (status === 503) return `🔧 ${detail || 'AI 分析服务暂时不可用，请稍后重试'}`;
   if (status === 504) return '⏰ AI 分析超时，服务器响应较慢，请稍后重试';
@@ -165,6 +171,10 @@ export default function HomePage() {
 
   // Symbol format warning (client-side, not blocking)
   const [symbolWarning, setSymbolWarning] = useState<string | null>(null);
+
+  // Error reporting (system errors → dialog; user errors → inline)
+  const [errorReport, setErrorReport] = useState<string | null>(null);
+  const { toast, show: showToast } = useToast();
 
   // Analysis timeout tracking
   const [analyzeTimedOut, setAnalyzeTimedOut] = useState(false);
@@ -287,8 +297,8 @@ export default function HomePage() {
   }, [deviceId, user?.id]);
 
   useEffect(() => {
-    if (limits && limits.remaining <= 0) setShowUpgradeBanner(true);
-  }, [limits]);
+    if (limits && limits.remaining <= 0 && tier !== 'premium') setShowUpgradeBanner(true);
+  }, [limits, tier]);
 
   useEffect(() => {
     if (tier === 'free' && market !== 'a') setMarket('a');
@@ -413,11 +423,19 @@ export default function HomePage() {
       setActiveTab(0);
     } catch (err: any) {
       clearTimeout(timeoutHandle);
-      const msg = getErrorMessage(err);
-      setError(msg);
-      setActivePanel('analyze');
-      if (err?.response?.status === 401) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 401) {
+        setError('🔒 登录已过期，请重新登录');
         setTimeout(() => router.push('/login'), 1500);
+      } else if (isSystemError(status)) {
+        setErrorReport(detail || err?.message || '未知服务器错误');
+        setActivePanel('analyze');
+      } else {
+        const msg = getErrorMessage(err, tier);
+        setError(msg);
+        showToast(msg, 'error');
+        setActivePanel('analyze');
       }
     } finally {
       clearTimeout(timeoutHandle);
@@ -485,13 +503,15 @@ export default function HomePage() {
     { label: '⚖️ 风险收益', key: 'risk_analysis' },
     { label: '📋 执行方案', key: 'execution_plan' },
   ];
-  const hasMultiPeriod = tier === 'premium' && multiPeriodResults.length > 1;
+  const hasMultiPeriod = (tier === 'premium' || tier === 'basic') && multiPeriodResults.length > 1;
   const allTabs = hasMultiPeriod
     ? [...fourStepTabs, { label: '📊 多周期对比', key: '__multiperiod__' }]
     : fourStepTabs;
 
   return (
     <div className="app-shell">
+      <Toast toast={toast} />
+      <ErrorReportDialog error={errorReport} onClose={() => setErrorReport(null)} />
       {/* Header */}
       <header className="app-header">
         <div className="container app-header-inner">
@@ -764,7 +784,7 @@ export default function HomePage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', background: '#fde68a', padding: '0.2rem 0.5rem', borderRadius: '9999px' }}>
-                        高级版特别功能
+                        专业版特别功能
                       </span>
                       {(tier === 'basic' || tier === 'premium') && (
                         <span style={{ fontSize: '0.75rem', color: '#92400e' }}>
@@ -791,7 +811,7 @@ export default function HomePage() {
                     )}
                   </div>
                   <p style={{ fontSize: '0.875rem', margin: 0, lineHeight: '1.6' }}>
-                    🚀 高级版支持连续多次单条查询；每次分析开始后可立即再次点击"开始分析"，并在右侧历史中回看详细结果。
+                    🚀 专业版支持连续多次单条查询；每次分析开始后可立即再次点击"开始分析"，并在右侧历史中回看详细结果。
                   </p>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
                     <span style={{ fontSize: '0.75rem', color: '#92400e', background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: '9999px' }}>多次连续提交</span>
@@ -851,11 +871,23 @@ export default function HomePage() {
               {showUpgradeBanner && (
                 <div className="card mb-3" style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b' }}>
                   <div style={{ textAlign: 'center' }}>
-                    <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>今日免费次数已用完</p>
-                    <p style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>升级基础版，每天 {pricing?.basic?.daily_limit ?? 5} 次分析，仅需 ¥{pricing?.basic?.price ?? '9'}/月</p>
-                    <button className="btn btn-primary" onClick={() => router.push('/upgrade')} style={{ background: '#f59e0b', borderColor: '#f59e0b' }}>
-                      立即升级
-                    </button>
+                    {tier === 'basic' ? (
+                      <>
+                        <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>今日标准版次数已用完</p>
+                        <p style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>升级专业版，每天 {pricing?.premium?.daily_limit ?? 15} 次分析，仅需 ¥{pricing?.premium?.price ?? '49'}/月</p>
+                        <button className="btn btn-primary" onClick={() => router.push('/upgrade')} style={{ background: '#7c3aed', borderColor: '#7c3aed' }}>
+                          升级专业版
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>今日免费次数已用完</p>
+                        <p style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>升级标准版，每天 {pricing?.basic?.daily_limit ?? 5} 次分析，仅需 ¥{pricing?.basic?.price ?? '19.9'}/月</p>
+                        <button className="btn btn-primary" onClick={() => router.push('/upgrade')} style={{ background: '#f59e0b', borderColor: '#f59e0b' }}>
+                          立即升级
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -875,9 +907,9 @@ export default function HomePage() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                           <div>
-                            <p style={{ fontWeight: 700, color: '#1d4ed8', fontSize: '0.88rem' }}>📊 基础版</p>
+                            <p style={{ fontWeight: 700, color: '#1d4ed8', fontSize: '0.88rem' }}>📊 标准版</p>
                             <p style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1e40af', lineHeight: 1.2 }}>
-                              ¥{pricing?.basic?.price ?? '9'}<span style={{ fontSize: '0.75rem', fontWeight: 400 }}>/{pricing?.basic?.period ?? '月'}</span>
+                              ¥{pricing?.basic?.price ?? '19.9'}<span style={{ fontSize: '0.75rem', fontWeight: 400 }}>/{pricing?.basic?.period ?? '月'}</span>
                             </p>
                           </div>
                           <span style={{ fontSize: '0.65rem', background: '#bfdbfe', color: '#1d4ed8', padding: '0.15rem 0.5rem', borderRadius: '9999px', fontWeight: 600, whiteSpace: 'nowrap' }}>推荐</span>
@@ -906,9 +938,9 @@ export default function HomePage() {
                       <div style={{ position: 'absolute', top: '-9px', left: '50%', transform: 'translateX(-50%)', background: '#7c3aed', color: 'white', fontSize: '0.62rem', fontWeight: 700, padding: '0.15rem 0.6rem', borderRadius: '9999px', whiteSpace: 'nowrap' }}>✨ 最高权益</div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', marginTop: '0.3rem' }}>
                         <div>
-                          <p style={{ fontWeight: 700, color: '#5b21b6', fontSize: '0.88rem' }}>🚀 高级版</p>
+                          <p style={{ fontWeight: 700, color: '#5b21b6', fontSize: '0.88rem' }}>🚀 专业版</p>
                           <p style={{ fontSize: '1.2rem', fontWeight: 800, color: '#6d28d9', lineHeight: 1.2 }}>
-                            ¥{pricing?.premium?.price ?? '19'}<span style={{ fontSize: '0.75rem', fontWeight: 400 }}>/{pricing?.premium?.period ?? '月'}</span>
+                            ¥{pricing?.premium?.price ?? '49'}<span style={{ fontSize: '0.75rem', fontWeight: 400 }}>/{pricing?.premium?.period ?? '月'}</span>
                           </p>
                         </div>
                       </div>

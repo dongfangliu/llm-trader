@@ -14,13 +14,16 @@
             │
             ├── SQLAlchemy 2.0 async
             ├── LLM Service (DeepSeek / OpenAI / Anthropic)
-            ├── AKShare 市场数据
+            ├── 市场数据 — DB优先，AKShare降级
             └── Resend 邮件服务
                      │
             PostgreSQL (内部网络)  数据库
+                     ▲
+            [data-collector 容器]  定时从 AKShare 拉取并写入 market_bars 表
 ```
 
 本地开发时：Next.js dev server 代理 → FastAPI (localhost:8000) → SQLite。
+设置 `ENABLE_COLLECTOR=true` 可在后端进程内启动内嵌采集任务（无需额外容器）。
 
 ---
 
@@ -36,7 +39,8 @@
 | 数据库 | PostgreSQL（生产）/ SQLite（开发） |
 | 认证 | JWT HS256 + bcrypt，7 天有效期 |
 | 限流 | slowapi (per-IP) |
-| 市场数据 | AKShare |
+| 市场数据 | AKShare（降级数据源）+ PostgreSQL market_bars 缓存（主路径） |
+| 数据采集 | data-collector 容器，定时增量拉取，并发 Semaphore(2) 限速 |
 | 技术指标 | MA10/30/60, RSI(14), MACD, ATR(14) |
 | LLM | DeepSeek / OpenAI / Anthropic（OpenAI SDK 兼容，运行时可切换） |
 | 邮件 | Resend（注册验证邮件） |
@@ -99,6 +103,10 @@
 | DELETE | `/api/admin/devices/{device_id}` | 删除设备记录 |
 | GET | `/api/admin/settings` | 查看所有运行时配置（敏感字段脱敏） |
 | PUT | `/api/admin/settings` | 在线更新配置（quota/llm/pricing/afdian/email/app） |
+| GET | `/api/admin/market-data/status` | 查看各标的数据库覆盖情况（bar数、最新日期） |
+| POST | `/api/admin/market-data/refresh` | 立即触发数据采集（后台异步，可指定标的子集） |
+| GET | `/api/admin/watchlist` | 查看数据采集 watchlist |
+| PUT | `/api/admin/watchlist` | 更新 watchlist（全量替换） |
 
 ---
 
@@ -161,7 +169,14 @@ afdian_orders
 
 system_settings
   key (primary key), value (JSON), updated_at
-  （运行时可配置：quota/llm/pricing/afdian/email/app）
+  （运行时可配置：quota/llm/pricing/afdian/email/app/watchlist）
+
+market_bars                              ← 数据管道缓存层
+  id, symbol, market, period
+  datetime (nanosecond int64 timestamp)
+  open, high, low, close, volume
+  fetched_at
+  UNIQUE (symbol, market, period, datetime)
 ```
 
 ---
@@ -190,7 +205,9 @@ system_settings
     ├─ 检查用户/设备订阅等级（已登录用 user.subscription_tier，匿名用 device_subscriptions）
     ├─ 检查当日用量是否超限（user.daily_usage 或 usage_logs.count）
     ├─ 校验标的代码格式（A股6位数字 / 港股4-5位 / 美股1-5字母 / 期货1-3字母）
-    ├─ AKShare 拉取 OHLCV 历史数据
+    ├─ 查询 market_bars 表（DB优先）
+    │     ├─ 命中 → 直接返回DB数据（毫秒级）；若陈旧则触发后台刷新
+    │     └─ 未命中 → 加 per-symbol Lock + Semaphore(3) 保护，调 AKShare，写回DB
     ├─ 计算技术指标（MA10/30/60, RSI, MACD, ATR）
     ├─ 构建 LLM Prompt（含持仓参数）
     ├─ 调用 LLM API（DeepSeek/OpenAI/Anthropic，运行时配置）
@@ -198,6 +215,13 @@ system_settings
     ├─ 生成持仓建议（position_advice）
     ├─ 写入 analysis_histories
     └─ 返回结果给前端（含 indicators、usage、history.id）
+
+后台数据管道（data-collector 容器）
+    ├─ 启动时读取 system_settings.watchlist
+    ├─ 每 COLLECTOR_SCHEDULE_HOURS 小时执行一次采集循环
+    ├─ 每个标的：查最新 bar_ts → 增量拉取（从下一天到今） → 写入 market_bars
+    ├─ 请求间 sleep COLLECTOR_REQUEST_SLEEP 秒，最多 2 个并发外部请求
+    └─ Admin 可通过 POST /api/admin/market-data/refresh 触发立即采集
 ```
 
 ---

@@ -115,7 +115,7 @@ export default function UpgradePage() {
             position: 'relative',
           }}>
             {tier === 'free' && <PillLabel text="当前版本" color="#2563eb" />}
-            <TierHeader name="免费版" emoji="🆓" price="0" period={period} limit={1} color="#64748b" />
+            <TierHeader name="免费版" emoji="🆓" price="0" period={period} limit={user ? 3 : (pricing?.free?.daily_limit ?? 1)} color="#64748b" />
             <FeatureList items={featuresFor('free')} type="check" />
             <FeatureList items={missingFor('free')} type="cross" />
             <div style={{ marginTop: '1.5rem' }}>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { adminGetSettings, adminUpdateSettings, SystemSettings, FeatureItem } from '@/lib/api';
+import { Toast, useToast } from '@/components/Toast';
 
 type Section = 'quota' | 'llm' | 'pricing' | 'afdian' | 'email' | 'app';
 
@@ -187,46 +188,28 @@ function FeatureMatrixEditor({ features, onChange }: {
 }
 
 
-function Toast({ msg, ok }: { msg: string; ok: boolean }) {
-  return (
-    <div style={{
-      position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 999,
-      padding: '0.75rem 1.25rem', borderRadius: '0.5rem',
-      background: ok ? '#22c55e' : '#ef4444', color: '#fff',
-      fontSize: '0.875rem', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-    }}>
-      {ok ? '✅ ' : '❌ '}{msg}
-    </div>
-  );
-}
-
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState<Section>('quota');
   const [cfg, setCfg] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Section | null>(null);
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-
-  const showToast = (msg: string, ok: boolean) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
-  };
+  const { toast, show: showToast } = useToast();
 
   useEffect(() => {
     adminGetSettings()
       .then(d => { setCfg(d); setLoading(false); })
-      .catch(e => { showToast(e?.response?.data?.detail || '加载失败', false); setLoading(false); });
-  }, []);
+      .catch(e => { showToast(e?.response?.data?.detail || '加载失败', 'error'); setLoading(false); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (section: Section, data: Record<string, unknown>) => {
     setSaving(section);
     try {
       const res = await adminUpdateSettings(section, data);
       if (res.settings) setCfg(res.settings as SystemSettings);
-      showToast('保存成功', true);
+      showToast('保存成功', 'ok');
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
-      showToast(err?.response?.data?.detail || '保存失败', false);
+      showToast(err?.response?.data?.detail || '保存失败', 'error');
     } finally {
       setSaving(null);
     }
@@ -237,7 +220,7 @@ export default function AdminSettingsPage() {
 
   return (
     <div>
-      {toast && <Toast msg={toast.msg} ok={toast.ok} />}
+      <Toast toast={toast} />
 
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>系统设置</h1>
@@ -447,6 +430,10 @@ export default function AdminSettingsPage() {
                 placeholder="财财技术洞见" />
             </Field>
             <SaveButton loading={saving === 'app'} onClick={() => save('app', cfg.app as unknown as Record<string, unknown>)} />
+            <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border)' }} />
+            <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
+              🗂️ 股票名称映射已迁移至 <a href="/admin/market-data" style={{ color: 'var(--primary)' }}>市场数据管理</a> 页面。
+            </p>
           </div>
         );
       })()}

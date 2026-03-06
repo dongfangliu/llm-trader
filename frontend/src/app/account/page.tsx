@@ -386,25 +386,25 @@ export default function AccountPage() {
         </div>
 
         {/* Invite code card — registered users only */}
-        {(user as any)?.invite_code && (
+        {user?.invite_code && (
           <div className="card" style={{ marginBottom: '1.25rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>🎁 邀请好友·共享额度</h2>
             <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginBottom: '0.85rem' }}>
               每成功邀请一位新用户注册，双方各获得 <strong>+10 次</strong>分析额度（永久累加）
-              {(user as any)?.bonus_quota > 0 && <span style={{ marginLeft: '0.5rem', color: '#7c3aed', fontWeight: 600 }}>当前奖励余额：{(user as any).bonus_quota} 次</span>}
+              {(user.bonus_quota ?? 0) > 0 && <span style={{ marginLeft: '0.5rem', color: '#7c3aed', fontWeight: 600 }}>当前奖励余额：{user.bonus_quota} 次</span>}
             </p>
             {/* My invite code */}
             <div style={{ marginBottom: '0.85rem' }}>
               <p style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '0.3rem' }}>我的邀请码</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <code style={{ background: '#f1f5f9', padding: '0.4rem 0.75rem', borderRadius: '0.4rem', fontWeight: 700, fontSize: '1rem', letterSpacing: '0.15em', color: '#1e293b', border: '1px solid #e2e8f0' }}>
-                  {(user as any).invite_code}
+                  {user.invite_code}
                 </code>
                 <button
                   className="btn btn-secondary"
                   style={{ fontSize: '0.78rem', padding: '0.35rem 0.6rem', minHeight: 'auto' }}
                   onClick={() => {
-                    navigator.clipboard.writeText((user as any).invite_code).then(() => {
+                    navigator.clipboard.writeText(user.invite_code!).then(() => {
                       setCopiedInvite(true);
                       setTimeout(() => setCopiedInvite(false), 2000);
                     });
@@ -417,28 +417,36 @@ export default function AccountPage() {
             {/* Use someone else's invite code */}
             <div>
               <p style={{ fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '0.3rem' }}>输入好友邀请码</p>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  value={inviteInput}
-                  onChange={e => setInviteInput(e.target.value.toUpperCase())}
-                  placeholder="8位邀请码"
-                  maxLength={8}
-                  style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '0.4rem', fontSize: '0.9rem', fontFamily: 'monospace', letterSpacing: '0.1em', textTransform: 'uppercase' }}
-                  onKeyDown={e => { if (e.key === 'Enter') handleUseInvite(); }}
-                />
-                <button
-                  className="btn btn-primary"
-                  style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem', minHeight: 'auto' }}
-                  onClick={handleUseInvite}
-                  disabled={inviteLoading || !inviteInput.trim()}
-                >
-                  {inviteLoading ? '...' : '兑换'}
-                </button>
-              </div>
-              {inviteMsg && (
-                <p style={{ fontSize: '0.78rem', marginTop: '0.4rem', color: inviteMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
-                  {inviteMsg.text}
+              {user.used_invite_code ? (
+                <p style={{ fontSize: '0.82rem', color: '#16a34a', fontWeight: 600 }}>
+                  ✓ 已兑换邀请码 <code style={{ background: '#f0fdf4', padding: '0.1rem 0.4rem', borderRadius: '0.25rem', letterSpacing: '0.1em' }}>{user.used_invite_code}</code>（每账号限兑换一次）
                 </p>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      value={inviteInput}
+                      onChange={e => setInviteInput(e.target.value.toUpperCase())}
+                      placeholder="8位邀请码"
+                      maxLength={8}
+                      style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '0.4rem', fontSize: '0.9rem', fontFamily: 'monospace', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+                      onKeyDown={e => { if (e.key === 'Enter') handleUseInvite(); }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem', minHeight: 'auto' }}
+                      onClick={handleUseInvite}
+                      disabled={inviteLoading || !inviteInput.trim()}
+                    >
+                      {inviteLoading ? '...' : '兑换'}
+                    </button>
+                  </div>
+                  {inviteMsg && (
+                    <p style={{ fontSize: '0.78rem', marginTop: '0.4rem', color: inviteMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
+                      {inviteMsg.text}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>
