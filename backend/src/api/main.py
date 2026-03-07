@@ -38,7 +38,7 @@ from src.database.db import (
 )
 from src.services.user import user_service
 from src.services.data import data_service
-from src.services.data.name_service import get_symbol_name, preload_names, refresh_names
+from src.services.data.name_service import get_symbol_name, preload_names, refresh_names, get_last_error
 from src.services.data.data_collector import (
     run_collector,
     run_collection_cycle,
@@ -79,8 +79,16 @@ def _startup_checks():
 async def lifespan(app: FastAPI):
     _startup_checks()
     await init_db()
+    _load_settings_cache()
+    # Load pricing.features from DB into cache
     async with async_session() as db:
-        await _load_sys_settings(db)
+        row = await db.get(SystemSetting, "pricing")
+        if row:
+            try:
+                db_pricing = json.loads(row.value)
+                _settings_cache["pricing"]["features"] = db_pricing.get("features", [])
+            except Exception:
+                pass
     # Preload stock name mappings in background — non-blocking, refreshes daily
     asyncio.create_task(preload_names())
     # Start embedded data collector when explicitly enabled (dev convenience).
@@ -215,8 +223,8 @@ async def get_optional_current_user(
         return None
 
 
-LIMITS = {"free": 1, "basic": 5, "premium": 15}
-USER_LIMITS = {"free": 3, "basic": 5, "premium": 15}  # registered users get 3/day on free tier
+LIMITS = {"free": 1}   # guest (unauthenticated) — single tier
+USER_LIMITS = {"free": 3, "basic": 5, "premium": 15}  # registered users
 ALLOWED_MARKETS = {
     "free": {"a"},
     "basic": {"a", "hk", "us", "futures"},
@@ -224,17 +232,52 @@ ALLOWED_MARKETS = {
 }
 
 # ===================== Runtime Settings Cache =====================
-# All sections loaded from DB at startup; updated live via /api/admin/settings PUT.
+# Source of truth: backend/.env file. Populated at startup, updated live by admin.
 
-_sys_settings: dict = {}
+_SETTINGS_ENV_MAP = {
+    "llm": {
+        "provider": "LLM_PROVIDER",
+        "api_key": "LLM_API_KEY",
+        "base_url": "LLM_BASE_URL",
+        "model": "LLM_MODEL",
+        "max_tokens": "LLM_MAX_TOKENS",
+        "temperature": "LLM_TEMPERATURE",
+    },
+    "afdian": {
+        "webhook_token": "AFDIAN_WEBHOOK_TOKEN",
+        "basic_plan_id": "AFDIAN_BASIC_PLAN_ID",
+        "premium_plan_id": "AFDIAN_PREMIUM_PLAN_ID",
+        "basic_link": "AFDIAN_BASIC_LINK",
+        "premium_link": "AFDIAN_PREMIUM_LINK",
+        "user_id": "AFDIAN_USER_ID",
+        "api_token": "AFDIAN_API_TOKEN",
+    },
+    "email": {
+        "resend_api_key": "RESEND_API_KEY",
+        "app_base_url": "APP_BASE_URL",
+        # EMAIL_FROM is not admin-configurable; read directly from settings.email_from
+    },
+    "app": {
+        "name": "APP_NAME",
+    },
+    "pricing": {
+        "period": "PRICING_PERIOD",
+        "guest_daily": "PRICING_GUEST_DAILY",
+        "free_daily": "PRICING_FREE_DAILY",
+        "basic_price": "PRICING_BASIC_PRICE",
+        "basic_daily": "PRICING_BASIC_DAILY",
+        "premium_price": "PRICING_PREMIUM_PRICE",
+        "premium_daily": "PRICING_PREMIUM_DAILY",
+    },
+}
+
+_settings_cache: dict = {}
 
 
-def _default_sys_settings() -> dict:
-    return {
-        "quota": {
-            "guest": {"free": LIMITS["free"], "basic": LIMITS["basic"], "premium": LIMITS["premium"]},
-            "user": {"free": USER_LIMITS["free"], "basic": USER_LIMITS["basic"], "premium": USER_LIMITS["premium"]},
-        },
+def _load_settings_cache():
+    """Populate _settings_cache from current settings object (which reads .env)."""
+    global _settings_cache, settings
+    _settings_cache = {
         "llm": {
             "provider": settings.llm_provider,
             "api_key": settings.llm_api_key,
@@ -242,31 +285,6 @@ def _default_sys_settings() -> dict:
             "model": settings.llm_model,
             "max_tokens": settings.llm_max_tokens,
             "temperature": settings.llm_temperature,
-        },
-        "pricing": {
-            "period": os.environ.get("PRICING_PERIOD", "月"),
-            "basic": {
-                "price": os.environ.get("PRICING_BASIC_PRICE", "19.9"),
-                "daily": int(os.environ.get("PRICING_BASIC_DAILY", "5")),
-            },
-            "premium": {
-                "price": os.environ.get("PRICING_PREMIUM_PRICE", "49"),
-                "daily": int(os.environ.get("PRICING_PREMIUM_DAILY", "15")),
-            },
-            "features": [
-                {"text": "A股分析", "tiers": ["free", "basic", "premium"]},
-                {"text": "买卖建议", "tiers": ["free", "basic", "premium"]},
-                {"text": "深度研判", "tiers": ["free", "basic", "premium"]},
-                {"text": "历史查询记录", "tiers": ["free", "basic", "premium"]},
-                {"text": "研判分享卡片", "tiers": ["free", "basic", "premium"]},
-                {"text": "港股 / 美股 / 期货全市场", "tiers": ["basic", "premium"]},
-                {"text": "多周期叠加分析", "tiers": ["basic", "premium"]},
-                {"text": "风险指标详情", "tiers": ["basic", "premium"]},
-                {"text": "持仓参数智能分析", "tiers": ["basic", "premium"]},
-                {"text": "持仓参数不限次数", "tiers": ["premium"]},
-                {"text": "连续多标的查询", "tiers": ["premium"]},
-                {"text": "优先处理通道", "tiers": ["premium"]},
-            ],
         },
         "afdian": {
             "webhook_token": settings.afdian_webhook_token,
@@ -279,79 +297,64 @@ def _default_sys_settings() -> dict:
         },
         "email": {
             "resend_api_key": settings.resend_api_key,
-            "from": settings.email_from,
             "app_base_url": settings.app_base_url,
         },
         "app": {
             "name": settings.app_name,
         },
+        "pricing": {
+            "period": settings.pricing_period,
+            "guest_daily": settings.pricing_guest_daily,
+            "free_daily": settings.pricing_free_daily,
+            "basic": {
+                "price": settings.pricing_basic_price,
+                "daily": settings.pricing_basic_daily,
+            },
+            "premium": {
+                "price": settings.pricing_premium_price,
+                "daily": settings.pricing_premium_daily,
+            },
+            "features": [],  # loaded from DB separately
+        },
     }
-
-
-def _apply_quota_settings():
-    """Update LIMITS / USER_LIMITS in-place from the in-memory settings cache."""
-    quota = _sys_settings.get("quota", {})
-    for tier in ("free", "basic", "premium"):
-        guest_val = quota.get("guest", {}).get(tier)
-        user_val = quota.get("user", {}).get(tier)
-        if guest_val is not None:
-            LIMITS[tier] = int(guest_val)
-        if user_val is not None:
-            USER_LIMITS[tier] = int(user_val)
-
-
-async def _load_sys_settings(db: AsyncSession):
-    """Load all settings sections from DB, merging over defaults."""
-    global _sys_settings
-    _sys_settings = _default_sys_settings()
-    result = await db.execute(select(SystemSetting))
-    for row in result.scalars().all():
-        try:
-            db_val = json.loads(row.value)
-            default_val = _sys_settings.get(row.key, {})
-            if isinstance(default_val, dict) and isinstance(db_val, dict):
-                # Deep-merge: DB wins on existing keys, but default keys not in DB are kept
-                merged = dict(default_val)
-                for k, v in db_val.items():
-                    if isinstance(merged.get(k), dict) and isinstance(v, dict):
-                        merged[k] = {**merged[k], **v}
-                    else:
-                        merged[k] = v
-                _sys_settings[row.key] = merged
-            else:
-                _sys_settings[row.key] = db_val
-        except Exception:
-            pass
     _apply_quota_settings()
 
 
+def _apply_quota_settings():
+    """Update LIMITS / USER_LIMITS in-place from pricing settings."""
+    p = _settings_cache.get("pricing", {})
+    LIMITS["free"] = int(p.get("guest_daily", 1))
+    USER_LIMITS["free"] = int(p.get("free_daily", 3))
+    USER_LIMITS["basic"] = int(p.get("basic", {}).get("daily", 5))
+    USER_LIMITS["premium"] = int(p.get("premium", {}).get("daily", 15))
+
+
 def _llm_config() -> dict:
-    """Current LLM config: DB settings > env vars > hardcoded defaults."""
-    cfg = _sys_settings.get("llm", {})
+    """Current LLM config from settings cache (.env)."""
+    cfg = _settings_cache.get("llm", {})
     return {
-        "api_key": cfg.get("api_key") or settings.llm_api_key or os.getenv("LLM_API_KEY", "") or os.getenv("OPENAI_API_KEY", ""),
-        "provider": cfg.get("provider") or settings.llm_provider,
-        "base_url": cfg.get("base_url") or settings.llm_base_url,
-        "model": cfg.get("model") or settings.llm_model,
-        "max_tokens": int(cfg["max_tokens"]) if cfg.get("max_tokens") else settings.llm_max_tokens,
-        "temperature": float(cfg["temperature"]) if cfg.get("temperature") is not None else settings.llm_temperature,
+        "api_key": cfg.get("api_key", "") or os.getenv("OPENAI_API_KEY", ""),
+        "provider": cfg.get("provider", settings.llm_provider),
+        "base_url": cfg.get("base_url", settings.llm_base_url),
+        "model": cfg.get("model", settings.llm_model),
+        "max_tokens": int(cfg.get("max_tokens", settings.llm_max_tokens)),
+        "temperature": float(cfg.get("temperature", settings.llm_temperature)),
     }
 
 
 def _afdian(key: str) -> str:
-    """Current afdian setting: DB > env/settings."""
-    return _sys_settings.get("afdian", {}).get(key, "") or getattr(settings, f"afdian_{key}", "")
+    """Current afdian setting from settings cache."""
+    return _settings_cache.get("afdian", {}).get(key, "")
 
 
 def _email(key: str) -> str:
-    """Current email setting: DB > env/settings."""
-    _attr_map = {"resend_api_key": "resend_api_key", "from": "email_from", "app_base_url": "app_base_url"}
-    return _sys_settings.get("email", {}).get(key, "") or getattr(settings, _attr_map.get(key, ""), "")
+    """Current email setting from settings cache."""
+    return _settings_cache.get("email", {}).get(key, "")
 
 
 def _app(key: str) -> str:
-    """Current app setting: DB > env/settings."""
-    return _sys_settings.get("app", {}).get(key, "") or getattr(settings, key, "")
+    """Current app setting from settings cache."""
+    return _settings_cache.get("app", {}).get(key, "")
 
 
 def _tomorrow_reset_iso() -> str:
@@ -637,7 +640,7 @@ async def register(
             username=user.username or user.email.split("@")[0],
             token=user.email_verification_token,
             resend_api_key=resend_key,
-            email_from=_email("from"),
+            email_from=settings.email_from,
             app_base_url=_email("app_base_url"),
             app_name=_app("name"),
         )
@@ -672,7 +675,7 @@ async def resend_verification(req: ResendVerificationRequest, db: AsyncSession =
             username=user.username or user.email.split("@")[0],
             token=token,
             resend_api_key=_email("resend_api_key"),
-            email_from=_email("from"),
+            email_from=settings.email_from,
             app_base_url=_email("app_base_url"),
             app_name=_app("name"),
         )
@@ -1308,7 +1311,7 @@ async def get_usage_by_device(
 ):
     """Usage endpoint from commercial plan (device-based, no login required)."""
     usage = await _get_or_create_usage_log(db, device_id)
-    daily_limit = LIMITS.get(usage.subscription, 1)
+    daily_limit = LIMITS["free"]  # guests have a single tier
     remaining = max(daily_limit - usage.count, 0)
     return {
         "subscription": usage.subscription,
@@ -1345,7 +1348,7 @@ async def analyze_batch(
         has_limit, remaining = await user_service.check_daily_limit(db, current_user)
     else:
         usage = await _get_or_create_usage_log(db, device_id)
-        remaining = max(LIMITS.get(subscription, 15) - usage.count, 0)
+        remaining = max(LIMITS["free"] - usage.count, 0)
         has_limit = remaining > 0
     if not has_limit or remaining < len(symbols):
         raise HTTPException(status_code=429, detail=f"Not enough quota for batch analyze. Remaining: {remaining}")
@@ -1431,7 +1434,7 @@ async def analyze_batch(
         used = current_user.daily_usage
     else:
         usage = await _get_or_create_usage_log(db, device_id)
-        new_remaining = max(LIMITS.get(subscription, 15) - usage.count, 0)
+        new_remaining = max(LIMITS["free"] - usage.count, 0)
         used = usage.count
     return {
         "success": True,
@@ -1781,10 +1784,35 @@ async def admin_refresh_names(
 
     Query param ``?market=a``, ``?market=hk``, or ``?market=us`` to refresh a
     single market; omit to refresh all three.
-    Returns the number of names loaded per market.
+    Returns the number of names loaded per market, plus any error messages.
     """
-    counts = await refresh_names(market)
+    markets = [market] if market else ["a", "hk", "us"]
+    counts: Dict[str, int] = {}
+    errors: Dict[str, str] = {}
+
+    for m in markets:
+        try:
+            count = await refresh_names(m)
+            counts[m] = count
+        except Exception as e:
+            logger.warning("Failed to refresh {} names: {}", m, e)
+            counts[m] = 0
+            # Include the error message for this market
+            last_err = get_last_error(m)
+            errors[m] = last_err or str(e)
+
     logger.info("admin triggered name refresh: %s", counts)
+
+    # If there are errors, return a non-2xx status code so frontend shows error
+    if errors:
+        # Return partial success with error details
+        return {
+            "success": False,
+            "counts": counts,
+            "errors": errors,
+            "message": f"部分市场刷新失败: {', '.join(errors.keys())}"
+        }
+
     return {"success": True, "counts": counts}
 
 
@@ -1837,21 +1865,29 @@ async def admin_get_symbol_names(
 
 # ===================== Admin: System Settings =====================
 
-_ALLOWED_SECTIONS = {"quota", "llm", "pricing", "afdian", "email", "app"}
-
 
 @app.get("/api/admin/settings")
-async def admin_get_settings(_: None = Depends(_verify_admin)):
+async def admin_get_settings(db: AsyncSession = Depends(get_db), _: None = Depends(_verify_admin)):
     """Return all runtime-configurable system settings (admin only)."""
     import copy
-    sanitized = copy.deepcopy(_sys_settings)
+    result = copy.deepcopy(_settings_cache)
     _SENSITIVE_KEYS = {"api_key", "api_token", "resend_api_key", "webhook_token"}
-    for section in sanitized.values():
+    for section in result.values():
         if isinstance(section, dict):
             for key in _SENSITIVE_KEYS:
-                if key in section and section[key]:
-                    section[key] = "***REDACTED***"
-    return sanitized
+                if key in section:
+                    # Non-empty → "__CONFIGURED__" so frontend can show "已配置" hint
+                    # Empty → "" so frontend shows "未填写" state
+                    section[key] = "__CONFIGURED__" if section[key] else ""
+    # Load pricing.features from DB
+    row = await db.get(SystemSetting, "pricing")
+    if row:
+        try:
+            db_pricing = json.loads(row.value)
+            result["pricing"]["features"] = db_pricing.get("features", result["pricing"].get("features", []))
+        except Exception:
+            pass
+    return result
 
 
 @app.put("/api/admin/settings")
@@ -1860,34 +1896,101 @@ async def admin_update_settings(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(_verify_admin),
 ):
-    """Update one or more settings sections and persist to DB (admin only).
-    Send only the sections you want to update, e.g. {"quota": {...}} or {"llm": {...}}.
-    """
-    global _sys_settings
+    """Update one or more settings sections and persist to .env file (admin only)."""
+    from dotenv import set_key, find_dotenv
+    from src.database.db import Settings as AppSettings
+    global settings, _settings_cache
+
+    _SENSITIVE_KEYS = {"api_key", "api_token", "resend_api_key", "webhook_token"}
+    env_file = find_dotenv(usecwd=True) or ".env"
     updated_sections = []
+
     for section, data in body.items():
-        if section not in _ALLOWED_SECTIONS or not isinstance(data, dict):
+        if section not in _SETTINGS_ENV_MAP and section != "pricing":
             continue
-        # Deep-merge so callers can send partial updates
-        current = _sys_settings.get(section, {})
-        if isinstance(current, dict):
-            current.update(data)
-            _sys_settings[section] = current
+        if not isinstance(data, dict):
+            continue
+
+        if section == "pricing" and "features" in data:
+            # Save features array to DB only
+            row = await db.get(SystemSetting, "pricing")
+            features = data.get("features", [])
+            pricing_db = {"features": features}
+            if row:
+                row.value = json.dumps(pricing_db)
+                row.updated_at = datetime.utcnow()
+            else:
+                db.add(SystemSetting(key="pricing", value=json.dumps(pricing_db)))
+            _settings_cache["pricing"]["features"] = features
+
+        # Write flat settings to .env
+        section_map = _SETTINGS_ENV_MAP.get(section, {})
+        if section == "quota":
+            guest = data.get("guest", {})
+            user = data.get("user", {})
+            flat = {
+                "guest_free": guest.get("free"),
+                "guest_basic": guest.get("basic"),
+                "guest_premium": guest.get("premium"),
+                "user_free": user.get("free"),
+                "user_basic": user.get("basic"),
+                "user_premium": user.get("premium"),
+            }
+            for fk, ev in _SETTINGS_ENV_MAP["quota"].items():
+                val = flat.get(fk)
+                if val is not None:
+                    set_key(env_file, ev, str(val))
         else:
-            _sys_settings[section] = data
-        # Persist
-        row = await db.get(SystemSetting, section)
-        if row:
-            row.value = json.dumps(_sys_settings[section])
-            row.updated_at = datetime.utcnow()
-        else:
-            db.add(SystemSetting(key=section, value=json.dumps(_sys_settings[section])))
+            for field_key, env_key in section_map.items():
+                val = data.get(field_key)
+                if val is None:
+                    continue
+                if field_key in _SENSITIVE_KEYS and val in ("***REDACTED***", "__CONFIGURED__", ""):
+                    continue
+                set_key(env_file, env_key, str(val))
+
+        # For pricing non-features fields, write to .env too
+        if section == "pricing":
+            pricing_map = {
+                "period": "PRICING_PERIOD",
+                "basic_price": None,
+                "basic_daily": None,
+                "premium_price": None,
+                "premium_daily": None,
+            }
+            basic = data.get("basic", {})
+            premium = data.get("premium", {})
+            if data.get("period") is not None:
+                set_key(env_file, "PRICING_PERIOD", str(data["period"]))
+            if basic.get("price") is not None:
+                set_key(env_file, "PRICING_BASIC_PRICE", str(basic["price"]))
+            if basic.get("daily") is not None:
+                set_key(env_file, "PRICING_BASIC_DAILY", str(basic["daily"]))
+            if premium.get("price") is not None:
+                set_key(env_file, "PRICING_PREMIUM_PRICE", str(premium["price"]))
+            if premium.get("daily") is not None:
+                set_key(env_file, "PRICING_PREMIUM_DAILY", str(premium["daily"]))
+
         updated_sections.append(section)
 
     await db.commit()
-    _apply_quota_settings()
-    logger.info("admin updated settings sections: %s", updated_sections)
-    return {"success": True, "updated": updated_sections, "settings": _sys_settings}
+
+    # Reload settings from updated .env
+    from dotenv import load_dotenv
+    load_dotenv(env_file, override=True)
+    settings = AppSettings()
+    _load_settings_cache()
+    # Reload pricing.features into cache from DB
+    row = await db.get(SystemSetting, "pricing")
+    if row:
+        try:
+            db_pricing = json.loads(row.value)
+            _settings_cache["pricing"]["features"] = db_pricing.get("features", [])
+        except Exception:
+            pass
+
+    logger.info("admin updated env settings: %s", updated_sections)
+    return {"success": True, "updated": updated_sections}
 
 
 
@@ -1975,20 +2078,23 @@ async def get_config():
     return {
         "app_name": _app("name"),
         "version": "1.0.0",
+        "afdian_basic_link": _afdian("basic_link"),
+        "afdian_premium_link": _afdian("premium_link"),
     }
 
 
 @app.get("/api/pricing")
 async def get_pricing():
-    """Return subscription pricing info (DB-configurable via admin settings)."""
-    p = _sys_settings.get("pricing", _default_sys_settings()["pricing"])
+    """Return subscription pricing info (configurable via admin settings)."""
+    p = _settings_cache.get("pricing", {})
     basic = p.get("basic", {})
     premium = p.get("premium", {})
     period = p.get("period", "月")
     features = p.get("features", [])
     return {
         "features": features,
-        "free": {"daily_limit": 1},
+        "guest": {"daily_limit": int(p.get("guest_daily", 1))},
+        "free": {"daily_limit": int(p.get("free_daily", 3))},
         "basic": {
             "price": basic.get("price", "19.9"),
             "period": period,

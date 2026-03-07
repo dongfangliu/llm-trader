@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # App branding (can be overridden via APP_NAME env var)
     app_name: str = "财财技术洞见"
 
+    # Pricing display + daily limits (guests = unauthenticated, free = logged-in free tier)
+    pricing_period: str = "月"
+    pricing_guest_daily: int = 1    # 游客（未登录）每日分析次数
+    pricing_free_daily: int = 3     # 免费版（已登录）每日分析次数
+    pricing_basic_price: str = "19.9"
+    pricing_basic_daily: int = 5
+    pricing_premium_price: str = "49"
+    pricing_premium_daily: int = 15
+
     # Email — Resend (https://resend.com)
     resend_api_key: str = ""        # RESEND_API_KEY env var
     email_from: str = ""            # e.g. "财财技术洞见 <noreply@yourdomain.com>"

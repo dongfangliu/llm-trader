@@ -390,12 +390,29 @@ function SymbolNamesSection() {
     setMsg('');
     try {
       const res = await adminRefreshNames(market);
+
+      // Build result message with counts
       const parts = Object.entries(res.counts).map(([m, n]) => `${MARKET_NAME_LABEL[m] ?? m}: ${n} 条`).join(' / ');
-      setMsg(`✅ 已刷新 — ${parts}`);
+
+      if (!res.success && res.errors) {
+        // Show error details
+        const errorDetails = Object.entries(res.errors).map(([m, err]) => {
+          const marketLabel = MARKET_NAME_LABEL[m] ?? m;
+          // Truncate long error messages
+          const shortErr = err.length > 80 ? err.substring(0, 80) + '...' : err;
+          return `${marketLabel}: ${shortErr}`;
+        }).join('; ');
+        setMsg(`⚠️ 部分刷新失败 — ${parts} | 错误: ${errorDetails}`);
+      } else if (res.success) {
+        setMsg(`✅ 已刷新 — ${parts}`);
+      } else {
+        setMsg(`❌ 刷新失败 — ${parts}`);
+      }
+
       await load(search, marketFilter);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      setMsg('❌ ' + (err?.response?.data?.detail || '刷新失败'));
+      const err = e as { response?: { data?: { detail?: string; message?: string } } };
+      setMsg('❌ ' + (err?.response?.data?.message || err?.response?.data?.detail || '刷新失败'));
     } finally {
       setRefreshing(false);
     }

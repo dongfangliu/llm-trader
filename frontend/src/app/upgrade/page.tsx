@@ -3,16 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { activateAfdianOrder, getPricing, PricingData, FeatureItem } from '@/lib/api';
-
-const AFDIAN_BASIC_LINK = process.env.NEXT_PUBLIC_AFDIAN_BASIC_LINK || 'https://afdian.net';
-const AFDIAN_PREMIUM_LINK = process.env.NEXT_PUBLIC_AFDIAN_PREMIUM_LINK || 'https://afdian.net';
+import { activateAfdianOrder, getPricing, getAppConfig, PricingData, FeatureItem } from '@/lib/api';
 
 export default function UpgradePage() {
   const router = useRouter();
   const { user, checkAuth } = useAuthStore();
   const [deviceId, setDeviceId] = useState('');
   const [pricing, setPricing] = useState<PricingData | null>(null);
+  const [afdianBasicLink, setAfdianBasicLink] = useState('https://afdian.net');
+  const [afdianPremiumLink, setAfdianPremiumLink] = useState('https://afdian.net');
 
   // Activation form state
   const [orderNo, setOrderNo] = useState('');
@@ -25,6 +24,10 @@ export default function UpgradePage() {
     const id = localStorage.getItem('device_id') || '';
     setDeviceId(id);
     getPricing().then(setPricing).catch(() => {});
+    getAppConfig().then(c => {
+      if (c.afdian_basic_link) setAfdianBasicLink(c.afdian_basic_link);
+      if (c.afdian_premium_link) setAfdianPremiumLink(c.afdian_premium_link);
+    }).catch(() => {});
   }, []);
 
   const handleActivate = async (e: React.FormEvent) => {
@@ -46,7 +49,7 @@ export default function UpgradePage() {
   };
 
   const handleUpgrade = (tier: string) => {
-    const link = tier === 'basic' ? AFDIAN_BASIC_LINK : AFDIAN_PREMIUM_LINK;
+    const link = tier === 'basic' ? afdianBasicLink : afdianPremiumLink;
     window.open(link, '_blank', 'noopener,noreferrer');
   };
 
@@ -61,6 +64,8 @@ export default function UpgradePage() {
   const premiumPrice = pricing?.premium.price ?? '49';
   const premiumLimit = pricing?.premium.daily_limit ?? 15;
   const period = pricing?.basic.period ?? '月';
+  const freeLimit = pricing?.free?.daily_limit ?? 3;    // 免费版（已登录）
+  const guestLimit = pricing?.guest?.daily_limit ?? 1;  // 游客（未登录）
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #f0f4ff 0%, #fafafa 60%)' }}>
@@ -115,7 +120,7 @@ export default function UpgradePage() {
             position: 'relative',
           }}>
             {tier === 'free' && <PillLabel text="当前版本" color="#2563eb" />}
-            <TierHeader name="免费版" emoji="🆓" price="0" period={period} limit={user ? 3 : (pricing?.free?.daily_limit ?? 1)} color="#64748b" />
+            <TierHeader name="免费版" emoji="🆓" price="0" period={period} limit={user ? freeLimit : guestLimit} color="#64748b" />
             <FeatureList items={featuresFor('free')} type="check" />
             <FeatureList items={missingFor('free')} type="cross" />
             <div style={{ marginTop: '1.5rem' }}>

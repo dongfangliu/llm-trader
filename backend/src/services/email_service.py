@@ -1,6 +1,7 @@
 """Email service — sends transactional emails via Resend (https://resend.com)."""
 
 import logging
+import re
 import resend
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,10 @@ async def send_verification_email(
         return True
 
     resend.api_key = resend_api_key
-    sender = email_from or f"{app_name} <onboarding@resend.dev>"
+    # Use app_name as display name; extract bare email address from email_from
+    email_match = re.search(r'<([^>]+)>', email_from)
+    email_addr = email_match.group(1) if email_match else (email_from or "onboarding@resend.dev")
+    sender = f"{app_name} <{email_addr}>"
 
     html_body = f"""
 <!DOCTYPE html>

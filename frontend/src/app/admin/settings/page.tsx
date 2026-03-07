@@ -4,12 +4,11 @@ import { useEffect, useState } from 'react';
 import { adminGetSettings, adminUpdateSettings, SystemSettings, FeatureItem } from '@/lib/api';
 import { Toast, useToast } from '@/components/Toast';
 
-type Section = 'quota' | 'llm' | 'pricing' | 'afdian' | 'email' | 'app';
+type Section = 'llm' | 'pricing' | 'afdian' | 'email' | 'app';
 
 const TABS: { id: Section; label: string; desc: string }[] = [
-  { id: 'quota',   label: '📊 每日配额',  desc: '控制各套餐每天可分析的次数' },
   { id: 'llm',     label: '🤖 AI 模型',   desc: '配置 AI 分析使用的模型和 API 密钥' },
-  { id: 'pricing', label: '💰 定价展示',  desc: '用户看到的套餐价格和功能介绍（不影响实际权限）' },
+  { id: 'pricing', label: '💰 定价展示',  desc: '用户看到的套餐价格、每日次数及功能介绍' },
   { id: 'afdian',  label: '💳 爱发电',    desc: '配置爱发电支付套餐 ID、收款链接及 API 凭证' },
   { id: 'email',   label: '📧 邮件服务',  desc: '注册验证邮件的发送配置（Resend.com）' },
   { id: 'app',     label: '⚙️ 应用信息',  desc: '站点名称等基础配置' },
@@ -29,16 +28,17 @@ function Field({
   );
 }
 
-function Input({ value, onChange, type = 'text', placeholder }: {
+function Input({ value, onChange, type = 'text', placeholder, configured }: {
   value: string | number; onChange: (v: string) => void;
-  type?: string; placeholder?: string;
+  type?: string; placeholder?: string; configured?: boolean;
 }) {
+  const effectivePlaceholder = configured && !value ? '已配置，留空则不更改' : placeholder;
   return (
     <input
       type={type}
       value={value}
       onChange={e => onChange(e.target.value)}
-      placeholder={placeholder}
+      placeholder={effectivePlaceholder}
       style={{
         width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
         borderRadius: '0.375rem', background: 'var(--background)', color: 'var(--foreground)',
@@ -189,23 +189,49 @@ function FeatureMatrixEditor({ features, onChange }: {
 
 
 export default function AdminSettingsPage() {
-  const [activeTab, setActiveTab] = useState<Section>('quota');
+  const [activeTab, setActiveTab] = useState<Section>('llm');
   const [cfg, setCfg] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Section | null>(null);
   const { toast, show: showToast } = useToast();
 
+  const [configuredKeys, setConfiguredKeys] = useState<Set<string>>(new Set());
+
+  /** Parse sensitive field sentinel: "__CONFIGURED__" means set but hidden. */
+  const parseSensitive = (d: ReturnType<typeof adminGetSettings> extends Promise<infer T> ? T : never) => {
+    const CONFIGURED = '__CONFIGURED__';
+    const keys = new Set<string>();
+    const clean = (obj: Record<string, unknown>, section: string) =>
+      Object.fromEntries(Object.entries(obj).map(([k, v]) => {
+        if (v === CONFIGURED) { keys.add(`${section}.${k}`); return [k, '']; }
+        return [k, v];
+      }));
+    if (d.email) d.email = clean(d.email as Record<string, unknown>, 'email') as typeof d.email;
+    if (d.llm)   d.llm   = clean(d.llm   as Record<string, unknown>, 'llm')   as typeof d.llm;
+    if (d.afdian) d.afdian = clean(d.afdian as Record<string, unknown>, 'afdian') as typeof d.afdian;
+    return { data: d, keys };
+  };
+
   useEffect(() => {
     adminGetSettings()
-      .then(d => { setCfg(d); setLoading(false); })
+      .then(d => {
+        const { data, keys } = parseSensitive(d);
+        setCfg(data);
+        setConfiguredKeys(keys);
+        setLoading(false);
+      })
       .catch(e => { showToast(e?.response?.data?.detail || '加载失败', 'error'); setLoading(false); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (section: Section, data: Record<string, unknown>) => {
     setSaving(section);
     try {
-      const res = await adminUpdateSettings(section, data);
-      if (res.settings) setCfg(res.settings as SystemSettings);
+      await adminUpdateSettings(section, data);
+      // Re-fetch settings to update configured indicators
+      const updated = await adminGetSettings();
+      const { data: parsed, keys } = parseSensitive(updated);
+      setCfg(parsed);
+      setConfiguredKeys(keys);
       showToast('保存成功', 'ok');
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
@@ -251,39 +277,6 @@ export default function AdminSettingsPage() {
         {TABS.find(t => t.id === activeTab)?.desc}
       </p>
 
-      {/* ── 配额 ── */}
-      {activeTab === 'quota' && (() => {
-        const q = cfg.quota;
-        return (
-          <div className="card">
-            <h2 style={{ fontWeight: 600, marginBottom: '1.25rem' }}>每日分析配额</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-              <div>
-                <p style={{ fontWeight: 600, marginBottom: '1rem', color: 'var(--muted)' }}>👤 游客（未登录）</p>
-                {(['free', 'basic', 'premium'] as const).map(tier => (
-                  <Field key={tier} label={`${tier === 'free' ? '免费版' : tier === 'basic' ? '标准版' : '专业版'} 游客`}
-                    hint="游客设备每天最多分析次数">
-                    <NumInput value={q.guest[tier]} min={0}
-                      onChange={v => setCfg({ ...cfg, quota: { ...q, guest: { ...q.guest, [tier]: v } } })} />
-                  </Field>
-                ))}
-              </div>
-              <div>
-                <p style={{ fontWeight: 600, marginBottom: '1rem', color: 'var(--muted)' }}>🧑‍💼 注册用户（已登录）</p>
-                {(['free', 'basic', 'premium'] as const).map(tier => (
-                  <Field key={tier} label={`${tier === 'free' ? '免费版' : tier === 'basic' ? '标准版' : '专业版'} 用户`}
-                    hint="注册并登录的用户每天最多分析次数">
-                    <NumInput value={q.user[tier]} min={0}
-                      onChange={v => setCfg({ ...cfg, quota: { ...q, user: { ...q.user, [tier]: v } } })} />
-                  </Field>
-                ))}
-              </div>
-            </div>
-            <SaveButton loading={saving === 'quota'} onClick={() => save('quota', cfg.quota as unknown as Record<string, unknown>)} />
-          </div>
-        );
-      })()}
-
       {/* ── LLM ── */}
       {activeTab === 'llm' && (() => {
         const l = cfg.llm;
@@ -295,6 +288,7 @@ export default function AdminSettingsPage() {
             </Field>
             <Field label="API Key" hint="AI 服务商的 API 密钥，留空则使用服务器环境变量">
               <Input value={l.api_key} type="password"
+                configured={configuredKeys.has('llm.api_key')}
                 onChange={v => setCfg({ ...cfg, llm: { ...l, api_key: v } })}
                 placeholder="sk-xxxxxxxx" />
             </Field>
@@ -333,6 +327,20 @@ export default function AdminSettingsPage() {
             <Field label="计费周期" hint='显示在价格后的单位，如"月"或"年"'>
               <Input value={p.period} onChange={v => setCfg({ ...cfg, pricing: { ...p, period: v } })} placeholder="月" />
             </Field>
+            {/* Free-tier daily limits */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+              <p style={{ fontWeight: 600, marginBottom: '0.75rem' }}>免费档每日次数</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <Field label="游客（未登录）" hint="设备限额，不区分套餐">
+                  <NumInput value={p.guest_daily ?? 1} min={0}
+                    onChange={v => setCfg({ ...cfg, pricing: { ...p, guest_daily: v } })} />
+                </Field>
+                <Field label="免费版（已登录）" hint="注册用户免费档每日次数">
+                  <NumInput value={p.free_daily ?? 3} min={0}
+                    onChange={v => setCfg({ ...cfg, pricing: { ...p, free_daily: v } })} />
+                </Field>
+              </div>
+            </div>
             {(['basic', 'premium'] as const).map(tier => (
               <div key={tier} style={{ border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
                 <p style={{ fontWeight: 600, marginBottom: '0.75rem' }}>{tier === 'basic' ? '标准版' : '专业版'}</p>
@@ -342,7 +350,7 @@ export default function AdminSettingsPage() {
                       onChange={v => setCfg({ ...cfg, pricing: { ...p, [tier]: { ...p[tier], price: v } } })}
                       placeholder={tier === 'basic' ? '19.9' : '49'} />
                   </Field>
-                  <Field label="每日次数（展示用）" hint="与配额配置保持一致">
+                  <Field label="每日次数" hint="实际配额，同步生效">
                     <NumInput value={p[tier].daily} min={1}
                       onChange={v => setCfg({ ...cfg, pricing: { ...p, [tier]: { ...p[tier], daily: v } } })} />
                   </Field>
@@ -384,11 +392,15 @@ export default function AdminSettingsPage() {
                   <Input value={a.user_id} onChange={v => setCfg({ ...cfg, afdian: { ...a, user_id: v } })} />
                 </Field>
                 <Field label="API Token" hint="爱发电开发者后台生成的 Token">
-                  <Input value={a.api_token} type="password" onChange={v => setCfg({ ...cfg, afdian: { ...a, api_token: v } })} />
+                  <Input value={a.api_token} type="password"
+                    configured={configuredKeys.has('afdian.api_token')}
+                    onChange={v => setCfg({ ...cfg, afdian: { ...a, api_token: v } })} />
                 </Field>
               </div>
               <Field label="Webhook Token" hint="用于验证爱发电主动推送的请求是否合法">
-                <Input value={a.webhook_token} type="password" onChange={v => setCfg({ ...cfg, afdian: { ...a, webhook_token: v } })} />
+                <Input value={a.webhook_token} type="password"
+                  configured={configuredKeys.has('afdian.webhook_token')}
+                  onChange={v => setCfg({ ...cfg, afdian: { ...a, webhook_token: v } })} />
               </Field>
             </div>
             <SaveButton loading={saving === 'afdian'} onClick={() => save('afdian', cfg.afdian as unknown as Record<string, unknown>)} />
@@ -404,11 +416,8 @@ export default function AdminSettingsPage() {
             <h2 style={{ fontWeight: 600, marginBottom: '1.25rem' }}>邮件服务配置</h2>
             <Field label="Resend API Key" hint="从 resend.com 申请，用于发送注册验证邮件">
               <Input value={e.resend_api_key} type="password"
+                configured={configuredKeys.has('email.resend_api_key')}
                 onChange={v => setCfg({ ...cfg, email: { ...e, resend_api_key: v } })} placeholder="re_xxxxxxxx" />
-            </Field>
-            <Field label="发件人地址 (from)" hint='格式：应用名称 <noreply@yourdomain.com>'>
-              <Input value={e.from} onChange={v => setCfg({ ...cfg, email: { ...e, from: v } })}
-                placeholder="财财技术洞见 <noreply@example.com>" />
             </Field>
             <Field label="前端域名 (APP_BASE_URL)" hint="验证邮件中的链接会带上这个地址">
               <Input value={e.app_base_url} onChange={v => setCfg({ ...cfg, email: { ...e, app_base_url: v } })}

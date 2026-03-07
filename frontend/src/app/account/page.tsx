@@ -3,11 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { getSubscriptionStatus, getAnalysisHistory, getPricing, PricingData, AnalysisHistoryItem } from '@/lib/api';
+import { getSubscriptionStatus, getAnalysisHistory, getPricing, getAppConfig, PricingData, AnalysisHistoryItem } from '@/lib/api';
 import { generateShareCardBlob, downloadBlob } from '@/lib/shareCard';
 
-const AFDIAN_BASIC_LINK = process.env.NEXT_PUBLIC_AFDIAN_BASIC_LINK || 'https://afdian.net';
-const AFDIAN_PREMIUM_LINK = process.env.NEXT_PUBLIC_AFDIAN_PREMIUM_LINK || 'https://afdian.net';
 
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime();
@@ -256,6 +254,8 @@ export default function AccountPage() {
   const [deviceId, setDeviceId] = useState('');
   const [selectedItem, setSelectedItem] = useState<AnalysisHistoryItem | null>(null);
   const [pricing, setPricing] = useState<PricingData | null>(null);
+  const [afdianBasicLink, setAfdianBasicLink] = useState('https://afdian.net');
+  const [afdianPremiumLink, setAfdianPremiumLink] = useState('https://afdian.net');
   const [inviteInput, setInviteInput] = useState('');
   const [inviteMsg, setInviteMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -292,6 +292,10 @@ export default function AccountPage() {
     setDeviceId(id);
     checkAuth().then(() => {});
     getPricing().then(setPricing).catch(() => {});
+    getAppConfig().then(c => {
+      if (c.afdian_basic_link) setAfdianBasicLink(c.afdian_basic_link);
+      if (c.afdian_premium_link) setAfdianPremiumLink(c.afdian_premium_link);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -481,7 +485,7 @@ export default function AccountPage() {
                   <button
                     className="shimmer-btn"
                     style={{ width: '100%', padding: '0.65rem', fontWeight: 700, fontSize: '0.9rem', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
-                    onClick={() => window.open(AFDIAN_BASIC_LINK, '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.open(afdianBasicLink, '_blank', 'noopener,noreferrer')}
                   >
                     立即订阅标准版 <span className="bounce-arrow">→</span>
                   </button>
@@ -512,7 +516,7 @@ export default function AccountPage() {
                 <button
                   className="shimmer-btn-purple pulse-btn"
                   style={{ width: '100%', padding: '0.65rem', fontWeight: 700, fontSize: '0.9rem', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
-                  onClick={() => window.open(AFDIAN_PREMIUM_LINK, '_blank', 'noopener,noreferrer')}
+                  onClick={() => window.open(afdianPremiumLink, '_blank', 'noopener,noreferrer')}
                 >
                   立即订阅专业版 <span className="bounce-arrow">→</span>
                 </button>
