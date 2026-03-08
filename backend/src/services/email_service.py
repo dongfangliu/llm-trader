@@ -1,5 +1,6 @@
 """Email service — sends transactional emails via Resend (https://resend.com)."""
 
+import asyncio
 import logging
 import re
 import resend
@@ -78,7 +79,7 @@ async def send_verification_email(
 """
 
     try:
-        resend.Emails.send({
+        await asyncio.to_thread(resend.Emails.send, {
             "from": sender,
             "to": [to_email],
             "subject": f"【{app_name}】请验证您的邮箱",

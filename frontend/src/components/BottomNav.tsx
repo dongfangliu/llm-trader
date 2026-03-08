@@ -1,0 +1,100 @@
+'use client';
+
+interface BottomNavProps {
+  activePanel: 'analyze' | 'loading' | 'result';
+  setActivePanel: (p: 'analyze' | 'loading' | 'result') => void;
+  hasResult: boolean;
+  hasHistory: boolean;
+  historyCount: number;
+  tier: string;
+  onUpgrade: () => void;
+  onAccount: () => void;
+}
+
+const IconSearch = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={active ? '2.2' : '1.7'} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </svg>
+);
+
+const IconChart = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={active ? '2.2' : '1.7'} strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </svg>
+);
+
+const IconUpgrade = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={active ? '2.2' : '1.7'} strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="17 11 12 6 7 11" />
+    <line x1="12" y1="6" x2="12" y2="18" />
+  </svg>
+);
+
+const IconPerson = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={active ? '2.2' : '1.7'} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+export default function BottomNav({
+  activePanel,
+  setActivePanel,
+  historyCount,
+  tier,
+  onUpgrade,
+  onAccount,
+}: BottomNavProps) {
+  const isAnalyze = activePanel === 'analyze';
+  const isResult = activePanel === 'result';
+
+  return (
+    <nav className="bottom-nav" aria-label="底部导航">
+      {/* 分析 */}
+      <button
+        className={`bottom-nav-item${isAnalyze ? ' active' : ''}`}
+        onClick={() => setActivePanel('analyze')}
+        aria-label="分析"
+      >
+        <span className="bottom-nav-icon"><IconSearch active={isAnalyze} /></span>
+        <span>分析</span>
+      </button>
+
+      {/* 结果 — always tappable; empty state handles no-history gracefully */}
+      <button
+        className={`bottom-nav-item${isResult ? ' active' : ''}`}
+        onClick={() => setActivePanel('result')}
+        aria-label="结果"
+        style={{ position: 'relative' }}
+      >
+        <span className="bottom-nav-icon" style={{ position: 'relative', display: 'inline-flex' }}>
+          <IconChart active={isResult} />
+          {historyCount > 0 && !isResult && (
+            <span className="bottom-nav-badge">{historyCount > 9 ? '9+' : historyCount}</span>
+          )}
+        </span>
+        <span>结果</span>
+      </button>
+
+      {/* 升级 or 账号 */}
+      {tier !== 'premium' ? (
+        <button className="bottom-nav-item" onClick={onUpgrade} aria-label="升级">
+          <span className="bottom-nav-icon"><IconUpgrade active={false} /></span>
+          <span>升级</span>
+        </button>
+      ) : (
+        <button className="bottom-nav-item" onClick={onAccount} aria-label="账号">
+          <span className="bottom-nav-icon"><IconPerson active={false} /></span>
+          <span>账号</span>
+        </button>
+      )}
+    </nav>
+  );
+}

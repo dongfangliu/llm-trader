@@ -94,6 +94,7 @@ if (Test-Port -Port 8000) {
     Write-Green "后端服务已在运行 (端口 8000)"
 } else {
     $env:PYTHONPATH = "src"
+    $env:PYTHONUTF8 = "1"
     $backendProcess = Start-Process -FilePath "python" `
         -ArgumentList "-m uvicorn src.api.main:app --port 8000" `
         -WorkingDirectory "$ScriptDir\backend" `
@@ -116,6 +117,16 @@ Write-Yellow "启动前端服务..."
 if (Test-Port -Port 3000) {
     Write-Green "前端服务已在运行 (端口 3000)"
 } else {
+    # Clear stale production build cache to prevent module-not-found errors
+    $nextDir = "$ScriptDir\frontend\.next"
+    $buildIdFile = "$nextDir\BUILD_ID"
+    if ((Test-Path $nextDir) -and -not (Test-Path $buildIdFile)) {
+        # .next exists but no BUILD_ID (dev cache) — safe to keep
+    } elseif (Test-Path $buildIdFile) {
+        Write-Yellow "清理生产构建缓存..."
+        Remove-Item -Recurse -Force $nextDir -ErrorAction SilentlyContinue
+    }
+
     $env:BACKEND_URL = "http://localhost:8000"
     $frontendProcess = Start-Process -FilePath "cmd.exe" `
         -ArgumentList "/c npm run dev" `

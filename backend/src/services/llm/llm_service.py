@@ -196,7 +196,6 @@ def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str
 
     holding_qty = int(user_context.get("holding_quantity") or 0) if user_context else 0
     cost_price = _safe_float(user_context.get("cost_price") if user_context else 0)
-    planned_investment = _safe_float(user_context.get("planned_investment") if user_context else 0)
     max_position = int(user_context.get("max_position") or 0) if user_context else 0
 
     position_info = (
@@ -204,10 +203,9 @@ def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str
 - 持有数量: {holding_qty}股
 - 成本价: {cost_price:.2f}元
 - 当前价格: {close:.2f}元
-- 计划投入: {planned_investment:.2f}元
 - 最大持仓: {max_position}股
 """
-        if holding_qty > 0 or cost_price > 0 or planned_investment > 0 or max_position > 0
+        if holding_qty > 0 or cost_price > 0 or max_position > 0
         else """## 📋 当前持仓状态（股票）
 - 当前无持仓（空仓）
 """

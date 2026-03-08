@@ -148,7 +148,6 @@ class AnalyzeRequest(BaseModel):
     history_days: int = 90
     holding_quantity: Optional[int] = None
     cost_price: Optional[float] = None
-    planned_investment: Optional[float] = None
     max_position: Optional[int] = None
     holding_text: Optional[str] = Field(None, max_length=500)
     device_id: Optional[str] = None
@@ -388,10 +387,6 @@ def _extract_holding_fields(text: Optional[str]) -> dict:
         out["holding_quantity"] = int(m_qty.group(1))
     if m_cost:
         out["cost_price"] = float(m_cost.group(1))
-    if m_plan:
-        parsed = _parse_money_value(m_plan.group(1))
-        if parsed is not None:
-            out["planned_investment"] = parsed
     if m_max:
         out["max_position"] = int(m_max.group(1))
     return out
@@ -402,7 +397,6 @@ def _build_position_advice(
     current_price: float,
     holding_quantity: Optional[int],
     cost_price: Optional[float],
-    planned_investment: Optional[float],
     max_position: Optional[int],
 ) -> dict:
     quantity = holding_quantity or 0
@@ -430,7 +424,6 @@ def _build_position_advice(
     return {
         "current_holding": quantity,
         "cost_price": cost_price,
-        "planned_investment": planned_investment,
         "max_position": max_position,
         "suggested_action": suggested_action,
         "suggested_quantity": suggested_quantity,
@@ -481,9 +474,8 @@ def _normalize_result(raw_result: dict, current_price: float, req: AnalyzeReques
     parsed_text = _extract_holding_fields(req.holding_text)
     holding_quantity = req.holding_quantity if req.holding_quantity is not None else parsed_text.get("holding_quantity")
     cost_price = req.cost_price if req.cost_price is not None else parsed_text.get("cost_price")
-    planned_investment = req.planned_investment if req.planned_investment is not None else parsed_text.get("planned_investment")
     max_position = req.max_position if req.max_position is not None else parsed_text.get("max_position")
-    position_advice = _build_position_advice(action, current_price, holding_quantity, cost_price, planned_investment, max_position)
+    position_advice = _build_position_advice(action, current_price, holding_quantity, cost_price, max_position)
     return {
         "action": action,
         "signal": signal,
@@ -634,8 +626,8 @@ async def register(
 
     resend_key = _email("resend_api_key")
     if resend_key:
-        # Send verification email (non-blocking failure)
-        await send_verification_email(
+        # Fire-and-forget email — do NOT await so registration returns instantly
+        asyncio.create_task(send_verification_email(
             to_email=user.email,
             username=user.username or user.email.split("@")[0],
             token=user.email_verification_token,
@@ -643,7 +635,7 @@ async def register(
             email_from=settings.email_from,
             app_base_url=_email("app_base_url"),
             app_name=_app("name"),
-        )
+        ))
         return {
             "pending_verification": True,
             "email": user.email,
@@ -670,7 +662,8 @@ async def resend_verification(req: ResendVerificationRequest, db: AsyncSession =
     # Return success regardless to avoid user enumeration
     if user and not user.email_verified:
         token = await user_service.refresh_verification_token(db, user)
-        await send_verification_email(
+        # Fire-and-forget to avoid blocking the response
+        asyncio.create_task(send_verification_email(
             to_email=user.email,
             username=user.username or user.email.split("@")[0],
             token=token,
@@ -678,7 +671,7 @@ async def resend_verification(req: ResendVerificationRequest, db: AsyncSession =
             email_from=settings.email_from,
             app_base_url=_email("app_base_url"),
             app_name=_app("name"),
-        )
+        ))
     return {"message": "若该邮箱已注册且未验证，验证邮件已重新发送。"}
 
 
@@ -1113,14 +1106,12 @@ async def analyze(
         raise HTTPException(status_code=400, detail="持有数量不能为负数")
     if req.cost_price is not None and req.cost_price <= 0:
         raise HTTPException(status_code=400, detail="成本价必须大于0")
-    if req.planned_investment is not None and req.planned_investment <= 0:
-        raise HTTPException(status_code=400, detail="计划投入金额必须大于0")
     if req.max_position is not None and req.max_position <= 0:
         raise HTTPException(status_code=400, detail="最大持仓必须大于0")
 
     # Check position analysis daily limit for basic tier
     has_position_params = any(
-        x is not None for x in [req.holding_quantity, req.cost_price, req.planned_investment, req.max_position]
+        x is not None for x in [req.holding_quantity, req.cost_price, req.max_position]
     )
     if has_position_params and subscription == "basic":
         if usage_mode == "device":
@@ -1173,7 +1164,6 @@ async def analyze(
             user_context={
                 "holding_quantity": req.holding_quantity,
                 "cost_price": req.cost_price,
-                "planned_investment": req.planned_investment,
                 "max_position": req.max_position,
             },
         )
