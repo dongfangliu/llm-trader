@@ -2788,8 +2788,8 @@ body {
 .sps-cancel-btn:active { background: #f2f2f7; }
 
 /* ════════════════════════════════════════════════════════════════════
-   Iteration 1+5: Cinema Dark Share Preview (.sps2-*)
-   Deep black stage, ambient glow, primary action button, pill row
+   Cinema Dark Share Preview (.sps2-*)
+   Full-bleed cinematic cards, swipe mode, entrance spring, X close
    ════════════════════════════════════════════════════════════════════ */
 .sps2-root {
   position: fixed; inset: 0; z-index: 1100;
@@ -2799,6 +2799,7 @@ body {
   display: flex; align-items: flex-end;
 }
 .sps2-panel {
+  position: relative;
   width: 100%; max-height: 94vh;
   background: #0c0c12;
   border-radius: 28px 28px 0 0;
@@ -2808,7 +2809,12 @@ body {
   box-shadow: 0 -8px 60px rgba(0,0,0,0.65);
 }
 .sps2-panel-out {
-  animation: sps-slide-down 0.32s cubic-bezier(0.72,0,1,0.32) forwards;
+  animation: sps2-dismiss 0.36s cubic-bezier(0.36,0,0.66,0) forwards;
+}
+@keyframes sps2-dismiss {
+  0%   { transform: translateY(0) scale(1); }
+  14%  { transform: translateY(-10px) scale(1.008); }
+  100% { transform: translateY(100%) scale(0.95); }
 }
 .sps2-handle-zone {
   display: flex; justify-content: center;
@@ -2820,25 +2826,18 @@ body {
   border-radius: 2px;
 }
 
-/* Mode segmented control */
-.sps2-mode-seg {
-  display: flex; margin: 6px 20px 0;
-  background: rgba(255,255,255,0.07);
-  border-radius: 12px; padding: 3px;
-  flex-shrink: 0;
+/* X close button */
+.sps2-close-x {
+  position: absolute; top: 16px; right: 20px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,0.10); border: none;
+  font-size: 22px; color: rgba(255,255,255,0.65);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s; z-index: 2;
+  line-height: 1;
 }
-.sps2-mode-btn {
-  flex: 1; height: 34px;
-  background: none; border: none; cursor: pointer;
-  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.4);
-  border-radius: 9px;
-  transition: background 0.18s, color 0.18s;
-  -webkit-tap-highlight-color: transparent;
-}
-.sps2-mode-btn-active {
-  background: rgba(255,255,255,0.14);
-  color: #ffffff;
-}
+.sps2-close-x:active { background: rgba(255,255,255,0.2); }
 
 /* Card stage */
 .sps2-stage {
@@ -2848,15 +2847,20 @@ body {
   padding: 20px 24px 10px;
   min-height: 200px;
 }
+@keyframes sps2-glow-pulse {
+  0%   { opacity: 0; transform: scale(0.5) translate(-50%,-50%); }
+  50%  { opacity: 0.55; transform: scale(1.08) translate(-50%,-50%); }
+  100% { opacity: 0.45; transform: scale(1) translate(-50%,-50%); }
+}
 .sps2-glow {
   position: absolute;
+  left: 50%; top: 50%;
   width: 80%; height: 55%;
   border-radius: 50%;
   filter: blur(50px);
-  opacity: 0.45;
   pointer-events: none;
   z-index: 0;
-  transition: background 0.4s;
+  animation: sps2-glow-pulse 0.7s cubic-bezier(0.25,0.46,0.45,0.94) forwards;
 }
 .sps2-preview-img {
   position: relative; z-index: 1;
@@ -2864,12 +2868,15 @@ body {
   border-radius: 18px;
   box-shadow: 0 28px 72px rgba(0,0,0,0.7), 0 4px 20px rgba(0,0,0,0.5);
   object-fit: contain;
-  animation: sps2-img-in 0.44s cubic-bezier(0.34,1.56,0.64,1);
   outline: 1px solid rgba(255,255,255,0.06);
+  opacity: 0;
+  transform: translateY(28px) scale(0.82);
+  transition: opacity 0.3s cubic-bezier(0.34,1.56,0.64,1),
+              transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
 }
-@keyframes sps2-img-in {
-  from { opacity: 0; transform: translateY(30px) scale(0.92); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+.sps2-stage-entered .sps2-preview-img {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 .sps2-preview-placeholder {
   width: 100%; height: 240px;
@@ -2881,6 +2888,22 @@ body {
   border-top-color: rgba(255,255,255,0.7);
   border-radius: 50%;
   animation: rs-spin 0.7s linear infinite;
+}
+
+/* Dot indicators */
+.sps2-dot-row {
+  display: flex; justify-content: center; gap: 7px;
+  padding: 6px 0 0; flex-shrink: 0;
+}
+.sps2-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.20);
+  transition: background 0.2s, transform 0.2s;
+  cursor: pointer;
+}
+.sps2-dot-active {
+  background: rgba(255,255,255,0.88);
+  transform: scale(1.3);
 }
 
 /* Meta strip */
@@ -2896,7 +2919,7 @@ body {
 .sps2-meta-dot { font-size: 12px; color: rgba(255,255,255,0.22); }
 .sps2-meta-detail { font-size: 13px; font-weight: 600; }
 
-/* Primary CTA button */
+/* Primary CTA button with shimmer */
 .sps2-primary-btn {
   width: calc(100% - 40px);
   margin: 0 20px 10px;
@@ -2910,6 +2933,20 @@ body {
 }
 .sps2-primary-btn:active { opacity: 0.82; transform: scale(0.97); }
 
+.sps2-cta-shimmer { position: relative; overflow: hidden; }
+.sps2-cta-shimmer::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(105deg,
+    transparent 35%, rgba(255,255,255,0.22) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: sps2-shimmer-once 0.65s ease 0.3s forwards;
+  pointer-events: none; border-radius: inherit;
+}
+@keyframes sps2-shimmer-once {
+  from { background-position: -200% center; }
+  to   { background-position: 220% center; }
+}
+
 /* Platform pill row */
 .sps2-platform-scroll {
   display: flex; gap: 8px;
@@ -2922,30 +2959,38 @@ body {
 .sps2-platform-pill {
   flex-shrink: 0;
   height: 36px; padding: 0 16px;
+  display: flex; align-items: center; gap: 6px;
   background: rgba(255,255,255,0.07);
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 18px; cursor: pointer;
-  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.72);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.12s;
 }
 .sps2-platform-pill:active { background: rgba(255,255,255,0.14); }
+.sps2-pill-icon { font-size: 16px; line-height: 1; }
+.sps2-pill-text { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.72); }
 
-/* Archive mode actions */
+/* Archive mode */
 .sps2-archive-zone {
   padding: 0 20px 12px;
   flex-shrink: 0;
 }
-.sps2-archive-meta {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 12px;
-  margin-bottom: 10px;
+.sps2-archive-seal {
+  display: flex; align-items: center;
+  margin-bottom: 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px; overflow: hidden; min-height: 64px;
 }
-.sps2-archive-meta-icon { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); }
-.sps2-archive-meta-date { font-size: 12px; color: rgba(255,255,255,0.35); }
+.sps2-seal-accent-bar { width: 4px; align-self: stretch; flex-shrink: 0; }
+.sps2-seal-content {
+  flex: 1; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.sps2-seal-title { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); letter-spacing: 0.3px; }
+.sps2-seal-date { font-size: 16px; font-weight: 700; color: rgba(255,255,255,0.92); font-variant-numeric: tabular-nums; }
+.sps2-seal-lock { padding: 0 16px; font-size: 22px; opacity: 0.65; }
 .sps2-archive-save-btn {
   width: 100%; height: 50px;
   background: rgba(255,255,255,0.09);
@@ -2961,25 +3006,13 @@ body {
   text-align: center; margin-top: 8px; margin-bottom: 0;
 }
 
-/* Compliance + Cancel */
+/* Compliance */
 .sps2-compliance {
   text-align: center;
   font-size: 11px; color: rgba(255,255,255,0.22);
-  padding: 0 20px 8px;
+  padding: 0 20px calc(env(safe-area-inset-bottom, 12px) + 8px);
   flex-shrink: 0;
 }
-.sps2-cancel {
-  width: calc(100% - 40px);
-  margin: 0 20px calc(env(safe-area-inset-bottom, 12px) + 4px);
-  height: 50px;
-  background: rgba(255,255,255,0.07);
-  border: none; border-radius: 14px; cursor: pointer;
-  font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.65);
-  -webkit-tap-highlight-color: transparent;
-  flex-shrink: 0;
-  transition: background 0.12s;
-}
-.sps2-cancel:active { background: rgba(255,255,255,0.12); }
 
 /* ════════════════════════════════════════════════════════════════════
    Iteration 4: Trophy Log — SavedRecordsSheet (.tj-*)

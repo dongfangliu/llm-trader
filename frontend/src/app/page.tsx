@@ -339,20 +339,24 @@ export default function HomePage() {
       const reasonExcerpt = rawReason.replace(/[*#`_>\[\]]/g, '').slice(0, 60).trim();
 
       const cardParams = {
-        stockName:        d.name || d.symbol || '',
-        stockCode:        d.symbol || '',
-        market:           d.market || 'a',
-        action:           (r.action || 'hold') as 'buy' | 'sell' | 'hold',
-        confidence:       r.confidence ?? null,
-        latestPrice:      d.latest_price ?? null,
-        targetPrice:      r.target_price ?? null,
-        stopLoss:         r.stop_loss ?? null,
-        opportunityGrade: r.opportunity_quality ?? null,
+        stockName:              d.name || d.symbol || '',
+        stockCode:              d.symbol || '',
+        market:                 d.market || 'a',
+        action:                 (r.action || 'hold') as 'buy' | 'sell' | 'hold',
+        confidence:             r.confidence ?? null,
+        latestPrice:            d.latest_price ?? null,
+        targetPrice:            r.target_price ?? null,
+        stopLoss:               r.stop_loss ?? null,
+        opportunityGrade:       r.opportunity_quality ?? null,
         reasonExcerpt,
-        analyzedAt:       activeAnalyzedAt,
+        analyzedAt:             activeAnalyzedAt,
         tier,
-        appName:          ENV_APP_NAME,
-        appBaseUrl:       typeof window !== 'undefined' ? window.location.origin : undefined,
+        appName:                ENV_APP_NAME,
+        appBaseUrl:             typeof window !== 'undefined' ? window.location.origin : undefined,
+        marketDiagnosis:        r.market_diagnosis || '',
+        opportunityAssessment:  r.opportunity_assessment || '',
+        riskAnalysis:           r.risk_analysis || '',
+        executionPlan:          r.execution_plan || '',
       };
 
       // Generate social card (statement) + archive card (prediction) in parallel
@@ -493,6 +497,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (limits && limits.remaining <= 0) setShowUpgradeBanner(true);
+    else if (limits && limits.remaining > 0) setShowUpgradeBanner(false);
   }, [limits, tier]);
 
   useEffect(() => {

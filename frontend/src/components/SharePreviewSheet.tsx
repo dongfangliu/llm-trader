@@ -7,10 +7,8 @@ interface SharePreviewSheetProps {
   blob: Blob | null;
   filename: string;
   onClose: () => void;
-  // Iteration 1 — cinematic dark UI
   actionColor?: string;
   stockMeta?: { name: string; action: string; confidence: number | null };
-  // Iteration 5 — dual mode (archive)
   archiveBlob?: Blob | null;
   archiveFilename?: string;
   analyzedAt?: string | null;
@@ -31,6 +29,8 @@ export default function SharePreviewSheet({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [archiveImageUrl, setArchiveImageUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<'social' | 'archive'>('social');
+  const [cardEntered, setCardEntered] = useState(false);
+  const [swipeStartX, setSwipeStartX] = useState<number | null>(null);
   const prevBlobRef = useRef<Blob | null>(null);
   const prevArchiveBlobRef = useRef<Blob | null>(null);
 
@@ -56,8 +56,11 @@ export default function SharePreviewSheet({
     if (isOpen) {
       setClosing(false);
       setMode('social');
+      setCardEntered(false);
       document.body.style.overflow = 'hidden';
+      setTimeout(() => setCardEntered(true), 16);
     } else {
+      setCardEntered(false);
       document.body.style.overflow = '';
     }
     return () => { document.body.style.overflow = ''; };
@@ -65,7 +68,10 @@ export default function SharePreviewSheet({
 
   const dismiss = () => {
     setClosing(true);
-    setTimeout(onClose, 320);
+    setTimeout(() => {
+      setClosing(false);
+      onClose();
+    }, 360);
   };
 
   const handleDownload = (isArchive = false) => {
@@ -76,6 +82,13 @@ export default function SharePreviewSheet({
     a.href = URL.createObjectURL(b);
     a.download = fn;
     a.click();
+  };
+
+  const switchMode = (next: 'social' | 'archive') => {
+    if (next === mode) return;
+    setMode(next);
+    setCardEntered(false);
+    setTimeout(() => setCardEntered(true), 16);
   };
 
   if (!isOpen && !closing) return null;
@@ -97,7 +110,7 @@ export default function SharePreviewSheet({
   return (
     <div
       className="sps2-root"
-      style={{ opacity: closing ? 0 : 1, transition: 'opacity 0.32s ease' }}
+      style={{ opacity: closing ? 0 : 1, transition: closing ? 'opacity 0.28s 0.1s ease' : 'opacity 0.22s ease' }}
       onClick={dismiss}
     >
       <div
@@ -109,26 +122,22 @@ export default function SharePreviewSheet({
           <div className="sps2-handle-pill" />
         </div>
 
-        {/* Mode toggle — only when archive is available */}
-        {hasArchiveMode && (
-          <div className="sps2-mode-seg">
-            <button
-              className={`sps2-mode-btn${mode === 'social' ? ' sps2-mode-btn-active' : ''}`}
-              onClick={() => setMode('social')}
-            >
-              ✦ 社交分享
-            </button>
-            <button
-              className={`sps2-mode-btn${mode === 'archive' ? ' sps2-mode-btn-active' : ''}`}
-              onClick={() => setMode('archive')}
-            >
-              🔒 专业存证
-            </button>
-          </div>
-        )}
+        {/* X close button */}
+        <button className="sps2-close-x" onClick={dismiss}>×</button>
 
-        {/* Card stage with ambient glow */}
-        <div className="sps2-stage">
+        {/* Card stage with swipe + entrance */}
+        <div
+          className={`sps2-stage${cardEntered ? ' sps2-stage-entered' : ''}`}
+          onTouchStart={(e) => setSwipeStartX(e.touches[0].clientX)}
+          onTouchEnd={(e) => {
+            if (swipeStartX === null || !hasArchiveMode) return;
+            const delta = e.changedTouches[0].clientX - swipeStartX;
+            if (Math.abs(delta) > 44) {
+              switchMode(delta < 0 ? 'archive' : 'social');
+            }
+            setSwipeStartX(null);
+          }}
+        >
           <div className="sps2-glow" style={{ background: actionColor }} />
           {activeImageUrl ? (
             <img
@@ -143,6 +152,20 @@ export default function SharePreviewSheet({
             </div>
           )}
         </div>
+
+        {/* Dot indicators */}
+        {hasArchiveMode && (
+          <div className="sps2-dot-row">
+            <div
+              className={`sps2-dot${mode === 'social' ? ' sps2-dot-active' : ''}`}
+              onClick={() => switchMode('social')}
+            />
+            <div
+              className={`sps2-dot${mode === 'archive' ? ' sps2-dot-active' : ''}`}
+              onClick={() => switchMode('archive')}
+            />
+          </div>
+        )}
 
         {/* Meta strip */}
         {stockMeta && (
@@ -167,7 +190,7 @@ export default function SharePreviewSheet({
         {mode === 'social' && (
           <>
             <button
-              className="sps2-primary-btn"
+              className="sps2-primary-btn sps2-cta-shimmer"
               style={{
                 background: `linear-gradient(135deg, ${actionColor}bb 0%, ${actionColor} 100%)`,
               }}
@@ -177,13 +200,16 @@ export default function SharePreviewSheet({
             </button>
             <div className="sps2-platform-scroll">
               <button className="sps2-platform-pill" onClick={() => handleDownload(false)}>
-                📷 小红书发笔记
+                <span className="sps2-pill-icon">📷</span>
+                <span className="sps2-pill-text">小红书发笔记</span>
               </button>
               <button className="sps2-platform-pill" onClick={() => handleDownload(false)}>
-                💬 发给朋友
+                <span className="sps2-pill-icon">💬</span>
+                <span className="sps2-pill-text">发给朋友</span>
               </button>
               <button className="sps2-platform-pill" onClick={() => handleDownload(false)}>
-                🌐 朋友圈
+                <span className="sps2-pill-icon">🌐</span>
+                <span className="sps2-pill-text">朋友圈</span>
               </button>
             </div>
           </>
@@ -192,9 +218,13 @@ export default function SharePreviewSheet({
         {/* Archive mode actions */}
         {mode === 'archive' && (
           <div className="sps2-archive-zone">
-            <div className="sps2-archive-meta">
-              <span className="sps2-archive-meta-icon">🔏 时间戳已记录</span>
-              <span className="sps2-archive-meta-date">{dateStr}</span>
+            <div className="sps2-archive-seal">
+              <div className="sps2-seal-accent-bar" style={{ background: actionColor }} />
+              <div className="sps2-seal-content">
+                <span className="sps2-seal-title">研判时间戳</span>
+                <span className="sps2-seal-date">{dateStr}</span>
+              </div>
+              <div className="sps2-seal-lock">🔒</div>
             </div>
             <button
               className="sps2-archive-save-btn"
@@ -208,9 +238,6 @@ export default function SharePreviewSheet({
 
         {/* Compliance note */}
         <div className="sps2-compliance">仅供参考，不构成投资建议</div>
-
-        {/* Cancel */}
-        <button className="sps2-cancel" onClick={dismiss}>取消</button>
       </div>
     </div>
   );
