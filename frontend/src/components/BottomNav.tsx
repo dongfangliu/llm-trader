@@ -83,18 +83,22 @@ export default function BottomNav({
         <span>结果</span>
       </button>
 
-      {/* 升级 or 账号 */}
-      {tier !== 'premium' ? (
-        <button className="bottom-nav-item" onClick={onUpgrade} aria-label="升级">
-          <span className="bottom-nav-icon"><IconUpgrade active={false} /></span>
-          <span>升级</span>
-        </button>
-      ) : (
-        <button className="bottom-nav-item" onClick={onAccount} aria-label="账号">
-          <span className="bottom-nav-icon"><IconPerson active={false} /></span>
-          <span>账号</span>
-        </button>
-      )}
+      {/* 我的 — always accessible; upgrade dot for non-premium */}
+      <button className="bottom-nav-item" onClick={onAccount} aria-label="我的" style={{ position: 'relative' }}>
+        <span className="bottom-nav-icon" style={{ position: 'relative', display: 'inline-flex' }}>
+          <IconPerson active={false} />
+          {tier !== 'premium' && (
+            <span style={{
+              position: 'absolute', top: -3, right: -5,
+              width: 8, height: 8,
+              background: '#ff9500',
+              borderRadius: '50%',
+              border: '1.5px solid rgba(249,249,249,0.94)',
+            }} />
+          )}
+        </span>
+        <span>我的</span>
+      </button>
     </nav>
   );
 }

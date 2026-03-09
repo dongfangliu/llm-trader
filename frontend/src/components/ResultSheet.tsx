@@ -444,7 +444,7 @@ export default function ResultSheet({
 
           {/* V1: Verdict row — action word + ring/OQ */}
           <div className="rs-verdict-row">
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: isFree ? 'center' : 'flex-start' }}>
               {/* V10: no "建议操作" label — the word speaks for itself */}
               <div className="rs-action-text" style={{
                 color: isDark ? '#ffffff' : info.color,
@@ -455,13 +455,13 @@ export default function ResultSheet({
               }}>
                 {info.text}
               </div>
-              {/* Confidence descriptor below action if free + OQ */}
+              {/* Confidence descriptor below action if free + OQ — centered */}
               {isFree && oq && (
                 <div className="rs-oq-badge" style={{
                   background: OQ_B[oq] ?? '#f3f4f6',
                   color: OQ_C[oq] ?? '#374151',
                   border: `1.5px solid ${OQ_C[oq] ?? '#8e8e93'}66`,
-                  marginTop: 10,
+                  marginTop: 12,
                 }}>
                   {oq} 级机会
                 </div>
@@ -486,34 +486,35 @@ export default function ResultSheet({
               </div>
             )}
           </div>
+        </div>
+        {/* END hero — V3: price data lives outside the colored stage */}
 
-          {/* ── Price strip ── */}
-          <div className="rs-price-strip" style={{
-            borderTop: `1px solid ${divColor}`,
-            background: isDark ? 'rgba(0,0,0,0.2)' : undefined,
-          }}>
+        {/* ── V3: Price strip — clean white section outside hero ── */}
+        {/* STRIP_LABEL: always dark since bg is white regardless of hero isDark */}
+        <div className="rs-price-strip" style={{
+          background: '#fff',
+          borderBottom: '0.5px solid rgba(0,0,0,0.08)',
+        }}>
             <div className="rs-price-col">
-              <div style={LABEL}>最新价</div>
-              <div className="rs-price-value" style={{ color: isDark ? 'rgba(255,255,255,0.92)' : '#1c1c1e' }}>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>最新价</div>
+              <div className="rs-price-value" style={{ color: '#1c1c1e' }}>
                 {latest != null ? latest.toFixed(2) : '—'}
               </div>
             </div>
 
-            <div className="rs-price-divider" style={{ background: divColor }} />
-
-            {/* V4: blur lock for free tier */}
+            <div className="rs-price-divider" style={{ background: 'rgba(0,0,0,0.09)' }} />
             {isFree ? (
               <>
                 <div className="rs-price-col rs-price-locked" onClick={onUpgrade}>
-                  <div style={LABEL}>目标价</div>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>目标价</div>
                   <div className="rs-blur-value-wrap">
                     <div className="rs-blur-value">{blurTarget}</div>
                     <div className="rs-lock-badge">🔒</div>
                   </div>
                 </div>
-                <div className="rs-price-divider" style={{ background: divColor }} />
+                <div className="rs-price-divider" style={{ background: 'rgba(0,0,0,0.09)' }} />
                 <div className="rs-price-col rs-price-locked" onClick={onUpgrade}>
-                  <div style={LABEL}>止损价</div>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>止损价</div>
                   <div className="rs-blur-value-wrap">
                     <div className="rs-blur-value">{blurStop}</div>
                     <div className="rs-lock-badge">🔒</div>
@@ -523,19 +524,15 @@ export default function ResultSheet({
             ) : (
               <>
                 <div className="rs-price-col">
-                  {/* V11: label clean, no arrow embedded */}
-                  <div style={LABEL}>{action === 'sell' ? '目标价 ↓' : '目标价 ↑'}</div>
-                  {/* R6: white on dark hero, action color on light */}
-                  <div className="rs-price-value" style={{ color: isDark ? 'rgba(255,255,255,0.92)' : info.color }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>{action === 'sell' ? '目标价 ↓' : '目标价 ↑'}</div>
+                  <div className="rs-price-value" style={{ color: info.color }}>
                     {target != null ? target.toFixed(2) : '—'}
                   </div>
                 </div>
-                <div className="rs-price-divider" style={{ background: divColor }} />
+                <div className="rs-price-divider" style={{ background: 'rgba(0,0,0,0.09)' }} />
                 <div className="rs-price-col">
-                  {/* For sell: stop loss is ABOVE current (risk direction) */}
-                  <div style={LABEL}>{action === 'sell' ? '止损价 ↑' : '止损价 ↓'}</div>
-                  {/* V11: stop loss = amber warning color (universal, clearly visible on all backgrounds) */}
-                  <div className="rs-price-value" style={{ color: isDark ? '#fbbf24' : '#b45309' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>{action === 'sell' ? '止损价 ↑' : '止损价 ↓'}</div>
+                  <div className="rs-price-value" style={{ color: '#b45309' }}>
                     {stopLoss != null ? stopLoss.toFixed(2) : '—'}
                   </div>
                 </div>
@@ -571,8 +568,6 @@ export default function ResultSheet({
               </div>
             </div>
           )}
-        </div>
-        {/* END hero */}
 
         {/* ── V2: Tinted scroll body ── */}
         <div className="rs-scroll" style={{ background: `linear-gradient(to bottom, ${info.tint} 0%, transparent 120px)` }}>
@@ -787,30 +782,27 @@ export default function ResultSheet({
             </button>
 
             {/* Primary share CTA */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <button
-                onClick={onShare}
-                disabled={shareLoading}
-                className={`rs-btn-share-cta${shareLoading ? ' rs-btn-share-cta-loading' : ''}`}
-              >
-                {shareLoading ? (
-                  <>
-                    <div className="rs-btn-spinner rs-btn-spinner-white" />
-                    <span>生成中…</span>
-                  </>
-                ) : (
-                  <>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
-                      <polyline points="16 6 12 2 8 6"/>
-                      <line x1="12" y1="2" x2="12" y2="15"/>
-                    </svg>
-                    <span>分享研判凭证</span>
-                  </>
-                )}
-              </button>
-              <div className="rs-share-platform-hint">小红书 · 微信 · 朋友圈</div>
-            </div>
+            <button
+              onClick={onShare}
+              disabled={shareLoading}
+              className={`rs-btn-share-cta${shareLoading ? ' rs-btn-share-cta-loading' : ''}`}
+            >
+              {shareLoading ? (
+                <>
+                  <div className="rs-btn-spinner rs-btn-spinner-white" />
+                  <span>生成中…</span>
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
+                    <polyline points="16 6 12 2 8 6"/>
+                    <line x1="12" y1="2" x2="12" y2="15"/>
+                  </svg>
+                  <span>分享预判</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

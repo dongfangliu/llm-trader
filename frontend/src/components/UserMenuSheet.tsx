@@ -17,6 +17,7 @@ interface UserMenuSheetProps {
   onLogout: () => void;
   onLogin: () => void;
   onRegister: () => void;
+  onSavedRecords?: () => void;
 }
 
 const TIER_LABELS: Record<string, string> = { free: '免费版', basic: '标准版', premium: '专业版' };
@@ -27,7 +28,7 @@ const BADGE_STYLES: Record<string, { bg: string; color: string }> = {
 };
 
 export default function UserMenuSheet({
-  isOpen, onClose, user, tier, onAccount, onUpgrade, onLogout, onLogin, onRegister,
+  isOpen, onClose, user, tier, onAccount, onUpgrade, onLogout, onLogin, onRegister, onSavedRecords,
 }: UserMenuSheetProps) {
   const badge = BADGE_STYLES[tier] || BADGE_STYLES.free;
 
@@ -73,8 +74,8 @@ export default function UserMenuSheet({
       <div style={{ paddingBottom: '1rem' }}>
         {user ? (
           <>
+            <MenuItem icon="🔖" label="我的收藏" onClick={onSavedRecords ?? onAccount} />
             <MenuItem icon="👤" label="账号设置" onClick={onAccount} />
-            {tier !== 'premium' && <MenuItem icon="⬆️" label="升级会员" onClick={onUpgrade} />}
             <MenuItem icon="🚪" label="退出登录" onClick={onLogout} color="#ef4444" />
           </>
         ) : (

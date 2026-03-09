@@ -67,6 +67,7 @@ function UpgradeRow({ icon, gradient, title, subtitle, badge, badgeColor, badgeB
   );
 }
 
+/* V2: compact one-line upgrade nudge — not a full card, just a tasteful row */
 export default function UpgradeTeaser({ tier, pricing, onUpgrade }: UpgradeTeaserProps) {
   if (tier === 'premium') return null;
 
@@ -76,47 +77,29 @@ export default function UpgradeTeaser({ tier, pricing, onUpgrade }: UpgradeTease
   const basicLimit = pricing?.basic?.daily_limit ?? 5;
   const premiumLimit = pricing?.premium?.daily_limit ?? 15;
 
-  // basic tier: only show premium upgrade
-  if (tier === 'basic') {
-    return (
-      <UpgradeRow
-        icon="👑"
-        gradient="linear-gradient(135deg, #7c3aed, #a855f7)"
-        title="升级专业版"
-        subtitle={`每天${premiumLimit}次 · 持仓智能分析 · 历史结果随时回看 · ¥${premiumPrice}/${period}`}
-        badge="最高权益"
-        badgeBg="#f3e8ff"
-        badgeColor="#7c3aed"
-        onClick={onUpgrade}
-      />
-    );
-  }
+  const label = tier === 'basic'
+    ? `每天${premiumLimit}次 · 持仓分析 · ¥${premiumPrice}/${period}`
+    : `每天${basicLimit}次 · 完整研判 · ¥${basicPrice}/${period}起`;
 
-  // free tier: show BOTH standard and premium rows
+  const accent = tier === 'basic' ? '#7c3aed' : '#007aff';
+
   return (
-    <>
-      <UpgradeRow
-        icon="📊"
-        gradient="linear-gradient(135deg, #007aff, #5ac8fa)"
-        title="解锁标准版"
-        subtitle={`每天${basicLimit}次 · 全市场 · 完整目标价与研判 · ¥${basicPrice}/${period}`}
-        badge="推荐"
-        badgeBg="#dbeafe"
-        badgeColor="#1d4ed8"
-        onClick={onUpgrade}
-      />
-      {/* Separator between rows */}
-      <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.12)', margin: '0 0 0 62px' }} />
-      <UpgradeRow
-        icon="👑"
-        gradient="linear-gradient(135deg, #7c3aed, #a855f7)"
-        title="升级专业版"
-        subtitle={`每天${premiumLimit}次 · 持仓智能分析 · 历史结果随时回看 · ¥${premiumPrice}/${period}`}
-        badge="最高权益"
-        badgeBg="#f3e8ff"
-        badgeColor="#7c3aed"
-        onClick={onUpgrade}
-      />
-    </>
+    <button
+      onClick={onUpgrade}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', padding: '11px 16px', background: 'none', border: 'none',
+        cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      <span style={{ fontSize: '13px', color: '#8e8e93' }}>{label}</span>
+      <span style={{
+        fontSize: '12px', fontWeight: 700, padding: '3px 10px',
+        borderRadius: '9999px', background: accent, color: '#fff',
+        flexShrink: 0, letterSpacing: '0.1px',
+      }}>
+        {tier === 'basic' ? '升级专业' : '立即升级'}
+      </span>
+    </button>
   );
 }

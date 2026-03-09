@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export interface SavedRecord {
   id: string;
@@ -25,49 +25,138 @@ interface Props {
   onDeleteRecord: (id: string) => void;
 }
 
-function ActionPill({ action }: { action: SavedRecord['action'] }) {
-  const map = { buy: { label: '看好', color: '#ff453a', bg: '#ff453a18' }, sell: { label: '看空', color: '#30d158', bg: '#30d15818' }, hold: { label: '观望', color: '#ffd60a', bg: '#ffd60a18' } };
-  const s = map[action] ?? map.hold;
-  return (
-    <span style={{ fontSize: 11, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}44`, borderRadius: 20, padding: '2px 8px', letterSpacing: 0.5 }}>
-      {s.label}
-    </span>
-  );
-}
+const ACTION_MAP = {
+  buy:  { label: '看好', color: '#EF4444', bg: '#EF444418', stripe: '#EF4444' },
+  sell: { label: '看空', color: '#22C55E', bg: '#22C55E18', stripe: '#22C55E' },
+  hold: { label: '观望', color: '#F59E0B', bg: '#F59E0B18', stripe: '#C7C7CC' },
+};
 
-function ReturnBadge({ val }: { val: number | null }) {
-  if (val == null) return null;
-  const positive = val > 0;
-  const color = positive ? '#ff453a' : '#30d158';
-  const sign = positive ? '+' : '';
-  return (
-    <span style={{ fontSize: 13, fontWeight: 800, color, marginLeft: 6 }}>
-      {sign}{val.toFixed(1)}%
-    </span>
-  );
-}
+const GRADE_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+  A: { text: '#7C3AED', bg: '#7C3AED18', border: '#7C3AED55' },
+  B: { text: '#0369A1', bg: '#0369A118', border: '#0369A155' },
+  C: { text: '#92400E', bg: '#92400E18', border: '#92400E55' },
+  D: { text: '#6B7280', bg: '#6B728018', border: '#6B728055' },
+};
 
-function GradeBadge({ grade }: { grade: string | null }) {
-  if (!grade) return null;
-  const colors: Record<string, string> = { A: '#ff9f0a', B: '#30d158', C: '#64d2ff', D: '#8e8e93' };
-  const c = colors[grade] ?? '#8e8e93';
+const GRADE_BAR_COLORS = ['#7C3AED', '#0369A1', '#92400E', '#9CA3AF'];
+
+function TrophyCard({
+  rec,
+  onOpen,
+  onDelete,
+}: {
+  rec: SavedRecord;
+  onOpen: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
+  const act = ACTION_MAP[rec.action] ?? ACTION_MAP.hold;
+  const gradeKey = (rec.opportunityGrade || '').toUpperCase();
+  const gc = GRADE_COLORS[gradeKey];
+
+  const dt = new Date(rec.analyzedAt);
+  const dateStr = dt.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+  const positive = rec.impliedReturn != null && rec.impliedReturn > 0;
+  const returnColor = positive ? '#EF4444' : '#22C55E';
+  const returnStr = rec.impliedReturn != null
+    ? `${rec.impliedReturn > 0 ? '+' : ''}${rec.impliedReturn.toFixed(1)}%`
+    : null;
+
   return (
-    <span style={{ fontSize: 10, fontWeight: 800, color: c, border: `1.5px solid ${c}88`, borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      {grade}
-    </span>
+    <div className="tj-card" onClick={onOpen}>
+      {/* Left color stripe by action */}
+      <div className="tj-card-stripe" style={{ background: act.stripe }} />
+
+      <div className="tj-card-body">
+        {/* Row 1: name + grade badge + action pill + return */}
+        <div className="tj-card-row1">
+          <span className="tj-card-name">{rec.name}</span>
+          {gc && (
+            <span
+              className="tj-card-grade"
+              style={{ color: gc.text, background: gc.bg, border: `1.5px solid ${gc.border}` }}
+            >
+              {gradeKey}
+            </span>
+          )}
+          <span
+            className="tj-card-action-pill"
+            style={{ color: act.color, background: act.bg, borderColor: act.color + '44' }}
+          >
+            {act.label}
+          </span>
+          {returnStr && (
+            <span className="tj-card-return" style={{ color: returnColor }}>{returnStr}</span>
+          )}
+        </div>
+
+        {/* Confidence mini bar */}
+        {rec.confidence != null && (
+          <div className="tj-card-conf-row">
+            <div className="tj-card-conf-bar-bg">
+              <div
+                className="tj-card-conf-bar"
+                style={{
+                  width: `${rec.confidence}%`,
+                  background: act.color,
+                }}
+              />
+            </div>
+            <span className="tj-card-conf-label">置信 {rec.confidence}%</span>
+          </div>
+        )}
+
+        {/* Footer: date + delete */}
+        <div className="tj-card-footer">
+          <div className="tj-card-date">
+            <span>🔒</span>
+            <span>{dateStr} {timeStr}</span>
+            {rec.latestPrice != null && (
+              <span style={{ color: '#C7C7CC', marginLeft: 4 }}>
+                · ¥{rec.latestPrice.toFixed(2)}
+              </span>
+            )}
+          </div>
+          <button className="tj-card-delete" onClick={onDelete}>删除</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export default function SavedRecordsSheet({ isOpen, records, onClose, onOpenRecord, onDeleteRecord }: Props) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
+  const stats = useMemo(() => {
+    const gradeACount = records.filter(r => r.opportunityGrade === 'A').length;
+    const buyCount = records.filter(r => r.action === 'buy').length;
+    const avgConf = records.length
+      ? Math.round(records.reduce((s, r) => s + (r.confidence ?? 0), 0) / records.length)
+      : 0;
+    const impliedRecords = records.filter(r => r.impliedReturn != null);
+    const positiveCount = impliedRecords.filter(r => (r.impliedReturn ?? 0) > 0).length;
+    const winRate = impliedRecords.length
+      ? Math.round((positiveCount / impliedRecords.length) * 100)
+      : null;
+
+    const gradeCounts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 };
+    records.forEach(r => {
+      const g = (r.opportunityGrade || '').toUpperCase();
+      if (g in gradeCounts) gradeCounts[g]++;
+    });
+
+    return { gradeACount, buyCount, avgConf, winRate, gradeCounts };
+  }, [records]);
+
   if (!isOpen && !records.length) return null;
+
+  const gradeOrder = ['A', 'B', 'C', 'D'] as const;
+  const totalGraded = gradeOrder.reduce((s, g) => s + stats.gradeCounts[g], 0);
 
   return (
     <>
@@ -76,8 +165,9 @@ export default function SavedRecordsSheet({ isOpen, records, onClose, onOpenReco
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0, zIndex: 3100,
-          background: 'rgba(0,0,0,0.5)',
+          background: 'rgba(0,0,0,0.4)',
           backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? 'auto' : 'none',
           transition: 'opacity 0.28s ease',
@@ -85,131 +175,88 @@ export default function SavedRecordsSheet({ isOpen, records, onClose, onOpenReco
       />
 
       {/* Sheet */}
-      <div
-        ref={sheetRef}
-        style={{
-          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 3200,
-          background: 'rgba(28,28,30,0.97)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          borderRadius: '20px 20px 0 0',
-          maxHeight: '82vh',
-          display: 'flex',
-          flexDirection: 'column',
-          transform: isOpen ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform 0.36s cubic-bezier(0.32,0.72,0,1)',
-          paddingBottom: 'env(safe-area-inset-bottom, 16px)',
-          boxShadow: '0 -2px 40px rgba(0,0,0,0.5)',
-        }}
-      >
+      <div className={`tj-root${isOpen ? ' tj-root-open' : ''}`}>
         {/* Drag handle */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 4px' }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.18)' }} />
+        <div className="tj-handle-zone">
+          <div className="tj-handle" />
         </div>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 20px 14px' }}>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#ffffff', letterSpacing: -0.3 }}>
-              我的研判记录
-            </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-              {records.length} 条研判  ·  含时间戳可验证
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{ width: 32, height: 32, borderRadius: 16, background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', fontSize: 16 }}
-          >✕</button>
+        <div className="tj-header">
+          <h1 className="tj-title">我的研判日志</h1>
+          {records.length > 0 && (
+            <span className="tj-count-badge">{records.length}</span>
+          )}
+          <button className="tj-close-btn" onClick={onClose} aria-label="关闭">✕</button>
         </div>
 
-        {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+        {records.length > 0 && (
+          <>
+            {/* Trophy shelf */}
+            <div className="tj-trophy-shelf">
+              {stats.gradeACount > 0 && (
+                <div className="tj-trophy-item">
+                  <span style={{ marginRight: 5 }}>🏆</span>
+                  {stats.gradeACount} 个 A 级发现
+                </div>
+              )}
+              <div className="tj-trophy-item">
+                <span style={{ marginRight: 5, color: '#EF4444' }}>▲</span>
+                {stats.buyCount} 次看好
+              </div>
+              {stats.avgConf > 0 && (
+                <div className="tj-trophy-item">
+                  <span style={{ marginRight: 5 }}>⚡</span>
+                  {stats.avgConf}% 平均置信
+                </div>
+              )}
+              {stats.winRate != null && (
+                <div className="tj-trophy-item">
+                  <span style={{ marginRight: 5 }}>📈</span>
+                  {stats.winRate}% 正向率
+                </div>
+              )}
+            </div>
+
+            {/* Grade distribution bar */}
+            {totalGraded > 0 && (
+              <div className="tj-grade-bar">
+                {gradeOrder.map((g, i) => {
+                  const count = stats.gradeCounts[g];
+                  if (count === 0) return null;
+                  return (
+                    <div
+                      key={g}
+                      className="tj-grade-seg"
+                      style={{
+                        flex: count,
+                        background: GRADE_BAR_COLORS[i],
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Card list */}
+        <div className="tj-list">
           {records.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-              暂无收藏的研判<br />
-              <span style={{ fontSize: 12 }}>分析结果后点击收藏按钮</span>
+            <div className="tj-empty">
+              <div className="tj-empty-icon">📋</div>
+              <div className="tj-empty-title">开始你的第一次研判</div>
+              <div className="tj-empty-sub">分析股票后点击收藏，在这里查看历史记录</div>
             </div>
           ) : (
-            records.map((rec, idx) => {
-              const dt = new Date(rec.analyzedAt);
-              const dateStr = dt.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
-              const timeStr = dt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-
-              return (
-                <div
-                  key={rec.id}
-                  onClick={() => { onOpenRecord(rec); onClose(); }}
-                  style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '0.5px solid rgba(255,255,255,0.1)',
-                    borderRadius: 14,
-                    padding: '14px 14px 12px',
-                    marginBottom: 10,
-                    cursor: 'pointer',
-                    position: 'relative',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  {/* Row 1: stock name + grade + return */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <GradeBadge grade={rec.opportunityGrade} />
-                    <span style={{ fontSize: 15, fontWeight: 700, color: '#ffffff', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {rec.name}
-                    </span>
-                    <ActionPill action={rec.action} />
-                    <ReturnBadge val={rec.impliedReturn} />
-                  </div>
-
-                  {/* Row 2: price data */}
-                  {(rec.latestPrice != null || rec.targetPrice != null) && (
-                    <div style={{ display: 'flex', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-                      {rec.latestPrice != null && (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                          研判时价 <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>
-                            ¥{rec.latestPrice.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {rec.targetPrice != null && (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                          目标价 <span style={{ color: rec.action === 'buy' ? '#ff453a' : '#30d158', fontWeight: 600 }}>
-                            ¥{rec.targetPrice.toFixed(2)}
-                          </span>
-                        </div>
-                      )}
-                      {rec.confidence != null && (
-                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                          置信 <span style={{ color: rec.action === 'hold' ? '#ffd60a' : rec.action === 'buy' ? '#ff453a' : '#30d158', fontWeight: 600 }}>
-                            {rec.confidence}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Row 3: timestamp + delete */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span>🔒</span>
-                      <span>{dateStr} {timeStr}</span>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDeleteRecord(rec.id); }}
-                      style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
-                    >
-                      删除
-                    </button>
-                  </div>
-
-                  {/* Separator line at bottom (not last) */}
-                  {idx < records.length - 1 && (
-                    <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: '0.5px', background: 'rgba(255,255,255,0.06)' }} />
-                  )}
-                </div>
-              );
-            })
+            records.map(rec => (
+              <TrophyCard
+                key={rec.id}
+                rec={rec}
+                onOpen={() => { onOpenRecord(rec); onClose(); }}
+                onDelete={e => { e.stopPropagation(); onDeleteRecord(rec.id); }}
+              />
+            ))
           )}
         </div>
       </div>

@@ -1638,3 +1638,481 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
     }, 'image/png');
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Iteration 2: Statement Card — social-first minimalist
+// 600×900, white bg, enormous action block, 80% whitespace
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateStatementCardBlob(p: PredictionCardParams): Promise<{ blob: Blob; filename: string }> {
+  const { stockName, stockCode, market, action, confidence, latestPrice, targetPrice, stopLoss,
+    opportunityGrade, reasonExcerpt, analyzedAt, tier, appName } = p;
+
+  const isBuy  = action === 'buy';
+  const isSell = action === 'sell';
+  const isMasked = tier === 'free';
+
+  const accent     = isBuy ? '#EF4444' : isSell ? '#22C55E' : '#60A5FA';
+  const accentDark = isBuy ? '#B91C1C' : isSell ? '#15803D' : '#1D4ED8';
+  const actionCN   = isBuy ? '买入' : isSell ? '卖出' : '观望';
+
+  const ar = parseInt(accent.slice(1, 3), 16);
+  const ag = parseInt(accent.slice(3, 5), 16);
+  const ab = parseInt(accent.slice(5, 7), 16);
+
+  const impliedReturn: number | null =
+    targetPrice != null && latestPrice != null && latestPrice > 0
+      ? ((targetPrice - latestPrice) / latestPrice) * 100 : null;
+
+  const fmtP = (price: number | null) => {
+    if (price == null) return '—';
+    const isCN = market === 'a' || market === 'futures';
+    return isCN ? `¥${price.toFixed(2)}` : `$${price.toFixed(2)}`;
+  };
+
+  const W = 600, H = 900;
+  // Split point: white zone above, accent zone below
+  const SPLIT = 530;
+
+  const canvas = document.createElement('canvas');
+  const dpr = 2;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(dpr, dpr);
+
+  const F = '"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
+
+  // ── BACKGROUNDS ───────────────────────────────────────────────
+  // White zone
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, SPLIT);
+  // Accent zone (deep version)
+  const bgGrad = ctx.createLinearGradient(0, SPLIT, 0, H);
+  bgGrad.addColorStop(0, accentDark);
+  bgGrad.addColorStop(1, `rgb(${Math.max(0, ar-40)},${Math.max(0, ag-40)},${Math.max(0, ab-40)})`);
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, SPLIT, W, H - SPLIT);
+
+  // Dot grid on white zone only
+  ctx.globalAlpha = 0.04;
+  for (let gx = 20; gx < W; gx += 28) {
+    for (let gy = 20; gy < SPLIT; gy += 28) {
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.arc(gx, gy, 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Subtle dot grid on accent zone (white dots)
+  ctx.globalAlpha = 0.06;
+  for (let gx = 20; gx < W; gx += 28) {
+    for (let gy = SPLIT + 14; gy < H; gy += 28) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(gx, gy, 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // ── TOP GRADIENT STRIP ────────────────────────────────────────
+  const topGrad = ctx.createLinearGradient(0, 0, W, 0);
+  topGrad.addColorStop(0, accentDark);
+  topGrad.addColorStop(0.6, accent);
+  topGrad.addColorStop(1, `rgba(${ar},${ag},${ab},0.4)`);
+  ctx.fillStyle = topGrad; ctx.fillRect(0, 0, W, 5);
+
+  let y = 28;
+
+  // ── STOCK CODE PILL (top left) ────────────────────────────────
+  ctx.font = `600 13px ${F}`;
+  const pillW = ctx.measureText(stockCode).width + 24;
+  ctx.fillStyle = `rgba(${ar},${ag},${ab},0.1)`;
+  ctx.beginPath(); ctx.roundRect(28, y, pillW, 26, 13); ctx.fill();
+  ctx.strokeStyle = `rgba(${ar},${ag},${ab},0.3)`; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(28, y, pillW, 26, 13); ctx.stroke();
+  ctx.fillStyle = accent; ctx.textAlign = 'left';
+  ctx.fillText(stockCode, 40, y + 17);
+
+  // Tier label top right
+  const tierLabel = tier === 'premium' ? '专业版' : tier === 'basic' ? '标准版' : '免费版';
+  ctx.font = `500 11px ${F}`; ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillText(tierLabel, W - 28, y + 17);
+  y += 48;
+
+  // ── STOCK NAME ────────────────────────────────────────────────
+  ctx.font = `800 44px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = accent;
+  ctx.fillText(stockName.length > 8 ? stockName.slice(0, 8) + '…' : stockName, 28, y + 42);
+  y += 56;
+
+  // ── ACTION BLOCK ──────────────────────────────────────────────
+  const blockH = 152;
+  const blockGrad = ctx.createLinearGradient(28, y, W - 28, y + blockH);
+  blockGrad.addColorStop(0, accent); blockGrad.addColorStop(1, accentDark);
+  ctx.fillStyle = blockGrad;
+  ctx.beginPath(); ctx.roundRect(28, y, W - 56, blockH, 18); ctx.fill();
+  // Highlight
+  const hi = ctx.createRadialGradient(120, y + 32, 0, 120, y + 32, 160);
+  hi.addColorStop(0, 'rgba(255,255,255,0.22)'); hi.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hi;
+  ctx.beginPath(); ctx.roundRect(28, y, W - 56, blockH, 18); ctx.fill();
+  ctx.font = `900 116px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 16;
+  ctx.fillText(actionCN, W / 2, y + blockH - 24);
+  ctx.shadowBlur = 0;
+  y += blockH + 24;
+
+  // ── CONFIDENCE BAR ────────────────────────────────────────────
+  if (confidence != null) {
+    ctx.fillStyle = 'rgba(0,0,0,0.07)';
+    ctx.beginPath(); ctx.roundRect(28, y, W - 56, 8, 4); ctx.fill();
+    const filled = Math.round((W - 56) * confidence / 100);
+    const barGrad = ctx.createLinearGradient(28, 0, W - 28, 0);
+    barGrad.addColorStop(0, accentDark); barGrad.addColorStop(1, accent);
+    ctx.fillStyle = barGrad;
+    ctx.beginPath(); ctx.roundRect(28, y, filled, 8, 4); ctx.fill();
+    ctx.fillStyle = accent;
+    ctx.beginPath(); ctx.arc(28 + filled, y + 4, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.font = `500 11px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillText('AI 置信度', 28, y + 22);
+    ctx.font = `700 13px ${F}`; ctx.textAlign = 'right'; ctx.fillStyle = accent;
+    ctx.fillText(`${confidence}%`, W - 28, y + 22);
+    y += 40;
+  }
+
+  // ── DASHED DIVIDER ────────────────────────────────────────────
+  ctx.save(); ctx.setLineDash([4, 6]);
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(28, y); ctx.lineTo(W - 28, y); ctx.stroke();
+  ctx.restore(); y += 20;
+
+  // ── PRICE ROW ────────────────────────────────────────────────
+  const priceItems = [
+    { label: '最新价', val: fmtP(latestPrice), color: '#1C1C1E', locked: false },
+    { label: '目标价', val: isMasked ? '——' : fmtP(targetPrice), color: isMasked ? '#C7C7CC' : accent, locked: isMasked },
+    { label: '止损价', val: isMasked ? '——' : fmtP(stopLoss), color: isMasked ? '#C7C7CC' : `rgba(${ar},${ag},${ab},0.65)`, locked: isMasked },
+  ];
+  const colW2 = Math.floor((W - 56) / 3);
+  priceItems.forEach((item, i) => {
+    const cx = 28 + colW2 * i + colW2 / 2;
+    ctx.font = `400 11px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillText(item.label, cx, y + 14);
+    ctx.font = item.locked ? `600 16px ${F}` : `700 19px ${F}`;
+    ctx.fillStyle = item.color;
+    ctx.fillText(item.val, cx, y + 36);
+  });
+  y += 54;
+
+  // ── REASON (1 line, larger) ───────────────────────────────────
+  if (reasonExcerpt) {
+    const maxW3 = W - 56;
+    ctx.font = `400 15px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    let txt = reasonExcerpt;
+    if (ctx.measureText(txt).width > maxW3) {
+      while (txt.length > 0 && ctx.measureText(txt + '…').width > maxW3) txt = txt.slice(0, -1);
+      txt += '…';
+    }
+    ctx.fillText(txt, 28, y + 16);
+    y += 36;
+  }
+
+  // ── OPPORTUNITY GRADE pill (if available) ─────────────────────
+  if (opportunityGrade) {
+    const gradeColors: Record<string, string> = { A: '#7C3AED', B: '#0369A1', C: '#92400E', D: '#6B7280' };
+    const gc = gradeColors[opportunityGrade.toUpperCase()] || accent;
+    const gradeLabel = `${opportunityGrade.toUpperCase()} 级机会`;
+    ctx.font = `700 13px ${F}`;
+    const gw = ctx.measureText(gradeLabel).width + 28;
+    ctx.fillStyle = gc + '14';
+    ctx.beginPath(); ctx.roundRect(28, y, gw, 28, 14); ctx.fill();
+    ctx.strokeStyle = gc + '44'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(28, y, gw, 28, 14); ctx.stroke();
+    ctx.fillStyle = gc; ctx.textAlign = 'left';
+    ctx.fillText(gradeLabel, 28 + 14, y + 18);
+    y += 42;
+  }
+
+  void y; // mark used
+
+  // ═══ ACCENT ZONE (bottom half) ═══════════════════════════════
+  // Wavy separator edge
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, SPLIT);
+  for (let wx = 0; wx <= W; wx += 40) {
+    ctx.quadraticCurveTo(wx + 20, SPLIT - 10, wx + 40, SPLIT);
+  }
+  ctx.lineTo(W, SPLIT + 20); ctx.lineTo(0, SPLIT + 20);
+  ctx.closePath();
+  ctx.fillStyle = accentDark; ctx.fill();
+  ctx.restore();
+
+  // ── MAIN STAT (implied return or confidence) ──────────────────
+  const statY = SPLIT + 50;
+  if (impliedReturn != null && !isMasked) {
+    const sign = impliedReturn > 0 ? '+' : '';
+    const statStr = `${sign}${impliedReturn.toFixed(1)}%`;
+    ctx.font = `900 80px ${F}`; ctx.textAlign = 'center';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 20;
+    ctx.fillText(statStr, W / 2, statY + 72);
+    ctx.shadowBlur = 0;
+    ctx.font = `500 14px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.textAlign = 'center';
+    ctx.fillText('预期潜在收益空间', W / 2, statY + 100);
+  } else if (confidence != null) {
+    ctx.font = `900 80px ${F}`; ctx.textAlign = 'center';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 20;
+    ctx.fillText(`${confidence}%`, W / 2, statY + 72);
+    ctx.shadowBlur = 0;
+    ctx.font = `500 14px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.textAlign = 'center';
+    ctx.fillText('AI 研判置信度', W / 2, statY + 100);
+  } else if (opportunityGrade) {
+    const gradeColors: Record<string,string> = { A: '#F5D770', B: '#93C5FD', C: '#FCD34D', D: '#D1D5DB' };
+    const gc = gradeColors[opportunityGrade] || '#F5D770';
+    ctx.font = `900 80px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = gc;
+    ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 20;
+    ctx.fillText(opportunityGrade + ' 级', W / 2, statY + 72);
+    ctx.shadowBlur = 0;
+    ctx.font = `500 14px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText('AI 机会评级', W / 2, statY + 100);
+  }
+
+  // ── VIRAL HOOK ────────────────────────────────────────────────
+  const hookY = statY + 138;
+  const hookLine1 = isBuy ? '我已看好这只股票' : isSell ? '我已判断这只股票承压' : '我正在观察这只股票';
+  const hookLine2 = '你的判断呢？';
+  ctx.font = `600 18px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fillText(hookLine1, W / 2, hookY);
+  ctx.font = `800 22px ${F}`; ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(hookLine2, W / 2, hookY + 32);
+
+  // ── APP BRANDING ──────────────────────────────────────────────
+  const brandY = hookY + 72;
+  // Divider
+  const divG = ctx.createLinearGradient(0, 0, W, 0);
+  divG.addColorStop(0, 'transparent'); divG.addColorStop(0.3, 'rgba(255,255,255,0.2)');
+  divG.addColorStop(0.7, 'rgba(255,255,255,0.2)'); divG.addColorStop(1, 'transparent');
+  ctx.strokeStyle = divG; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, brandY - 14); ctx.lineTo(W, brandY - 14); ctx.stroke();
+
+  ctx.font = `700 15px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText(appName, W / 2, brandY + 2);
+
+  const dateStamp = new Date(analyzedAt).toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+  ctx.font = `400 11px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fillText(dateStamp, W / 2, brandY + 22);
+
+  // ── DISCLAIMER ────────────────────────────────────────────────
+  ctx.font = `400 10px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.fillText('AI 生成 · 仅供技术分析参考 · 不构成投资建议 · 投资有风险，入市须谨慎', W / 2, H - 18);
+
+  // Bottom accent strip
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(0, H - 4, W, 4);
+
+  return new Promise<{ blob: Blob; filename: string }>((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) { reject(new Error('canvas.toBlob failed')); return; }
+      resolve({ blob, filename: `${stockCode || stockName}_研判.png` });
+    }, 'image/png');
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Iteration 3: Badge Card — grade achievement / honor badge
+// 600×900, dark #0d0d14, hexagon grade badge, gamified
+// ─────────────────────────────────────────────────────────────────────────────
+export async function generateBadgeCardBlob(p: PredictionCardParams): Promise<{ blob: Blob; filename: string }> {
+  const { stockName, stockCode, market, action, confidence, latestPrice, targetPrice, stopLoss,
+    opportunityGrade, analyzedAt, tier, appName } = p;
+
+  const isBuy  = action === 'buy';
+  const isSell = action === 'sell';
+  const isMasked = tier === 'free';
+  const grade = (opportunityGrade || 'C').toUpperCase().slice(0, 1);
+
+  const gradeStyles: Record<string, { bg1: string; bg2: string; glow: string; text: string }> = {
+    A: { bg1: '#7C3AED', bg2: '#4F46E5', glow: '#8B5CF6', text: 'rgba(255,245,200,1)' },
+    B: { bg1: '#0369A1', bg2: '#0C4A6E', glow: '#38BDF8', text: '#E0F2FE' },
+    C: { bg1: '#92400E', bg2: '#78350F', glow: '#F59E0B', text: '#FEF3C7' },
+    D: { bg1: '#374151', bg2: '#1F2937', glow: '#9CA3AF', text: '#F3F4F6' },
+  };
+  const gs = gradeStyles[grade] || gradeStyles['C'];
+
+  const actionCN    = isBuy ? '买入' : isSell ? '卖出' : '观望';
+  const actionColor = isBuy ? '#FF453A' : isSell ? '#30D158' : '#FFD60A';
+
+  const fmtP = (price: number | null) => {
+    if (price == null) return '—';
+    const isCN = market === 'a' || market === 'futures';
+    return isCN ? `¥${price.toFixed(2)}` : `$${price.toFixed(2)}`;
+  };
+
+  const W = 600, H = 900;
+  const canvas = document.createElement('canvas');
+  const dpr = 2;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(dpr, dpr);
+
+  const F = '"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
+
+  // ── DARK BACKGROUND ───────────────────────────────────────────
+  ctx.fillStyle = '#0d0d14'; ctx.fillRect(0, 0, W, H);
+
+  // Center radial glow
+  const glowGrad = ctx.createRadialGradient(W / 2, 230, 0, W / 2, 230, 300);
+  glowGrad.addColorStop(0, gs.glow + '28');
+  glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glowGrad; ctx.fillRect(0, 0, W, 500);
+
+  // ── HEADER: app name + date ───────────────────────────────────
+  const dateStr = new Date(analyzedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  ctx.font = `700 14px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.fillText(appName, 28, 50);
+  ctx.font = `400 13px ${F}`; ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillText(dateStr, W - 28, 50);
+
+  // ── HEXAGON BADGE ─────────────────────────────────────────────
+  const hexCX = W / 2, hexCY = 230, hexR = 110;
+
+  // Outer decoration rings
+  [0.07, 0.045, 0.025].forEach((opacity, i) => {
+    const r = hexR + 26 + i * 22;
+    ctx.strokeStyle = `rgba(255,255,255,${opacity})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let j = 0; j < 6; j++) {
+      const angle = (Math.PI / 3) * j - Math.PI / 6;
+      const hx = hexCX + r * Math.cos(angle);
+      const hy = hexCY + r * Math.sin(angle);
+      j === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
+    }
+    ctx.closePath(); ctx.stroke();
+  });
+
+  // Main hexagon
+  const hexGrad = ctx.createLinearGradient(hexCX - hexR, hexCY - hexR, hexCX + hexR, hexCY + hexR);
+  hexGrad.addColorStop(0, gs.bg1); hexGrad.addColorStop(1, gs.bg2);
+  ctx.fillStyle = hexGrad;
+  ctx.beginPath();
+  for (let j = 0; j < 6; j++) {
+    const angle = (Math.PI / 3) * j - Math.PI / 6;
+    const hx = hexCX + hexR * Math.cos(angle);
+    const hy = hexCY + hexR * Math.sin(angle);
+    j === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
+  }
+  ctx.closePath(); ctx.fill();
+
+  // Inner highlight
+  const hiGrad = ctx.createRadialGradient(hexCX - 30, hexCY - 40, 0, hexCX, hexCY, hexR);
+  hiGrad.addColorStop(0, 'rgba(255,255,255,0.22)');
+  hiGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hiGrad;
+  ctx.beginPath();
+  for (let j = 0; j < 6; j++) {
+    const angle = (Math.PI / 3) * j - Math.PI / 6;
+    const hx = hexCX + hexR * Math.cos(angle);
+    const hy = hexCY + hexR * Math.sin(angle);
+    j === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
+  }
+  ctx.closePath(); ctx.fill();
+
+  // Grade letter (or lock)
+  if (isMasked) {
+    ctx.font = `400 64px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText('🔒', hexCX, hexCY + 24);
+  } else {
+    ctx.font = `900 160px ${F}`; ctx.textAlign = 'center';
+    ctx.fillStyle = gs.text;
+    ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 14;
+    ctx.fillText(grade, hexCX, hexCY + 58);
+    ctx.shadowBlur = 0;
+  }
+
+  // ── METALLIC DIVIDER ──────────────────────────────────────────
+  const divY = 382;
+  const divGrad = ctx.createLinearGradient(0, 0, W, 0);
+  divGrad.addColorStop(0, 'transparent');
+  divGrad.addColorStop(0.25, 'rgba(255,255,255,0.14)');
+  divGrad.addColorStop(0.75, 'rgba(255,255,255,0.14)');
+  divGrad.addColorStop(1, 'transparent');
+  ctx.strokeStyle = divGrad; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, divY); ctx.lineTo(W, divY); ctx.stroke();
+
+  // ── STOCK INFO ────────────────────────────────────────────────
+  let y = divY + 28;
+
+  ctx.font = `700 30px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = gs.text;
+  ctx.fillText(stockName.length > 10 ? stockName.slice(0, 10) + '…' : stockName, W / 2, y + 28);
+  y += 40;
+
+  ctx.font = `400 13px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  ctx.fillText(`${stockCode} · ${market.toUpperCase()}`, W / 2, y + 16);
+  y += 36;
+
+  // ── ACTION + CONFIDENCE PILLS ─────────────────────────────────
+  const pillItems: Array<{ text: string; color: string; bg: string }> = [
+    { text: actionCN, color: actionColor, bg: actionColor + '22' },
+    ...(confidence != null ? [{ text: `${confidence}% 置信`, color: gs.glow, bg: gs.glow + '22' }] : []),
+  ];
+  ctx.font = `700 13px ${F}`;
+  const totalPW = pillItems.reduce((s, it) => s + ctx.measureText(it.text).width + 30 + 10, -10);
+  let px = W / 2 - totalPW / 2;
+  pillItems.forEach(item => {
+    ctx.font = `700 13px ${F}`;
+    const pw = ctx.measureText(item.text).width + 30;
+    ctx.fillStyle = item.bg;
+    ctx.beginPath(); ctx.roundRect(px, y, pw, 28, 14); ctx.fill();
+    ctx.strokeStyle = item.color + '44'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(px, y, pw, 28, 14); ctx.stroke();
+    ctx.fillStyle = item.color; ctx.textAlign = 'left';
+    ctx.fillText(item.text, px + 15, y + 18);
+    px += pw + 10;
+  });
+  y += 48;
+
+  // ── PRICE ROW ─────────────────────────────────────────────────
+  if (!isMasked && (targetPrice != null || stopLoss != null)) {
+    const priceRow = [
+      { label: '目标价', val: fmtP(targetPrice) },
+      { label: '止损价', val: fmtP(stopLoss) },
+    ];
+    priceRow.forEach((item, i) => {
+      const cx = W / 2 + (i === 0 ? -110 : 110);
+      ctx.font = `400 11px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillText(item.label, cx, y + 14);
+      ctx.font = `700 20px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.82)';
+      ctx.fillText(item.val, cx, y + 36);
+    });
+    y += 56;
+  } else {
+    y += 12;
+  }
+
+  // ── ACHIEVEMENT TEXT ──────────────────────────────────────────
+  const achieveTxt = isMasked
+    ? `解锁专业版，查看完整 ${grade} 级机会详情`
+    : `AI 评定 ${grade} 级稀缺机会 · 主动发现于 ${dateStr}`;
+  ctx.font = `500 13px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  ctx.fillText(achieveTxt, W / 2, y + 16);
+
+  // ── FOOTER ───────────────────────────────────────────────────
+  ctx.font = `400 11px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.13)';
+  ctx.fillText('本内容仅供技术分析参考 · 不构成投资建议 · 投资有风险，入市须谨慎', W / 2, H - 24);
+
+  // Bottom gradient bar
+  const bottomBar = ctx.createLinearGradient(0, 0, W, 0);
+  bottomBar.addColorStop(0, gs.bg2);
+  bottomBar.addColorStop(0.5, gs.glow);
+  bottomBar.addColorStop(1, gs.bg2);
+  ctx.fillStyle = bottomBar; ctx.fillRect(0, H - 4, W, 4);
+
+  // Suppress unused var warnings
+  void latestPrice; void appName;
+
+  return new Promise<{ blob: Blob; filename: string }>((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (!blob) { reject(new Error('canvas.toBlob failed')); return; }
+      resolve({ blob, filename: `${stockCode || stockName}_研判徽章.png` });
+    }, 'image/png');
+  });
+}

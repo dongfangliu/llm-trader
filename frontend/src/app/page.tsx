@@ -16,7 +16,7 @@ import {
   AnalysisHistoryItem,
 } from '@/lib/api';
 
-import { generateShareCardBlob, generateViralShareCardBlob, generatePredictionCardBlob, downloadBlob } from '@/lib/shareCard';
+import { generateShareCardBlob, generateViralShareCardBlob, generatePredictionCardBlob, generateStatementCardBlob, downloadBlob } from '@/lib/shareCard';
 import { Toast, useToast } from '@/components/Toast';
 
 /** Saved analysis record — persisted to localStorage as 'saved_records_v2' */
@@ -235,6 +235,11 @@ export default function HomePage() {
   const [sharePreviewOpen, setSharePreviewOpen] = useState(false);
   const [sharePreviewBlob, setSharePreviewBlob] = useState<Blob | null>(null);
   const [sharePreviewFilename, setSharePreviewFilename] = useState('');
+  const [sharePreviewArchiveBlob, setSharePreviewArchiveBlob] = useState<Blob | null>(null);
+  const [sharePreviewArchiveFilename, setSharePreviewArchiveFilename] = useState('');
+  const [sharePreviewStockMeta, setSharePreviewStockMeta] = useState<{ name: string; action: string; confidence: number | null } | null>(null);
+  const [sharePreviewActionColor, setSharePreviewActionColor] = useState('#60a5fa');
+  const [sharePreviewAnalyzedAt, setSharePreviewAnalyzedAt] = useState<string | null>(null);
 
   // Metadata for current result
   const [analyzeStartedAt, setAnalyzeStartedAt] = useState<string | null>(null);
@@ -320,7 +325,7 @@ export default function HomePage() {
     });
   };
 
-  // Share card — generates viral card, shows preview sheet
+  // Share card — generates social statement card + archive prediction card, shows dual-mode preview
   const handleShareViralCard = async (resultOverride?: typeof result, analyzedAtOverride?: string | null) => {
     const activeResult = resultOverride ?? result;
     if (!activeResult) return;
@@ -330,15 +335,14 @@ export default function HomePage() {
       const r = activeResult.result ?? {};
       const d = activeResult.data ?? {};
 
-      // Extract reason excerpt (≤60 chars, strip markdown)
       const rawReason: string = r.reason || r.market_diagnosis || '';
       const reasonExcerpt = rawReason.replace(/[*#`_>\[\]]/g, '').slice(0, 60).trim();
 
-      const { blob, filename } = await generatePredictionCardBlob({
+      const cardParams = {
         stockName:        d.name || d.symbol || '',
         stockCode:        d.symbol || '',
         market:           d.market || 'a',
-        action:           r.action || 'hold',
+        action:           (r.action || 'hold') as 'buy' | 'sell' | 'hold',
         confidence:       r.confidence ?? null,
         latestPrice:      d.latest_price ?? null,
         targetPrice:      r.target_price ?? null,
@@ -349,9 +353,24 @@ export default function HomePage() {
         tier,
         appName:          ENV_APP_NAME,
         appBaseUrl:       typeof window !== 'undefined' ? window.location.origin : undefined,
-      });
-      setSharePreviewBlob(blob);
-      setSharePreviewFilename(filename);
+      };
+
+      // Generate social card (statement) + archive card (prediction) in parallel
+      const [socialResult, archiveResult] = await Promise.all([
+        generateStatementCardBlob(cardParams),
+        generatePredictionCardBlob(cardParams),
+      ]);
+
+      const action: 'buy' | 'sell' | 'hold' = cardParams.action;
+      const actionColor = action === 'buy' ? '#EF4444' : action === 'sell' ? '#22C55E' : '#60A5FA';
+
+      setSharePreviewBlob(socialResult.blob);
+      setSharePreviewFilename(socialResult.filename);
+      setSharePreviewArchiveBlob(archiveResult.blob);
+      setSharePreviewArchiveFilename(archiveResult.filename);
+      setSharePreviewStockMeta({ name: cardParams.stockName, action, confidence: cardParams.confidence });
+      setSharePreviewActionColor(actionColor);
+      setSharePreviewAnalyzedAt(activeAnalyzedAt);
       setSharePreviewOpen(true);
     } finally {
       setShareLoading(false);
@@ -473,7 +492,7 @@ export default function HomePage() {
   }, [deviceId, user?.id]);
 
   useEffect(() => {
-    if (limits && limits.remaining <= 0 && tier !== 'premium') setShowUpgradeBanner(true);
+    if (limits && limits.remaining <= 0) setShowUpgradeBanner(true);
   }, [limits, tier]);
 
   useEffect(() => {
@@ -847,6 +866,7 @@ export default function HomePage() {
         onUpgrade={() => router.push('/upgrade')}
         onLogout={handleLogout}
         onLogin={() => router.push('/login')}
+        onSavedRecords={() => { setUserMenuOpen(false); setSavedRecordsOpen(true); }}
         onRegister={() => router.push('/register')}
       />
 
@@ -1003,84 +1023,325 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* ── Mobile iOS grouped sections layout ── */}
+                {/* ── Mobile layout: context-switches on quota state ── */}
                 <div className="mobile-only" style={{ flexDirection: 'column', width: '100%' }}>
-                  {/* ── Section 1: Title + Market selector ── */}
-                  <div style={{ background: 'white', borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
-                    <div style={{ padding: '16px 16px 10px' }}>
-                      <h2 style={{ fontSize: '24px', fontWeight: 700, letterSpacing: '-0.3px', color: '#000', margin: 0 }}>今天分析哪只？</h2>
-                    </div>
-                    <div style={{ padding: '4px 16px 14px' }}>
-                      <MarketSegmented value={market} onChange={setMarket} tier={tier} onLockedClick={() => router.push('/upgrade')} />
-                    </div>
-                  </div>
-                  {/* ── Section gap ── */}
-                  <div style={{ height: '28px', background: '#f2f2f7' }} />
-                  {/* ── Section 2: Symbol input + hot stocks ── */}
-                  <div style={{ background: 'white', borderTop: '0.5px solid rgba(60,60,67,0.12)', borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
-                    <div style={{ padding: '12px 16px 8px' }}>
-                      <input
-                        type="text"
-                        className="input"
-                        placeholder={market === 'a' ? '股票代码，如 600519' : market === 'hk' ? '港股代码，如 00700' : market === 'us' ? '美股代码，如 AAPL' : '期货代码，如 MA'}
-                        value={symbol}
-                        onChange={(e) => setSymbol(e.target.value)}
-                      />
-                      {symbolWarning && symbol.trim() && (
-                        <p style={{ fontSize: '13px', color: '#ff9500', marginTop: '6px' }}>⚠️ {symbolWarning}</p>
-                      )}
-                      {marketData && !symbolWarning && (
-                        <p style={{ fontSize: '13px', color: '#34c759', marginTop: '6px' }}>✓ 找到 {marketData.count} 条数据</p>
-                      )}
-                    </div>
-                    <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)', margin: '0 16px' }} />
-                    <div style={{ padding: '10px 16px 14px' }}>
-                      <HotStocksStrip stocks={hotRecommendations} onSelect={handleHotStockClick} onRefresh={handleRefreshHotRecommendations} />
-                    </div>
-                  </div>
-                  {/* ── Section gap ── */}
-                  <div style={{ height: '28px', background: '#f2f2f7' }} />
-                  {/* ── Section 3: Advanced settings ── */}
-                  <div style={{ background: 'white', borderTop: '0.5px solid rgba(60,60,67,0.12)', borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
-                    <AdvancedSettingsPanel
-                      period={period} setPeriod={setPeriod}
-                      multiPeriodEnabled={multiPeriodEnabled}
-                      setMultiPeriodEnabled={(v) => { setMultiPeriodEnabled(v); if (!v) setAuxiliaryPeriods([]); }}
-                      auxiliaryPeriods={auxiliaryPeriods} toggleAuxPeriod={toggleAuxPeriod}
-                      holdingQuantity={holdingQuantity} setHoldingQuantity={setHoldingQuantity}
-                      costPrice={costPrice} setCostPrice={setCostPrice}
-                      maxPosition={maxPosition} setMaxPosition={setMaxPosition}
-                      premiumInputsOpen={premiumInputsOpen} setPremiumInputsOpen={setPremiumInputsOpen}
-                      tier={tier} onUpgrade={() => router.push('/upgrade')}
-                    />
-                  </div>
-                  {/* ── Section gap + Upgrade teaser ── */}
-                  {tier !== 'premium' && (
-                    <>
-                      <div style={{ height: '28px', background: '#f2f2f7' }} />
-                      <div style={{ background: 'white', borderTop: '0.5px solid rgba(60,60,67,0.12)', borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
-                        <UpgradeTeaser tier={tier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                  {showUpgradeBanner ? (
+                    /* ══════════════════════════════════════════════════════
+                       QUOTA EXHAUSTED: focused upgrade gate — Jobs principle:
+                       one screen, one job, zero distractions.
+                       Fixed inset fills exactly header→bottom-nav, bypasses
+                       body padding-bottom so no gray void appears.
+                       ══════════════════════════════════════════════════════ */
+                    <div style={{
+                      position: 'fixed',
+                      top: 'var(--header-h-mobile, 52px)',
+                      left: 0,
+                      right: 0,
+                      bottom: 'var(--bottom-nav-h, 56px)',
+                      overflowY: 'auto',
+                      background: 'transparent',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      zIndex: 10,
+                    }}>
+                    {tier === 'premium' ? (
+                      /* ══════════════════════════════════════════
+                         PREMIUM TIER: daily limit reached, reset tomorrow
+                         No upsell — affirming, calm, informative
+                         ══════════════════════════════════════════ */
+                      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d0d1a', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', textAlign: 'center' }}>
+                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -60%)', width: '320px', height: '320px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
+                        {/* Crown badge */}
+                        <div style={{ width: 72, height: 72, borderRadius: '22px', background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px', boxShadow: '0 8px 32px rgba(124,58,237,0.4)', marginBottom: '24px', position: 'relative' }}>
+                          👑
+                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#7c3aed', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: '#7c3aed' }} />
+                          专业版会员
+                        </div>
+                        <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#fff', margin: '0 0 10px', letterSpacing: '-0.5px', lineHeight: 1.2 }}>
+                          今日研判已完成
+                        </h2>
+                        <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.45)', lineHeight: 1.7, maxWidth: '260px', margin: '0 0 36px' }}>
+                          今天的 {pricing?.premium?.daily_limit ?? 15} 次研判额度已用完<br/>明天凌晨将自动重置
+                        </p>
+                        {/* Reset time indicator */}
+                        <div style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: '14px', padding: '14px 24px', marginBottom: '80px' }}>
+                          <div style={{ fontSize: '12px', color: 'rgba(196,181,253,0.7)', marginBottom: '4px' }}>下次重置时间</div>
+                          <div style={{ fontSize: '18px', fontWeight: 700, color: '#c4b5fd' }}>明天 00:00</div>
+                        </div>
                       </div>
-                    </>
-                  )}
-                   {/* Bottom safe area padding — must clear FAB height */}
-                  <div style={{ height: '140px', background: '#f2f2f7' }} />
-                  {showUpgradeBanner && (
-                    <div style={{ padding: '12px 16px', borderTop: '0.5px solid rgba(60,60,67,0.18)', background: '#fff9f0' }}>
-                      {tier === 'basic' ? (
+                    ) : tier === 'basic' ? (
+                      /* ══════════════════════════════════════════
+                         BASIC TIER: single-focus premium upsell
+                         Dark immersive screen, premium feel
+                         ══════════════════════════════════════════ */
+                      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d0d1a' }}>
+                        {/* Dark hero */}
+                        <div style={{ padding: '32px 20px 24px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+                          <div style={{ position: 'absolute', top: '-60px', left: '50%', transform: 'translateX(-50%)', width: '300px', height: '300px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.22) 0%, transparent 70%)', pointerEvents: 'none' }} />
+                          <div style={{ position: 'absolute', top: 12, right: 20, fontSize: '11px', opacity: 0.25, color: '#c4b5fd' }}>✦</div>
+                          <div style={{ position: 'absolute', top: 36, right: 44, fontSize: '7px', opacity: 0.2, color: '#c4b5fd' }}>✦</div>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#7c3aed', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#7c3aed' }} />
+                            今日 {pricing?.basic?.daily_limit ?? 5} 次已用完
+                          </div>
+                          <h2 style={{ fontSize: '32px', fontWeight: 800, color: '#fff', margin: '0 0 8px', letterSpacing: '-0.5px', lineHeight: 1.15 }}>
+                            只差一步<br/><span style={{ color: '#c4b5fd' }}>解锁专业版</span>
+                          </h2>
+                          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', margin: 0, lineHeight: 1.6 }}>
+                            明天自动重置 · 或每天 {pricing?.premium?.daily_limit ?? 15} 次无限制研判
+                          </p>
+                        </div>
+
+                        {/* Premium showcase card */}
+                        <div style={{ flex: 1, padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' }}>
+                          <button
+                            onClick={() => router.push('/upgrade')}
+                            style={{
+                              width: '100%', borderRadius: '20px',
+                              border: '1.5px solid rgba(124,58,237,0.5)',
+                              background: 'linear-gradient(160deg, #1a0a3e 0%, #2d1b69 60%, #1e1b4b 100%)',
+                              cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                              padding: 0, overflow: 'hidden', textAlign: 'left',
+                              boxShadow: '0 8px 40px rgba(124,58,237,0.3)',
+                            }}
+                          >
+                            {/* Card top: big price + quota */}
+                            <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                              <div>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#a78bfa', marginBottom: '6px', letterSpacing: '0.3px' }}>👑 专业版</div>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                                  <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>¥</span>
+                                  <span style={{ fontSize: '46px', fontWeight: 900, color: '#fff', letterSpacing: '-2px', lineHeight: 1 }}>{pricing?.premium?.price ?? '49'}</span>
+                                  <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)', marginLeft: '2px' }}>/{pricing?.premium?.period ?? '月'}</span>
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', paddingBottom: '4px' }}>
+                                <div style={{ fontSize: '56px', fontWeight: 900, color: '#c4b5fd', letterSpacing: '-3px', lineHeight: 1 }}>{pricing?.premium?.daily_limit ?? 15}</div>
+                                <div style={{ fontSize: '12px', color: 'rgba(196,181,253,0.6)', marginTop: '-2px' }}>次/天</div>
+                              </div>
+                            </div>
+                            {/* Divider */}
+                            <div style={{ height: '0.5px', background: 'rgba(124,58,237,0.3)', margin: '0 20px' }} />
+                            {/* Exclusive features */}
+                            <div style={{ padding: '14px 20px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(167,139,250,0.6)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>专业版独享</div>
+                              {[
+                                { icon: '⚡', text: '每天 15 次完整深度研判' },
+                                { icon: '📍', text: '持仓参数个性化智能分析' },
+                                { icon: '🔄', text: '连续多标的无缝查询' },
+                                { icon: '🚀', text: '优先处理通道' },
+                              ].map(({ icon, text }, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <span style={{ width: 28, height: 28, borderRadius: '8px', background: 'rgba(124,58,237,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>{icon}</span>
+                                  <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{text}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </button>
+
+                          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.2)', textAlign: 'center', margin: '4px 0 72px' }}>支付宝 · 微信支付 · 订阅后即时生效</p>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ══════════════════════════════════════════
+                         FREE / GUEST TIER: value comparison
+                         Show what they're missing, drive upgrade
+                         ══════════════════════════════════════════ */
+                      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f2f2f7' }}>
+                        {/* Top header - white */}
+                        <div style={{ background: 'white', padding: '28px 20px 20px', flexShrink: 0 }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#fff2f2', borderRadius: '9999px', padding: '3px 10px', marginBottom: '10px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#ff3b30', letterSpacing: '0.5px', textTransform: 'uppercase' }}>今日限额</span>
+                          </div>
+                          <h2 style={{ fontSize: '30px', fontWeight: 800, color: '#1c1c1e', margin: '0 0 6px', letterSpacing: '-0.8px', lineHeight: 1.1 }}>
+                            免费次数用完了
+                          </h2>
+                          <p style={{ fontSize: '14px', color: '#8e8e93', margin: 0, lineHeight: 1.5 }}>
+                            明天自动重置 · 或升级继续分析
+                          </p>
+                        </div>
+
+                        <div style={{ height: '12px', flexShrink: 0 }} />
+
+                        {/* Two tier cards - full colored backgrounds */}
+                        <div style={{ padding: '0 14px', display: 'flex', gap: '10px', flexShrink: 0 }}>
+                          {/* Basic — blue gradient card */}
+                          <button
+                            onClick={() => router.push('/upgrade')}
+                            style={{
+                              flex: 1, borderRadius: '20px', overflow: 'hidden', padding: 0,
+                              border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                              background: 'none', boxShadow: '0 4px 20px rgba(0,122,255,0.2)',
+                              display: 'flex', flexDirection: 'column', textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ background: 'linear-gradient(160deg, #007aff 0%, #0a84ff 40%, #34aadc 100%)', padding: '18px 16px 14px' }}>
+                              <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.7)', letterSpacing: '0.5px', marginBottom: '6px' }}>📊 标准版</div>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px', marginBottom: '2px' }}>
+                                <span style={{ fontSize: '38px', fontWeight: 900, color: '#fff', letterSpacing: '-2px', lineHeight: 1 }}>{pricing?.basic?.daily_limit ?? 5}</span>
+                                <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginLeft: '3px' }}>次/天</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                                <span style={{ fontSize: '18px', fontWeight: 800, color: '#fff' }}>¥{pricing?.basic?.price ?? '19.9'}</span>
+                                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginLeft: '2px' }}>/{pricing?.basic?.period ?? '月'}</span>
+                              </div>
+                            </div>
+                            <div style={{ background: 'white', padding: '12px 14px', flex: 1 }}>
+                              {['完整深度研判', '目标价·止损', '全市场覆盖'].map((f, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: i < 2 ? '0.5px solid rgba(0,0,0,0.06)' : 'none' }}>
+                                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#34c759', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', color: 'white', fontWeight: 700, flexShrink: 0 }}>✓</span>
+                                  <span style={{ fontSize: '12px', color: '#1c1c1e' }}>{f}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </button>
+
+                          {/* Premium — dark purple card */}
+                          <button
+                            onClick={() => router.push('/upgrade')}
+                            style={{
+                              flex: 1, borderRadius: '20px', overflow: 'hidden', padding: 0,
+                              border: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                              background: 'none', boxShadow: '0 6px 24px rgba(124,58,237,0.28)',
+                              display: 'flex', flexDirection: 'column', textAlign: 'left',
+                              position: 'relative',
+                            }}
+                          >
+                            {/* "最高权益" badge */}
+                            <div style={{ position: 'absolute', top: '-1px', left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(90deg, #f59e0b, #fbbf24)', color: '#000', fontSize: '9px', fontWeight: 800, padding: '3px 10px', borderRadius: '0 0 9px 9px', whiteSpace: 'nowrap', letterSpacing: '0.3px', zIndex: 2 }}>
+                              最高权益
+                            </div>
+                            <div style={{ background: 'linear-gradient(160deg, #1e0a3c 0%, #3b1d8a 50%, #4f46e5 100%)', padding: '22px 16px 14px', position: 'relative', overflow: 'hidden' }}>
+                              <div style={{ position: 'absolute', top: 8, right: 12, fontSize: '9px', color: '#c4b5fd', opacity: 0.4 }}>✦</div>
+                              <div style={{ fontSize: '10px', fontWeight: 700, color: '#a78bfa', letterSpacing: '0.5px', marginBottom: '6px' }}>👑 专业版</div>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px', marginBottom: '2px' }}>
+                                <span style={{ fontSize: '38px', fontWeight: 900, color: '#fff', letterSpacing: '-2px', lineHeight: 1 }}>{pricing?.premium?.daily_limit ?? 15}</span>
+                                <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginLeft: '3px' }}>次/天</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '1px' }}>
+                                <span style={{ fontSize: '18px', fontWeight: 800, color: '#c4b5fd' }}>¥{pricing?.premium?.price ?? '49'}</span>
+                                <span style={{ fontSize: '11px', color: 'rgba(196,181,253,0.5)', marginLeft: '2px' }}>/{pricing?.premium?.period ?? '月'}</span>
+                              </div>
+                            </div>
+                            <div style={{ background: '#1a1040', padding: '12px 14px', flex: 1 }}>
+                              {['完整深度研判', '持仓智能分析', '多标的查询'].map((f, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '5px 0', borderBottom: i < 2 ? '0.5px solid rgba(124,58,237,0.15)' : 'none' }}>
+                                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', color: 'white', fontWeight: 700, flexShrink: 0 }}>✓</span>
+                                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.75)' }}>{f}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Free tier comparison strip */}
+                        <div style={{ padding: '14px 14px 0', flexShrink: 0 }}>
+                          <div style={{ background: 'white', borderRadius: '14px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '9px', background: '#f2f2f7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>🆓</div>
+                            <div style={{ flex: 1 }}>
+                              <span style={{ fontSize: '13px', color: '#8e8e93' }}>免费版：每天 </span>
+                              <span style={{ fontSize: '13px', fontWeight: 700, color: '#1c1c1e' }}>{pricing?.free?.daily_limit ?? 1} 次</span>
+                              <span style={{ fontSize: '13px', color: '#8e8e93' }}>，仅基础分析</span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#aeaeb2' }}>当前</span>
+                          </div>
+                        </div>
+
+                        <div style={{ flex: 1, minHeight: 0 }} />
+                        <div style={{ padding: '0 14px 80px', textAlign: 'center' }}>
+                          <p style={{ fontSize: '12px', color: '#aeaeb2', margin: 0 }}>支付宝 · 微信支付 · 即时生效</p>
+                        </div>
+                      </div>
+                    )}
+                    </div>
+                  ) : (
+                    /* ══════════════════════════════════════════════════════
+                       NORMAL STATE: unified single-surface design
+                       No gray gaps — one white canvas, hairline dividers.
+                       ══════════════════════════════════════════════════════ */
+                    <>
+                      {/* ── Hero: Title + Market ── */}
+                      <div style={{ background: 'white', padding: '22px 16px 16px' }}>
+                        <h2 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.8px', color: '#1c1c1e', margin: '0 0 16px', lineHeight: 1.1 }}>
+                          今天分析哪只？
+                        </h2>
+                        <MarketSegmented value={market} onChange={setMarket} tier={tier} onLockedClick={() => router.push('/upgrade')} />
+                      </div>
+
+                      {/* ── Hairline divider ── */}
+                      <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)' }} />
+
+                      {/* ── Input area ── */}
+                      <div style={{ background: 'white', padding: '14px 16px 0' }}>
+                        {/* iOS search-style input */}
+                        <div style={{ position: 'relative' }}>
+                          <svg
+                            width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="#aeaeb2" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                            style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+                          >
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                          </svg>
+                          <input
+                            type="text"
+                            placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
+                            value={symbol}
+                            onChange={(e) => setSymbol(e.target.value)}
+                            style={{
+                              width: '100%', height: '50px',
+                              background: '#f2f2f7', border: 'none', outline: 'none',
+                              borderRadius: '13px', padding: '0 16px 0 42px',
+                              fontSize: '16px', color: '#1c1c1e',
+                              WebkitAppearance: 'none',
+                            }}
+                          />
+                        </div>
+                        {symbolWarning && symbol.trim() && (
+                          <p style={{ fontSize: '13px', color: '#ff9500', marginTop: '8px', marginLeft: '4px' }}>⚠️ {symbolWarning}</p>
+                        )}
+                        {marketData && !symbolWarning && symbol.trim() && (
+                          <p style={{ fontSize: '13px', color: '#34c759', marginTop: '8px', marginLeft: '4px' }}>✓ 找到 {marketData.count} 条数据</p>
+                        )}
+                      </div>
+
+                      {/* ── Hot stocks ── */}
+                      <div style={{ background: 'white', padding: '12px 16px 16px' }}>
+                        <HotStocksStrip stocks={hotRecommendations} onSelect={handleHotStockClick} onRefresh={handleRefreshHotRecommendations} />
+                      </div>
+
+                      {/* ── Hairline divider ── */}
+                      <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)' }} />
+
+                      {/* ── Advanced settings ── */}
+                      <div style={{ background: 'white' }}>
+                        <AdvancedSettingsPanel
+                          period={period} setPeriod={setPeriod}
+                          multiPeriodEnabled={multiPeriodEnabled}
+                          setMultiPeriodEnabled={(v) => { setMultiPeriodEnabled(v); if (!v) setAuxiliaryPeriods([]); }}
+                          auxiliaryPeriods={auxiliaryPeriods} toggleAuxPeriod={toggleAuxPeriod}
+                          holdingQuantity={holdingQuantity} setHoldingQuantity={setHoldingQuantity}
+                          costPrice={costPrice} setCostPrice={setCostPrice}
+                          maxPosition={maxPosition} setMaxPosition={setMaxPosition}
+                          premiumInputsOpen={premiumInputsOpen} setPremiumInputsOpen={setPremiumInputsOpen}
+                          tier={tier} onUpgrade={() => router.push('/upgrade')}
+                        />
+                      </div>
+
+                      {/* ── Upgrade teaser ── */}
+                      {tier !== 'premium' && (
                         <>
-                          <p style={{ fontWeight: 600, marginBottom: '4px', fontSize: '15px' }}>今日次数已用完</p>
-                          <p style={{ fontSize: '13px', color: '#8e8e93', marginBottom: '10px' }}>升级专业版，每天 {pricing?.premium?.daily_limit ?? 15} 次</p>
-                          <button className="btn btn-primary" onClick={() => router.push('/upgrade')} style={{ width: '100%', background: '#7c3aed', border: 'none' }}>升级专业版</button>
-                        </>
-                      ) : (
-                        <>
-                          <p style={{ fontWeight: 600, marginBottom: '4px', fontSize: '15px' }}>今日次数已用完</p>
-                          <p style={{ fontSize: '13px', color: '#8e8e93', marginBottom: '10px' }}>升级标准版 ¥{pricing?.basic?.price ?? '19.9'}/月</p>
-                          <button className="btn btn-primary" onClick={() => router.push('/upgrade')} style={{ width: '100%', background: '#ff9500', border: 'none' }}>立即升级</button>
+                          <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)' }} />
+                          <div style={{ background: 'white' }}>
+                            <UpgradeTeaser tier={tier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                          </div>
                         </>
                       )}
-                    </div>
+
+                      {/* Bottom clearance for FAB + bottom nav */}
+                      <div style={{ height: 'calc(var(--btn-h, 52px) + var(--bottom-nav-h, 56px) + 20px)', background: 'white', flexShrink: 0 }} />
+                    </>
                   )}
                 </div>
               </div>
@@ -1143,133 +1404,160 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* Mobile FAB: analyze button */}
+              {/* Mobile FAB: analyze button — upgrades to CTA when quota exhausted */}
               <div className="mobile-only fab-container">
                 {error && <div className="error" style={{ marginBottom: '8px', fontSize: '13px', borderRadius: '8px' }}>{error}</div>}
-                <button
-                  className="fab-btn"
-                  onClick={handleAnalyze}
-                  disabled={!symbol.trim()}
-                >
-                  {tier === 'premium' && premiumPendingCount > 0 ? `分析中（${premiumPendingCount}）` : '开始分析'}
-                </button>
+                {showUpgradeBanner ? (
+                  tier === 'premium' ? (
+                    <button
+                      className="fab-btn"
+                      disabled
+                      style={{ background: 'rgba(124,58,237,0.25)', color: 'rgba(196,181,253,0.6)', cursor: 'default', opacity: 1 }}
+                    >
+                      明天重置 · 敬请期待
+                    </button>
+                  ) : (
+                    <button
+                      className="fab-btn"
+                      onClick={() => router.push('/upgrade')}
+                      style={{
+                        background: tier === 'basic'
+                          ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
+                          : 'linear-gradient(135deg, #ff9500, #ff6b00)',
+                        opacity: 1,
+                      }}
+                    >
+                      {tier === 'basic' ? '升级专业版 →' : '立即升级 →'}
+                    </button>
+                  )
+                ) : (
+                  <button
+                    className="fab-btn"
+                    onClick={handleAnalyze}
+                    disabled={!symbol.trim()}
+                  >
+                    {tier === 'premium' && premiumPendingCount > 0 ? `分析中（${premiumPendingCount}）` : '开始分析'}
+                  </button>
+                )}
               </div>
             </div>
           )}
 
           {/* ═══ LOADING PANEL ═══ */}
           {activePanel === 'loading' && (
-            <div>
-              {/* Mobile narrative loading — V7 cinema-grade */}
+            <>
+              {/* Mobile narrative loading — full-screen immersive takeover */}
               <div className="mobile-only">
-                <div style={{ minHeight: '100dvh', background: '#f2f2f7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 0 2rem' }}>
+                <div style={{
+                  position: 'fixed',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  zIndex: 300,
+                  background: '#ffffff',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden',
+                  textAlign: 'center',
+                }}>
+                  {/* Breathing ambient glow */}
+                  <div style={{
+                    position: 'absolute',
+                    width: '360px', height: '360px',
+                    background: 'radial-gradient(circle at center, rgba(0,122,255,0.07) 0%, transparent 70%)',
+                    borderRadius: '50%',
+                    top: '50%', left: '50%',
+                    transform: 'translate(-50%, -55%)',
+                    animation: 'loading-breathe 3.5s ease-in-out infinite',
+                    pointerEvents: 'none',
+                  }} />
+
                   {analyzeTimedOut ? (
                     /* ── Timeout state ── */
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2.5rem 2rem', textAlign: 'center' }}>
-                      <div style={{ fontSize: '3rem', marginBottom: '1rem', lineHeight: 1 }}>⏰</div>
-                      <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b45309', marginBottom: '0.5rem', margin: '0 0 8px' }}>分析时间较长</h2>
-                      <p style={{ fontSize: '0.9rem', color: '#636366', lineHeight: 1.7, marginBottom: '1.75rem', margin: '0 0 28px' }}>
-                        AI 服务响应超过 3 分钟，可能是服务繁忙。<br />可以等待继续，或返回重试。
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', maxWidth: 300, padding: '0 40px', position: 'relative', zIndex: 1 }}>
+                      <div style={{ fontSize: '48px', lineHeight: 1 }}>⏰</div>
+                      <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1c1c1e', margin: 0 }}>分析时间较长</h2>
+                      <p style={{ fontSize: '15px', color: '#8e8e93', lineHeight: 1.75, margin: 0 }}>
+                        AI 服务响应超过 3 分钟<br />可等待继续，或返回重试
                       </p>
                       <button
                         onClick={handleBackToAnalyze}
-                        style={{ width: '100%', maxWidth: 280, padding: '13px 0', borderRadius: 12, background: '#f2f2f7', border: '1px solid #e5e5ea', fontSize: '15px', fontWeight: 600, color: '#1c1c1e', cursor: 'pointer' }}
+                        style={{ marginTop: '8px', padding: '14px 40px', borderRadius: 16, background: '#f2f2f7', border: 'none', fontSize: '16px', fontWeight: 600, color: '#1c1c1e', cursor: 'pointer' }}
                       >
                         返回重试
                       </button>
                     </div>
                   ) : (
                     /* ── Normal loading state ── */
-                    <>
-                      {/* Hero card: symbol + subtitle */}
-                      <div style={{ background: '#ffffff', borderRadius: 16, padding: '24px 24px 20px', margin: '0 16px 20px', width: 'calc(100% - 32px)', boxSizing: 'border-box', boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}>
-                        <div style={{ fontSize: '40px', fontWeight: 800, letterSpacing: '-0.5px', color: '#1c1c1e', lineHeight: 1.1 }}>
-                          {analyzingSymbol}
-                        </div>
-                        <div style={{ fontSize: '13px', color: '#8e8e93', marginTop: '4px' }}>正在深度研判</div>
+                    <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 32px', width: '100%' }}>
+                      {/* Stock symbol — the hero */}
+                      <div style={{
+                        fontSize: '72px', fontWeight: 900, letterSpacing: '-3px',
+                        color: '#1c1c1e',
+                        lineHeight: 1, marginBottom: '10px',
+                        animation: 'loading-symbol-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                      }}>
+                        {analyzingSymbol}
                       </div>
 
-                      {/* Step pipeline */}
-                      {(() => {
-                        const steps = [
-                          { icon: '📥', label: '数据获取' },
-                          { icon: '📊', label: '指标计算' },
-                          { icon: '🧠', label: 'AI建模' },
-                          { icon: '📝', label: '生成报告' },
-                        ];
-                        const completedSteps = Math.min(Math.floor(narrativeIdx / 2), 3);
-                        const activeStep = completedSteps < 4 ? completedSteps : 3;
-                        return (
-                          <div style={{ width: 'calc(100% - 32px)', margin: '0 16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            {steps.map((step, i) => {
-                              const isCompleted = i < completedSteps;
-                              const isActive = i === activeStep && completedSteps < 4;
-                              const isPending = !isCompleted && !isActive;
-                              const lineColor = i < completedSteps ? '#34c759' : '#e5e5ea';
-                              return (
-                                <div key={step.label} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? '1 1 auto' : '0 0 auto' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                    {/* Circle indicator */}
-                                    <div style={{
-                                      width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      background: isCompleted ? '#34c759' : isActive ? '#007aff' : '#e5e5ea',
-                                      fontSize: isCompleted ? '15px' : '16px',
-                                      transition: 'background 0.4s ease',
-                                    }}>
-                                      {isCompleted ? '✓' : step.icon}
-                                    </div>
-                                    {/* Label */}
-                                    <div style={{
-                                      fontSize: '10px', fontWeight: 500,
-                                      color: isCompleted ? '#34c759' : isActive ? '#007aff' : '#c7c7cc',
-                                      transition: 'color 0.4s ease', whiteSpace: 'nowrap',
-                                    }}>
-                                      {step.label}
-                                    </div>
-                                  </div>
-                                  {/* Connector line */}
-                                  {i < steps.length - 1 && (
-                                    <div style={{ flex: 1, height: 2, margin: '0 4px', marginBottom: '18px', background: lineColor, transition: 'background 0.4s ease', borderRadius: 1 }} />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
+                      {/* Status label */}
+                      <div style={{
+                        fontSize: '13px', fontWeight: 500,
+                        color: '#aeaeb2',
+                        letterSpacing: '2.5px', textTransform: 'uppercase',
+                        marginBottom: '64px',
+                        animation: 'loading-subtitle-in 0.6s 0.15s ease-out both',
+                      }}>
+                        深度研判中
+                      </div>
 
-                      {/* Narrative message */}
-                      <div style={{ width: 'calc(100% - 48px)', margin: '0 24px 0', textAlign: 'center' }}>
-                        <p
-                          key={narrativeIdx}
-                          style={{ fontSize: '17px', fontWeight: 500, color: '#1c1c1e', lineHeight: 1.5, margin: 0, animation: 'narrative-fade 0.4s ease-out', minHeight: '1.6em' }}
+                      {/* Narrative */}
+                      <p
+                        key={narrativeIdx}
+                        style={{
+                          fontSize: '15px', fontWeight: 500,
+                          color: '#3c3c43',
+                          lineHeight: 1.7, margin: '0 0 28px',
+                          animation: 'narrative-fade 0.35s ease-out',
+                          minHeight: '1.7em',
+                        }}
+                      >
+                        {NARRATIVE_TEXTS[narrativeIdx]}
+                      </p>
+
+                      {/* Minimal blue dots */}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} style={{
+                            width: '7px', height: '7px', borderRadius: '50%',
+                            background: '#007aff',
+                            opacity: 0.4,
+                            animation: `loading-dot 1.4s ${i * 0.22}s ease-in-out infinite`,
+                          }} />
+                        ))}
+                      </div>
+
+                      {tier === 'premium' && (
+                        <button
+                          onClick={() => setActivePanel('analyze')}
+                          style={{ background: 'none', border: 'none', fontSize: '14px', fontWeight: 500, color: '#aeaeb2', cursor: 'pointer', marginTop: '48px', padding: '4px 0' }}
                         >
-                          {NARRATIVE_TEXTS[narrativeIdx]}
-                        </p>
-                      </div>
+                          继续下一个分析 →
+                        </button>
+                      )}
 
-                      {/* Progress bar */}
-                      <div style={{ width: 'calc(100% - 48px)', height: 3, background: '#e5e5ea', borderRadius: 9999, overflow: 'hidden', margin: '20px 24px 0' }}>
-                        <div style={{ height: '100%', background: '#007aff', borderRadius: 9999, animation: 'narrative-progress 3.6s ease-in-out infinite' }} />
-                      </div>
-
-                      {/* Footer */}
-                      <div style={{ marginTop: '16px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                        <p style={{ fontSize: '12px', color: '#aeaeb2', margin: 0 }}>预计耗时 1–3 分钟</p>
-                        {premiumPendingCount > 1 && (
-                          <p style={{ fontSize: '12px', color: '#aeaeb2', margin: 0 }}>队列中还有 {premiumPendingCount - 1} 个分析任务</p>
-                        )}
-                        {tier === 'premium' && (
-                          <button
-                            onClick={() => setActivePanel('analyze')}
-                            style={{ background: 'none', border: 'none', fontSize: '15px', fontWeight: 500, color: '#007aff', cursor: 'pointer', marginTop: '4px', padding: '4px 0' }}
-                          >
-                            继续下一个分析 →
-                          </button>
-                        )}
-                      </div>
-                    </>
+                    </div>
                   )}
+
+                  {/* Footer — direct child of fixed container so bottom:40px is correct */}
+                  <div style={{
+                    position: 'absolute', bottom: '40px', left: 0, right: 0,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                    pointerEvents: 'none',
+                  }}>
+                    <p style={{ fontSize: '12px', color: '#c7c7cc', margin: 0 }}>预计耗时 1–3 分钟</p>
+                    {premiumPendingCount > 1 && (
+                      <p style={{ fontSize: '12px', color: '#c7c7cc', margin: 0 }}>队列中还有 {premiumPendingCount - 1} 个任务</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1303,7 +1591,7 @@ export default function HomePage() {
                   )}
                 </div>
               </div>
-            </div>
+            </>
           )}
 
           {/* ═══ RESULT PANEL ═══ */}
@@ -1435,6 +1723,27 @@ export default function HomePage() {
                     onOpenHistorySheet={() => setHistorySheetOpen(true)}
                     isSaved={isSavedRecord(selectedHistoryId ?? `${result?.data?.symbol ?? ''}_${analyzeStartedAt ?? ''}`)}
                   />
+                  {/* Mobile: re-open button when sheet is dismissed */}
+                  {!resultSheetOpen && (
+                    <div className="mobile-only" style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: 16, right: 16, zIndex: 50 }}>
+                      <button
+                        onClick={() => setResultSheetOpen(true)}
+                        style={{
+                          width: '100%', height: 52, borderRadius: 14,
+                          background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
+                          color: 'white', border: 'none', fontSize: '16px',
+                          fontWeight: 700, cursor: 'pointer',
+                          boxShadow: '0 4px 20px rgba(37,99,235,0.45)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                        查看 {result?.data?.name || result?.data?.symbol} 的分析结果
+                      </button>
+                    </div>
+                  )}
 
                   <div className="card result-panel-card desktop-only">
                     {/* Desktop: original result header */}
@@ -1840,7 +2149,8 @@ export default function HomePage() {
                   )}
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '2rem 1.5rem' }}>
+                /* Desktop only — mobile empty state is handled by .rg-screen above */
+                <div className="desktop-only" style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '2rem 1.5rem' }}>
                   <div style={{ fontSize: '4rem', marginBottom: '1rem', lineHeight: 1 }}>📊</div>
                   <div style={{ fontSize: '20px', fontWeight: 700, color: '#1c1c1e', marginBottom: '8px', textAlign: 'center' }}>尚无分析结果</div>
                   <div style={{ fontSize: '15px', color: '#8e8e93', marginBottom: '2rem', textAlign: 'center', lineHeight: 1.5 }}>输入股票代码，让 AI 判断<br/>现在是买入、卖出还是等待</div>
@@ -1891,6 +2201,11 @@ export default function HomePage() {
         blob={sharePreviewBlob}
         filename={sharePreviewFilename}
         onClose={() => setSharePreviewOpen(false)}
+        actionColor={sharePreviewActionColor}
+        stockMeta={sharePreviewStockMeta ?? undefined}
+        archiveBlob={sharePreviewArchiveBlob}
+        archiveFilename={sharePreviewArchiveFilename}
+        analyzedAt={sharePreviewAnalyzedAt}
       />
 
       <SavedRecordsSheet
