@@ -208,7 +208,66 @@ docker compose logs -f frontend   # 前端日志
 
 ---
 
-## 第七步：配置 Nginx 反向代理
+## 第七步：配置域名（Cloudflare）
+
+### 1. 添加 DNS A 记录
+
+登录 Cloudflare → 选择你的域名 → **DNS** → **Add record**：
+
+| Type | Name | IPv4 address | Proxy status |
+|------|------|-------------|--------------|
+| A | `@` | 你的阿里云服务器 IP | 🟠 Proxied（推荐）|
+
+> 如需 `www` 子域，再添加一条 `CNAME www → @`。
+
+### 2. 设置 SSL 模式
+
+Cloudflare → **SSL/TLS → Overview** → 选择 **Full**（不要选 Flexible）
+
+```
+用户 ←HTTPS→ Cloudflare ←HTTPS→ 你的 Nginx
+```
+
+> `Flexible` 模式下 Cloudflare 到服务器段是明文 HTTP，存在安全风险，不要使用。
+
+### 3. 申请 SSL 证书（二选一）
+
+**方式 A：Let's Encrypt（宝塔自动续期）**
+
+1. 暂时将 Cloudflare DNS 的 Proxy 改为 **DNS only**（灰云）
+2. 宝塔面板 → 网站 → 该站点 → **SSL** → Let's Encrypt → 勾选域名 → **申请**
+3. 申请成功后，将 Cloudflare Proxy 改回 **Proxied**（橙云）
+
+**方式 B：Cloudflare Origin Certificate（推荐，15 年有效期）**
+
+1. Cloudflare → **SSL/TLS → Origin Server → Create Certificate** → 下载 `.pem` 和 `.key`
+2. 将文件上传到服务器（如 `/etc/nginx/ssl/`）
+3. 在第八步 Nginx 配置中将证书路径替换为：
+   ```nginx
+   ssl_certificate     /etc/nginx/ssl/cloudflare-origin.pem;
+   ssl_certificate_key /etc/nginx/ssl/cloudflare-origin.key;
+   ```
+
+### 4. 更新环境变量
+
+```bash
+vim /opt/trader/backend/.env
+```
+
+```env
+ALLOWED_ORIGINS=https://yourdomain.com
+APP_BASE_URL=https://yourdomain.com
+```
+
+重启 backend 使配置生效：
+
+```bash
+cd /opt/trader && docker compose restart backend
+```
+
+---
+
+## 第八步：配置 Nginx 反向代理
 
 在宝塔面板 → **网站** → **添加站点**，填入你的域名。
 
@@ -267,7 +326,7 @@ nginx -t && nginx -s reload
 
 ---
 
-## 第八步：验证部署
+## 第九步：验证部署
 
 ```bash
 # 检查后端健康状态
@@ -286,7 +345,7 @@ curl -I https://yourdomain.com
 
 ---
 
-## 第九步：设置开机自启
+## 第十步：设置开机自启
 
 ```bash
 # Docker 服务本身已设置开机自启（第二步已完成）
