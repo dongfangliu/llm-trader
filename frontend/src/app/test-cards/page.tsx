@@ -14,7 +14,7 @@ const MOCK_BASE_STATIC = {
   opportunityGrade: 'A',
   reasonExcerpt: '技术形态突破关键压力位，MACD金叉共振，量能持续放大',
   analyzedAt: new Date().toISOString(),
-  appName: process.env.NEXT_PUBLIC_APP_NAME || 'AI股票分析',
+  appName: 'AI股票分析',
   marketDiagnosis: '日线级别MACD金叉共振，量能持续放大突破关键压力位，布林带开口向上，短期强势格局确立',
   opportunityAssessment: '技术面形态良好，A级机会评级，目标上行空间约13%，风险收益比达3.7:1',
   riskAnalysis: '止损位设于1580，下行风险约5.9%，若破位需及时离场控制损失',

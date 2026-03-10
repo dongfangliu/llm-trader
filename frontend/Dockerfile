@@ -15,6 +15,11 @@ COPY . .
 # Ensure public directory exists (Next.js doesn't require it, but COPY below does)
 RUN mkdir -p /app/public
 
+# BACKEND_URL is read by next.config.js rewrites() at build time.
+# Default to the Docker-internal service name; override with --build-arg if needed.
+ARG BACKEND_URL=http://backend:8000
+ENV BACKEND_URL=$BACKEND_URL
+
 # Build the application
 RUN npm run build
 

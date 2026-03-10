@@ -83,15 +83,8 @@ async def lifespan(app: FastAPI):
     _startup_checks()
     await init_db()
     _load_settings_cache()
-    # Load pricing.features from DB into cache
     async with async_session() as db:
-        row = await db.get(SystemSetting, "pricing")
-        if row:
-            try:
-                db_pricing = json.loads(row.value)
-                _settings_cache["pricing"]["features"] = db_pricing.get("features", [])
-            except Exception:
-                pass
+        await _apply_db_overrides(db)
     # Preload stock name mappings in background — non-blocking, refreshes daily
     asyncio.create_task(preload_names())
     # Start embedded data collector when explicitly enabled (dev convenience).
@@ -333,6 +326,30 @@ def _apply_quota_settings():
     USER_LIMITS["free"] = int(p.get("free_daily", 3))
     USER_LIMITS["basic"] = int(p.get("basic", {}).get("daily", 5))
     USER_LIMITS["premium"] = int(p.get("premium", {}).get("daily", 15))
+
+
+async def _apply_db_overrides(db: AsyncSession):
+    """Load admin-saved settings from DB and overlay on top of env-var defaults."""
+    for section in ("llm", "afdian", "email", "app", "pricing"):
+        row = await db.get(SystemSetting, section)
+        if not row:
+            continue
+        try:
+            data = json.loads(row.value)
+        except Exception:
+            continue
+        if section == "pricing":
+            cache_p = _settings_cache["pricing"]
+            for k, v in data.items():
+                if k == "features":
+                    cache_p["features"] = v
+                elif k in ("basic", "premium"):
+                    cache_p[k].update(v)
+                else:
+                    cache_p[k] = v
+        elif section in _settings_cache:
+            _settings_cache[section].update(data)
+    _apply_quota_settings()
 
 
 def _llm_config() -> dict:
@@ -2124,13 +2141,11 @@ async def admin_update_settings(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(_verify_admin),
 ):
-    """Update one or more settings sections and persist to .env file (admin only)."""
-    from dotenv import set_key, find_dotenv
-    from src.database.db import Settings as AppSettings
-    global settings, _settings_cache
+    """Update settings sections and persist to database (admin only)."""
+    global _settings_cache
 
     _SENSITIVE_KEYS = {"api_key", "api_token", "resend_api_key", "webhook_token"}
-    env_file = find_dotenv(usecwd=True) or ".env"
+    _SENTINEL = {"***REDACTED***", "__CONFIGURED__", ""}
     updated_sections = []
 
     for section, data in body.items():
@@ -2139,85 +2154,57 @@ async def admin_update_settings(
         if not isinstance(data, dict):
             continue
 
-        if section == "pricing" and "features" in data:
-            # Save features array to DB only
-            row = await db.get(SystemSetting, "pricing")
-            features = data.get("features", [])
-            pricing_db = {"features": features}
-            if row:
-                row.value = json.dumps(pricing_db)
-                row.updated_at = datetime.utcnow()
-            else:
-                db.add(SystemSetting(key="pricing", value=json.dumps(pricing_db)))
-            _settings_cache["pricing"]["features"] = features
+        row = await db.get(SystemSetting, section)
+        existing: dict = {}
+        if row:
+            try:
+                existing = json.loads(row.value)
+            except Exception:
+                pass
 
-        # Write flat settings to .env
-        section_map = _SETTINGS_ENV_MAP.get(section, {})
-        if section == "quota":
-            guest = data.get("guest", {})
-            user = data.get("user", {})
-            flat = {
-                "guest_free": guest.get("free"),
-                "guest_basic": guest.get("basic"),
-                "guest_premium": guest.get("premium"),
-                "user_free": user.get("free"),
-                "user_basic": user.get("basic"),
-                "user_premium": user.get("premium"),
-            }
-            for fk, ev in _SETTINGS_ENV_MAP["quota"].items():
-                val = flat.get(fk)
-                if val is not None:
-                    set_key(env_file, ev, str(val))
-        else:
-            for field_key, env_key in section_map.items():
-                val = data.get(field_key)
-                if val is None:
-                    continue
-                if field_key in _SENSITIVE_KEYS and val in ("***REDACTED***", "__CONFIGURED__", ""):
-                    continue
-                set_key(env_file, env_key, str(val))
-
-        # For pricing non-features fields, write to .env too
         if section == "pricing":
-            pricing_map = {
-                "period": "PRICING_PERIOD",
-                "basic_price": None,
-                "basic_daily": None,
-                "premium_price": None,
-                "premium_daily": None,
-            }
             basic = data.get("basic", {})
             premium = data.get("premium", {})
             if data.get("period") is not None:
-                set_key(env_file, "PRICING_PERIOD", str(data["period"]))
+                existing["period"] = data["period"]
+            if data.get("guest_daily") is not None:
+                existing["guest_daily"] = data["guest_daily"]
+            if data.get("free_daily") is not None:
+                existing["free_daily"] = data["free_daily"]
             if basic.get("price") is not None:
-                set_key(env_file, "PRICING_BASIC_PRICE", str(basic["price"]))
+                existing.setdefault("basic", {})["price"] = basic["price"]
             if basic.get("daily") is not None:
-                set_key(env_file, "PRICING_BASIC_DAILY", str(basic["daily"]))
+                existing.setdefault("basic", {})["daily"] = basic["daily"]
             if premium.get("price") is not None:
-                set_key(env_file, "PRICING_PREMIUM_PRICE", str(premium["price"]))
+                existing.setdefault("premium", {})["price"] = premium["price"]
             if premium.get("daily") is not None:
-                set_key(env_file, "PRICING_PREMIUM_DAILY", str(premium["daily"]))
+                existing.setdefault("premium", {})["daily"] = premium["daily"]
+            if "features" in data:
+                existing["features"] = data["features"]
+        else:
+            for field_key in _SETTINGS_ENV_MAP.get(section, {}):
+                val = data.get(field_key)
+                if val is None:
+                    continue
+                if field_key in _SENSITIVE_KEYS and val in _SENTINEL:
+                    continue
+                existing[field_key] = val
+
+        if row:
+            row.value = json.dumps(existing)
+            row.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemSetting(key=section, value=json.dumps(existing)))
 
         updated_sections.append(section)
 
     await db.commit()
 
-    # Reload settings from updated .env
-    from dotenv import load_dotenv
-    load_dotenv(env_file, override=True)
-    settings = AppSettings()
+    # Reload: env-var defaults first, then DB overrides
     _load_settings_cache()
-    # Reload pricing.features into cache from DB
-    row = await db.get(SystemSetting, "pricing")
-    if row:
-        try:
-            db_pricing = json.loads(row.value)
-            _settings_cache["pricing"]["features"] = db_pricing.get("features", [])
-        except Exception:
-            pass
+    await _apply_db_overrides(db)
 
-    logger.info("admin updated env settings: %s", updated_sections)
+    logger.info("admin updated settings (DB): %s", updated_sections)
     return {"success": True, "updated": updated_sections}
 
 

@@ -57,7 +57,6 @@ import SharePreviewSheet from '@/components/SharePreviewSheet';
 import SavedRecordsSheet from '@/components/SavedRecordsSheet';
 import GuestTrialEndedScreen from '@/components/GuestTrialEndedScreen';
 
-const ENV_APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || '';
 
 const HOT_STOCKS = [
   { code: '600519', name: '贵州茅台', market: 'a' },
@@ -201,7 +200,8 @@ export default function HomePage() {
     error, setError,
   } = useAnalysisStore();
 
-  const [appName, setAppName] = useState(ENV_APP_NAME);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [appName, setAppName] = useState('');
   const [limits, setLimits] = useState<any>(null);
   const [marketData, setMarketData] = useState<any>(null);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
@@ -467,8 +467,10 @@ export default function HomePage() {
     // Set deviceId immediately (sync localStorage) so the page renders right away
     const id = getOrCreateDeviceId();
     setDeviceId(id);
-    // Auth check runs in parallel without blocking render
-    checkAuth().catch(() => setError('初始化失败，请刷新页面重试'));
+    // Auth check — redirect to login if not authenticated
+    checkAuth()
+      .catch(() => setError('初始化失败，请刷新页面重试'))
+      .finally(() => setAuthChecked(true));
 
     getAppConfig()
       .then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); })
@@ -804,12 +806,18 @@ export default function HomePage() {
     });
   };
 
-  if (!user && !deviceId) {
+  // Show spinner while verifying auth; redirect to login if not authenticated
+  if (!authChecked) {
     return (
       <div className="app-shell" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <div className="spinner"></div>
       </div>
     );
+  }
+
+  if (!user) {
+    router.replace('/login');
+    return null;
   }
 
   const tierLabel = tier === 'free' ? '免费版' : tier === 'basic' ? '标准版' : '专业版';

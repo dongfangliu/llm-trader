@@ -45,7 +45,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [resendStatus, setResendStatus] = useState('');
-  const [appName, setAppName] = useState(process.env.NEXT_PUBLIC_APP_NAME || '');
+  const [appName, setAppName] = useState('');
 
   useEffect(() => {
     getAppConfig().then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); }).catch(() => {});
@@ -83,28 +83,6 @@ export default function LoginPage() {
       alignItems: 'center',
       padding: '0 0 40px',
     }}>
-      {/* ── Back button ── */}
-      <div style={{
-        width: '100%', maxWidth: 480,
-        padding: '12px 8px 0',
-        display: 'flex', alignItems: 'center',
-      }}>
-        <button
-          onClick={() => router.push('/')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 4,
-            color: '#007aff', fontSize: 17, padding: '8px',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          <svg width="10" height="17" viewBox="0 0 10 17" fill="none">
-            <path d="M8.5 1.5L1.5 8.5L8.5 15.5" stroke="#007aff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          返回
-        </button>
-      </div>
-
       {/* ── Hero block ── */}
       <div style={{
         width: '100%', maxWidth: 480,
@@ -208,40 +186,6 @@ export default function LoginPage() {
             立即注册
           </a>
         </p>
-
-        {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1, height: '0.5px', background: 'rgba(60,60,67,0.18)' }} />
-          <span style={{ fontSize: 13, color: '#aeaeb2' }}>或</span>
-          <div style={{ flex: 1, height: '0.5px', background: 'rgba(60,60,67,0.18)' }} />
-        </div>
-
-        {/* Guest row */}
-        <button
-          type="button"
-          onClick={() => router.push('/')}
-          style={{
-            width: '100%', background: 'white', border: 'none', borderRadius: 12,
-            padding: '14px 16px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-              background: 'linear-gradient(135deg, #8e8e93, #636366)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-            }}>👤</div>
-            <div style={{ textAlign: 'left' }}>
-              <p style={{ fontSize: 15, fontWeight: 500, color: '#000', margin: 0 }}>游客体验</p>
-              <p style={{ fontSize: 12, color: '#8e8e93', margin: '1px 0 0' }}>免费 · 每天 1 次 · 仅 A股</p>
-            </div>
-          </div>
-          <svg width="8" height="13" viewBox="0 0 8 13" fill="none">
-            <path d="M1 1L7 6.5L1 12" stroke="#c7c7cc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
 
         {/* Terms */}
         <p style={{ textAlign: 'center', fontSize: 12, color: '#aeaeb2', marginTop: 24, lineHeight: 1.6 }}>
