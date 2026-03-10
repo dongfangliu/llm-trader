@@ -1,263 +1,152 @@
-# 本地开发调试指南
+# 本地开发指南（Windows）
 
-## 前置条件
+## 前置依赖
 
-- Python 3.11+
-- Node.js 18+
-- Git
+| 工具 | 版本要求 | 下载 |
+|------|---------|------|
+| Python | 3.11+ | python.org |
+| Node.js | 18+ | nodejs.org |
+| Docker Desktop | 最新版 | docker.com（用于运行 Redis） |
+| Windows Terminal | 最新版 | Microsoft Store |
 
----
+## 一键启动
 
-## 1. 克隆与安装依赖
+在项目根目录，右键 → "在 Windows Terminal 中打开"，执行：
 
-```bash
-git clone <repo-url>
-cd trader
+```powershell
+.\start.ps1
+```
 
-# 后端依赖
+脚本会自动在 Windows Terminal 中打开 4 个标签页，分别运行：
+
+| 标签 | 服务 | 端口 |
+|------|------|------|
+| Redis | Redis 容器 | 6379 |
+| Backend | FastAPI | 8000 |
+| Worker | arq LLM Worker | — |
+| Frontend | Next.js | 3000 |
+
+启动完成后访问：**http://localhost:3000**
+
+## 停止服务
+
+```powershell
+.\start.ps1 -Stop
+```
+
+## 单独启动某个服务（调试用）
+
+```powershell
+.\start.ps1 -Service redis
+.\start.ps1 -Service backend
+.\start.ps1 -Service worker
+.\start.ps1 -Service frontend
+```
+
+## 首次运行准备
+
+### 1. 安装 Python 依赖
+
+```powershell
+cd backend
 pip install -r requirements.txt
-
-# 前端依赖
-cd frontend && npm install && cd ..
 ```
 
----
+### 2. 安装 Node.js 依赖
 
-## 2. 配置后端环境变量
-
-复制示例文件并编辑：
-
-```bash
-cp backend/.env.example backend/.env
+```powershell
+cd frontend
+npm install
 ```
 
-`backend/.env` 最小配置（本地开发）：
+### 3. 配置后端环境变量
+
+复制模板，按需编辑：
+
+```powershell
+copy backend\.env.example backend\.env
+```
+
+**必填项：**
 
 ```env
-# 使用 SQLite，无需 PostgreSQL
-DATABASE_URL=sqlite+aiosqlite:///./data/trader.db
-
-# 生成随机密钥（必须改，否则启动报错）
-SECRET_KEY=<运行下面命令生成>
-# python -c "import secrets; print(secrets.token_hex(32))"
-
-# 管理员 Token（用于 /api/admin/* 端点）
-ADMIN_TOKEN=<运行下面命令生成>
-# python -c "import secrets; print(secrets.token_hex(24))"
-
-# LLM（必须，分析功能依赖）
-LLM_PROVIDER=openai
-LLM_API_KEY=sk-your-deepseek-or-openai-key
+# LLM 配置（DeepSeek 或 OpenAI）
+LLM_API_KEY=sk-xxxx
 LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-chat
 
-# CORS
-ALLOWED_ORIGINS=*
+# 管理员 token（可随意设置，本地开发用）
+ADMIN_TOKEN=local-admin-token
 
-# 邮件验证（可选，留空则注册时自动通过验证、无需收邮件）
-# RESEND_API_KEY=re_xxxxxxxxxxxxxxxx
-# EMAIL_FROM=财财技术洞见 <noreply@yourdomain.com>
-# APP_BASE_URL=http://localhost:3000
+# Redis（本地 Docker 启动的 Redis，默认即可）
+REDIS_URL=redis://localhost:6379
 
-# 爱发电（可选，接入订阅付款时填写）
-# AFDIAN_USER_ID=
-# AFDIAN_API_TOKEN=
-# AFDIAN_BASIC_PLAN_ID=
-# AFDIAN_PREMIUM_PLAN_ID=
-# AFDIAN_BASIC_LINK=
-# AFDIAN_PREMIUM_LINK=
+# 数据库（SQLite，本地默认，无需修改）
+DATABASE_URL=sqlite+aiosqlite:///./data/trader.db
 ```
 
----
-
-## 3. 启动后端
-
-```bash
-cd backend
-set PYTHONPATH=src          # Windows CMD
-$env:PYTHONPATH="src"       # Windows PowerShell
-# export PYTHONPATH=src     # Linux/Mac
-
-python -m uvicorn src.api.main:app --reload --port 8000
-```
-
-后端运行后可访问：
-- API 文档：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/api/health
-
----
-
-## 4. 配置前端环境变量
-
-复制并编辑：
-
-```bash
-cp frontend/.env.example frontend/.env.local
-```
-
-`frontend/.env.local`：
+**可选项（不填则关闭对应功能）：**
 
 ```env
-# 本地后端地址（Next.js rewrites 会将 /api/* 代理到此地址）
-BACKEND_URL=http://localhost:8000
+# 邮件验证（Resend.com）
+RESEND_API_KEY=re_xxxx
+EMAIL_FROM=noreply@yourdomain.com
+APP_BASE_URL=http://localhost:3000
 
-# 爱发电订阅链接（本地测试可保持默认）
-NEXT_PUBLIC_AFDIAN_BASIC_LINK=https://afdian.com/order/create?plan_id=xxx
-NEXT_PUBLIC_AFDIAN_PREMIUM_LINK=https://afdian.com/order/create?plan_id=xxx
+# 爱发电付费（不接入则跳过）
+AFDIAN_WEBHOOK_TOKEN=
+AFDIAN_USER_ID=
+AFDIAN_API_TOKEN=
 ```
 
----
+### 4. 初始化数据库
 
-## 5. 启动前端
+后端首次启动时会自动建表，无需手动操作。
 
-```bash
-cd frontend
-npm run dev
-```
+## 查看日志
 
-前端运行在 http://localhost:3000，`/api/*` 请求自动代理到 `http://localhost:8000`。
+各服务日志直接显示在对应的 Windows Terminal 标签页中：
 
----
-
-## 邮箱验证说明
-
-本地开发时有两种模式：
-
-**未配置 Resend（推荐本地）：** 注册后自动验证，可直接登录，无需收邮件。
-
-**配置了 Resend：** 注册后需点击邮件中的链接验证。若邮件未收到，可调用重发接口：
-
-```bash
-curl -X POST http://localhost:8000/api/auth/resend-verification \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com"}'
-```
-
-也可直接在数据库中将 `email_verified` 设为 `1`：
-
-```bash
-cd backend
-python -c "
-import sqlite3
-conn = sqlite3.connect('data/trader.db')
-conn.execute(\"UPDATE users SET email_verified=1 WHERE email='test@example.com'\")
-conn.commit()
-conn.close()
-print('Done')
-"
-```
-
----
-
-## 调试用户权限
-
-本地开发时无需支付即可模拟任意用户等级，方法如下。
-
-### 方法一：通过 Admin API 设置设备订阅等级
-
-适合调试**未登录设备**（匿名用户）的权限。
-
-```bash
-# 将 device_id 为 "test-device-001" 的设备升级为 premium
-curl -X POST http://localhost:8000/api/admin/subscription \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Token: <你的 ADMIN_TOKEN>" \
-  -d '{"device_id": "test-device-001", "tier": "premium"}'
-
-# 验证
-curl "http://localhost:8000/api/subscription?device_id=test-device-001"
-```
-
-等级可选值：`free` / `basic` / `premium`
-
-### 方法二：注册用户并直接修改数据库（SQLite）
-
-适合调试**已登录用户**的权限。
-
-**步骤 1：注册用户**
-
-```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "password": "password123"}'
-```
-
-**步骤 2：用 DB 工具修改用户等级**
-
-SQLite 文件位于 `backend/data/trader.db`，推荐用 [DB Browser for SQLite](https://sqlitebrowser.org/) 或命令行：
-
-```bash
-# Windows PowerShell
-cd backend
-python -c "
-import sqlite3
-conn = sqlite3.connect('data/trader.db')
-conn.execute(\"UPDATE users SET subscription_tier='premium' WHERE email='test@example.com'\")
-conn.commit()
-conn.close()
-print('Done')
-"
-```
-
-**步骤 3：登录并验证**
-
-```bash
-# 登录获取 Token
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "password": "password123"}'
-
-# 用返回的 access_token 查询当前用户信息
-curl http://localhost:8000/api/auth/me \
-  -H "Authorization: Bearer <access_token>"
-
-# 查询订阅状态
-curl http://localhost:8000/api/subscription/status \
-  -H "Authorization: Bearer <access_token>"
-```
-
-### 方法三：通过 Admin API 修改用户等级
-
-```bash
-# 先获取用户 ID（查用户列表）
-curl "http://localhost:8000/api/admin/users?search=test@example.com" \
-  -H "X-Admin-Token: <ADMIN_TOKEN>"
-
-# 修改用户等级
-curl -X PUT http://localhost:8000/api/admin/users/<user_id> \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Token: <ADMIN_TOKEN>" \
-  -d '{"subscription_tier": "premium"}'
-```
-
-### 前端验证权限效果
-
-浏览器打开 http://localhost:3000，在 URL 加 `?device_id=test-device-001` 可以指定设备 ID，或登录已设好等级的账户，查看界面上的功能限制是否正确变化（剩余次数、多标的查询入口等）。
-
----
+- **Backend** 标签：API 请求、数据库操作、错误信息
+- **Worker** 标签：LLM 分析任务执行过程、缓存命中情况
+- **Redis** 标签：连接信息
+- **Frontend** 标签：Next.js 编译、HMR 热更新
 
 ## 常见问题
 
-**`SECRET_KEY is still the default value` 启动报错**
+### 端口被占用
 
-必须在 `.env` 中设置真实的 `SECRET_KEY`，用 `python -c "import secrets; print(secrets.token_hex(32))"` 生成。
+```powershell
+# 查看占用端口的进程
+netstat -ano | findstr :8000
+netstat -ano | findstr :3000
+netstat -ano | findstr :6379
 
-**前端 `/api/*` 报 `ECONNREFUSED`**
-
-确保后端已在 `localhost:8000` 运行，且 `frontend/.env.local` 中 `BACKEND_URL=http://localhost:8000`。
-
-**LLM 分析报错 `AI 分析服务暂未配置`**
-
-在 `backend/.env` 中填入真实的 `LLM_API_KEY`。
-
-**登录报错 `邮箱尚未验证`**
-
-本地未配置 Resend 时不会出现此问题（注册自动验证）。若配置了 Resend，用数据库直接将 `email_verified` 改为 `1`（见上方"邮箱验证说明"）。
-
-**数据库文件不存在**
-
-后端首次启动时会自动在 `backend/data/trader.db` 创建 SQLite 数据库，确保 `backend/data/` 目录存在：
-
-```bash
-mkdir backend\data    # Windows
+# 按 PID 停止进程
+Stop-Process -Id <PID> -Force
 ```
+
+### Docker 未启动
+
+确保 Docker Desktop 正在运行，任务栏中有 Docker 图标。
+
+### Python 虚拟环境（可选）
+
+```powershell
+cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+激活虚拟环境后，`start.ps1 -Service backend/worker` 会使用该环境。
+
+### 分析超时或无结果
+
+1. 检查 **Worker** 标签是否有错误
+2. 检查 LLM_API_KEY 是否正确填写
+3. 检查 Redis 是否在运行（**Redis** 标签）
+
+### 前端无法连接后端
+
+确认 `backend\.env` 中 `REDIS_URL=redis://localhost:6379`，且 Backend 和 Worker 标签均无报错。

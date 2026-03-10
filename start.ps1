@@ -1,193 +1,196 @@
-# AI 股票分析助手 - PowerShell 启动脚本
+# start.ps1 — 本地开发启动脚本（Windows Terminal）
+#
+# 用法：
+#   .\start.ps1          # 启动所有服务（在 Windows Terminal 新标签页）
+#   .\start.ps1 -Stop    # 停止所有服务
+#   .\start.ps1 -Service backend   # 单独启动某个服务（在当前终端输出）
+#
+# 依赖：Python 3.11+、Node.js 18+、Docker Desktop（用于运行 Redis）
 
 param(
-    [switch]$Stop
+    [switch]$Stop,
+    [ValidateSet("backend","worker","frontend","redis","")]
+    [string]$Service = ""
 )
 
 $ErrorActionPreference = "Continue"
-
-# 颜色定义
-function Write-Green { param($msg) Write-Host $msg -ForegroundColor Green }
-function Write-Yellow { param($msg) Write-Host $msg -ForegroundColor Yellow }
-function Write-Red { param($msg) Write-Host $msg -ForegroundColor Red }
-
-# 递归杀进程树（避免子进程残留）
-function Stop-ProcessTree {
-    param([int]$ProcessId)
-    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue
-    foreach ($child in $children) {
-        Stop-ProcessTree -ProcessId $child.ProcessId
-    }
-    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
-}
-
-# 获取脚本所在目录
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $ScriptDir
 
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "  AI 股票分析助手 - 启动中..." -ForegroundColor Cyan
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host ""
+# ── 颜色工具 ─────────────────────────────────────────────────────────────────
+function Write-Header  { param($msg) Write-Host "`n$msg" -ForegroundColor Cyan }
+function Write-Ok      { param($msg) Write-Host "  ✓ $msg" -ForegroundColor Green }
+function Write-Warn    { param($msg) Write-Host "  ! $msg" -ForegroundColor Yellow }
+function Write-Err     { param($msg) Write-Host "  ✗ $msg" -ForegroundColor Red }
+function Write-Info    { param($msg) Write-Host "  · $msg" -ForegroundColor Gray }
 
-# 如果是停止模式
-if ($Stop) {
-    Write-Yellow "正在停止服务..."
-
-    $pidFile = "$ScriptDir\.trader_pids"
-    if (Test-Path $pidFile) {
-        $savedPids = Get-Content $pidFile | Where-Object { $_ -match '^\d+$' }
-        foreach ($p in $savedPids) {
-            Stop-ProcessTree -ProcessId ([int]$p)
-        }
-        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-        Write-Green "服务已停止"
-    } else {
-        Write-Yellow "未找到 PID 记录，尝试按端口停止..."
-        foreach ($port in @(8000, 3000)) {
-            $conn = netstat -ano | Select-String ":$port\s.*LISTENING"
-            if ($conn) {
-                $pidStr = ($conn.ToString().Trim() -split '\s+')[-1]
-                if ($pidStr -match '^\d+$') { Stop-ProcessTree -ProcessId ([int]$pidStr) }
-            }
-        }
-        Write-Green "服务已停止"
-    }
-    exit 0
-}
-
-# 检查端口是否被占用
+# ── 端口检测 ─────────────────────────────────────────────────────────────────
 function Test-Port {
-    param([string]$Port, [string]$Address = "127.0.0.1")
-    $tcp = New-Object System.Net.Sockets.TcpClient
+    param([int]$Port)
     try {
-        $tcp.Connect($Address, $Port)
-        return $true
-    } catch {
-        return $false
-    } finally {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $tcp.Connect("127.0.0.1", $Port)
         $tcp.Close()
-    }
+        return $true
+    } catch { return $false }
 }
 
-# 等待服务就绪
-function Wait-ForService {
-    param([string]$Url, [int]$Timeout = 30)
-    $attempt = 0
-    while ($attempt -lt $Timeout) {
+# ── 等待 HTTP 端点就绪 ────────────────────────────────────────────────────────
+function Wait-Http {
+    param([string]$Url, [int]$Seconds = 30)
+    for ($i = 0; $i -lt $Seconds; $i++) {
         try {
-            $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
-            if ($response.StatusCode -eq 200) {
-                return $true
-            }
+            $r = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+            if ($r.StatusCode -eq 200) { return $true }
         } catch {}
-        Start-Sleep -Seconds 1
-        $attempt++
+        Start-Sleep 1
     }
     return $false
 }
 
-# 启动后端
-Write-Yellow "启动后端服务..."
+# ── 停止模式 ─────────────────────────────────────────────────────────────────
+if ($Stop) {
+    Write-Header "停止所有服务..."
 
-if (Test-Port -Port 8000) {
-    Write-Green "后端服务已在运行 (端口 8000)"
-} else {
-    $env:PYTHONPATH = "src"
-    $env:PYTHONUTF8 = "1"
-    $backendProcess = Start-Process -FilePath "python" `
-        -ArgumentList "-m uvicorn src.api.main:app --port 8000" `
-        -WorkingDirectory "$ScriptDir\backend" `
-        -WindowStyle Hidden -PassThru
-    Write-Green "后端服务已启动 (端口 8000, PID: $($backendProcess.Id))"
-}
-
-# 等待后端就绪
-Write-Yellow "等待后端服务就绪..."
-if (Wait-ForService -Url "http://127.0.0.1:8000/api/health" -Timeout 30) {
-    Write-Green "后端服务就绪!"
-} else {
-    Write-Red "后端服务启动失败，请检查错误"
-}
-
-# 启动前端
-Write-Host ""
-Write-Yellow "启动前端服务..."
-
-if (Test-Port -Port 3000) {
-    Write-Green "前端服务已在运行 (端口 3000)"
-} else {
-    # Clear stale production build cache to prevent module-not-found errors
-    $nextDir = "$ScriptDir\frontend\.next"
-    $buildIdFile = "$nextDir\BUILD_ID"
-    if ((Test-Path $nextDir) -and -not (Test-Path $buildIdFile)) {
-        # .next exists but no BUILD_ID (dev cache) — safe to keep
-    } elseif (Test-Path $buildIdFile) {
-        Write-Yellow "清理生产构建缓存..."
-        Remove-Item -Recurse -Force $nextDir -ErrorAction SilentlyContinue
+    # 按端口停止进程
+    foreach ($port in @(6379, 8000, 3000)) {
+        $pids = (netstat -ano 2>$null | Select-String ":$port\s.*LISTENING") |
+            ForEach-Object { ($_.ToString().Trim() -split '\s+')[-1] } |
+            Where-Object { $_ -match '^\d+$' } | Select-Object -Unique
+        foreach ($p in $pids) {
+            try {
+                $proc = Get-Process -Id $p -ErrorAction SilentlyContinue
+                if ($proc) {
+                    $proc | Stop-Process -Force
+                    Write-Ok "停止进程 PID $p (端口 $port)"
+                }
+            } catch {}
+        }
     }
 
-    $env:BACKEND_URL = "http://localhost:8000"
-    $frontendProcess = Start-Process -FilePath "cmd.exe" `
-        -ArgumentList "/c npm run dev" `
-        -WorkingDirectory "$ScriptDir\frontend" `
-        -WindowStyle Hidden -PassThru
-    Write-Green "前端服务已启动 (端口 3000, PID: $($frontendProcess.Id))"
-}
-
-# 保存 PID 到文件（供 -Stop 模式使用）
-$pidFile = "$ScriptDir\.trader_pids"
-@(
-    if ($backendProcess)  { $backendProcess.Id }
-    if ($frontendProcess) { $frontendProcess.Id }
-) | Set-Content $pidFile
-
-# 等待前端就绪 (TCP 端口检查，避免冷编译期间 HTTP 非 200 误判)
-Write-Yellow "等待前端服务就绪..."
-$tcpReady = $false
-for ($i = 0; $i -lt 90; $i++) {
-    if (Test-Port -Port 3000) { $tcpReady = $true; break }
-    Start-Sleep -Seconds 1
-}
-if ($tcpReady) {
-    Write-Green "前端服务就绪!"
-} else {
-    Write-Yellow "前端服务可能需要更长时间启动，请稍后访问 http://localhost:3000"
-}
-
-# 显示访问地址
-Write-Host ""
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "  服务启动完成!" -ForegroundColor Green
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  前端: " -NoNewline; Write-Green "http://localhost:3000"
-Write-Host "  后端: " -NoNewline; Write-Green "http://127.0.0.1:8000"
-Write-Host "  API文档: " -NoNewline; Write-Green "http://127.0.0.1:8000/docs"
-Write-Host ""
-Write-Host "  停止服务请运行: .\start.ps1 -Stop"
-Write-Host ""
-
-# 保持运行
-Write-Host "按 Ctrl+C 停止服务" -ForegroundColor Gray
-try {
-    while ($true) { Start-Sleep -Seconds 1 }
-} finally {
-    Write-Host ""
-    Write-Yellow "正在停止服务..."
-
-    # 停止后端和前端进程树（含所有子进程）
-    if ($backendProcess -and -not $backendProcess.HasExited) {
-        Stop-ProcessTree -ProcessId $backendProcess.Id
-    }
-    if ($frontendProcess -and -not $frontendProcess.HasExited) {
-        Stop-ProcessTree -ProcessId $frontendProcess.Id
+    # 停止 Redis 容器（如果是 Docker 启动的）
+    $redisCid = docker ps -q --filter "name=trader-redis-dev" 2>$null
+    if ($redisCid) {
+        docker stop trader-redis-dev | Out-Null
+        Write-Ok "停止 Redis 容器"
     }
 
-    # 清理 PID 文件和残留 Job
-    Remove-Item "$ScriptDir\.trader_pids" -Force -ErrorAction SilentlyContinue
-    Get-Job | Stop-Job -ErrorAction SilentlyContinue
-    Get-Job | Remove-Job -ErrorAction SilentlyContinue
+    Write-Ok "完成"
+    exit 0
+}
 
-    Write-Green "服务已停止"
+# ── 单服务模式（在当前终端输出，方便调试）────────────────────────────────────
+if ($Service -ne "") {
+    $env:PYTHONPATH   = "src"
+    $env:PYTHONUTF8   = "1"
+    $env:BACKEND_URL  = "http://localhost:8000"
+    $env:REDIS_URL    = "redis://localhost:6379"
+
+    switch ($Service) {
+        "redis"   {
+            Write-Header "启动 Redis（Docker）"
+            docker run --rm --name trader-redis-dev -p 6379:6379 redis:7-alpine
+        }
+        "backend" {
+            Write-Header "启动后端"
+            Set-Location "$ScriptDir\backend"
+            uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
+        }
+        "worker"  {
+            Write-Header "启动 arq Worker"
+            Set-Location "$ScriptDir\backend"
+            python -m src.worker.main
+        }
+        "frontend" {
+            Write-Header "启动前端"
+            Set-Location "$ScriptDir\frontend"
+            npm run dev
+        }
+    }
+    exit 0
+}
+
+# ── 全服务启动（Windows Terminal 多标签）────────────────────────────────────
+Write-Host ""
+Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║   AI 股票分析助手 — 本地启动          ║" -ForegroundColor Cyan
+Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
+
+# 检测 Windows Terminal
+$wtExe = Get-Command wt -ErrorAction SilentlyContinue
+if (-not $wtExe) {
+    Write-Warn "未检测到 Windows Terminal (wt.exe)"
+    Write-Info "请在 Windows Terminal 中运行此脚本，或分别手动启动各服务："
+    Write-Info "  .\start.ps1 -Service redis"
+    Write-Info "  .\start.ps1 -Service backend"
+    Write-Info "  .\start.ps1 -Service worker"
+    Write-Info "  .\start.ps1 -Service frontend"
+    exit 1
+}
+
+# 检测 Docker
+$dockerOk = $null -ne (Get-Command docker -ErrorAction SilentlyContinue)
+if (-not $dockerOk) {
+    Write-Err "未检测到 Docker Desktop。Redis 依赖 Docker 运行。"
+    Write-Info "请安装 Docker Desktop：https://www.docker.com/products/docker-desktop/"
+    exit 1
+}
+
+# 检测 Python
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    Write-Err "未检测到 Python"
+    exit 1
+}
+
+# 检测 Node.js
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Err "未检测到 Node.js / npm"
+    exit 1
+}
+
+Write-Header "依赖检测通过，正在启动服务..."
+
+# 脚本路径（用于子标签调用自身）
+$selfPath = $MyInvocation.MyCommand.Definition
+
+# 在 Windows Terminal 里依次打开新标签
+# 格式：wt -w 0 new-tab --title "标题" -- powershell -NoExit -Command "命令"
+$wtArgs = @(
+    "-w", "0",
+    "new-tab", "--title", "Redis", "--",
+    "powershell", "-NoExit", "-ExecutionPolicy", "Bypass",
+    "-File", $selfPath, "-Service", "redis",
+    ";", "new-tab", "--title", "Backend", "--",
+    "powershell", "-NoExit", "-ExecutionPolicy", "Bypass",
+    "-File", $selfPath, "-Service", "backend",
+    ";", "new-tab", "--title", "Worker", "--",
+    "powershell", "-NoExit", "-ExecutionPolicy", "Bypass",
+    "-File", $selfPath, "-Service", "worker",
+    ";", "new-tab", "--title", "Frontend", "--",
+    "powershell", "-NoExit", "-ExecutionPolicy", "Bypass",
+    "-File", $selfPath, "-Service", "frontend"
+)
+
+Start-Process "wt" -ArgumentList $wtArgs
+
+# 等待后端就绪后显示访问地址
+Write-Info "等待后端启动（最多 60 秒）..."
+$backendReady = Wait-Http -Url "http://127.0.0.1:8000/api/health" -Seconds 60
+
+Write-Host ""
+Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║   服务地址                            ║" -ForegroundColor Cyan
+Write-Host "╠══════════════════════════════════════╣" -ForegroundColor Cyan
+Write-Host "║  前端      http://localhost:3000      ║" -ForegroundColor Green
+Write-Host "║  后端 API  http://localhost:8000      ║" -ForegroundColor Green
+Write-Host "║  API 文档  http://localhost:8000/docs ║" -ForegroundColor Green
+Write-Host "║  Redis     localhost:6379             ║" -ForegroundColor Green
+Write-Host "╠══════════════════════════════════════╣" -ForegroundColor Cyan
+Write-Host "║  停止：.\start.ps1 -Stop              ║" -ForegroundColor Gray
+Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host ""
+Write-Info "各服务日志在对应的 Windows Terminal 标签页中查看"
+
+if (-not $backendReady) {
+    Write-Warn "后端未在 60 秒内就绪，请查看 Backend 标签页的错误信息"
 }

@@ -1341,7 +1341,6 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   ctx.fillStyle = '#FFFFFF';
   ctx.shadowColor = 'rgba(0,0,0,0.07)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
   ctx.beginPath(); ctx.roundRect(sx0, y, statColW, statH, 14); ctx.fill();
-  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
   ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
   ctx.fillText('研判时价', sx0 + 20, y + 30);
   ctx.font = `700 27px ${M}`; ctx.fillStyle = '#1C1C1E';
@@ -1351,9 +1350,7 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
     // Target price card
     const sx1 = PAD + statColW + 12;
     ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = 'rgba(0,0,0,0.07)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
     ctx.beginPath(); ctx.roundRect(sx1, y, statColW, statH, 14); ctx.fill();
-    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
     ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
     ctx.fillText('目标估价', sx1 + 20, y + 30);
     ctx.font = `700 27px ${M}`; ctx.fillStyle = accentText;
@@ -1362,7 +1359,6 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
     // Stop loss card
     const sx2 = PAD + (statColW + 12) * 2;
     ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = 'rgba(0,0,0,0.07)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
     ctx.beginPath(); ctx.roundRect(sx2, y, statColW, statH, 14); ctx.fill();
     ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
     ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
@@ -1414,7 +1410,6 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
     const hint = '标准版起可见';
     const hintW = ctx.measureText(hint).width;
     ctx.fillText(hint, lockX + (lockW - hintW) / 2, y + 80);
-    void ctaW2;
   }
   y += statH + 28;
 
@@ -1434,7 +1429,6 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
     { label: '执行方案', icon: '行', tint: '#10b981', content: executionPlan || '' },
   ];
   const isBasic   = tier === 'basic';
-  const isPremium = tier === 'premium';
   const visibleCount = isFree ? 0 : 4;
   const sections = allSections.slice(0, visibleCount);
   const showUpgradeCTA = isFree || isBasic; // free→basic, basic→premium
