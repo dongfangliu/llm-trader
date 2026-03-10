@@ -8,7 +8,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict
 import re
 
 import httpx
@@ -21,7 +21,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.database.db import (
     init_db,
@@ -568,7 +568,7 @@ async def _increment_device_usage(db: AsyncSession, device_id: str) -> UsageLog:
     """Atomically increment device usage count using upsert to prevent race conditions."""
     today = datetime.utcnow().date()
     subscription = await _get_device_subscription(db, device_id)
-    stmt = sqlite_insert(UsageLog).values(
+    stmt = pg_insert(UsageLog).values(
         device_id=device_id, date=today, count=1, subscription=subscription
     ).on_conflict_do_update(
         index_elements=["device_id", "date"],
@@ -1217,7 +1217,7 @@ async def analyze(
                 from sqlalchemy import text as _text
                 today = datetime.utcnow().date()
                 await db.execute(
-                    _text("UPDATE usage_logs SET count = MAX(0, count - 1) WHERE device_id = :did AND date = :d"),
+                    _text("UPDATE usage_logs SET count = GREATEST(0, count - 1) WHERE device_id = :did AND date = :d"),
                     {"did": device_id, "d": today}
                 )
                 await db.commit()
@@ -1738,7 +1738,7 @@ async def admin_delete_user(
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    await db.delete(user)
+    db.delete(user)
     await db.commit()
     logger.info("admin deleted user=%d email=%s", user_id, user.email)
     return {"status": "deleted", "user_id": user_id}
@@ -1794,7 +1794,7 @@ async def admin_delete_device(
     row = result.scalars().first()
     if not row:
         raise HTTPException(status_code=404, detail="Device not found")
-    await db.delete(row)
+    db.delete(row)
     await db.commit()
     logger.info("admin deleted device=%s", device_id)
     return {"status": "deleted", "device_id": device_id}

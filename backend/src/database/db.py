@@ -289,19 +289,19 @@ async def _migrate_db():
     async with engine.begin() as conn:
         try:
             await conn.execute(text(
-                "ALTER TABLE device_subscriptions ADD COLUMN expires_at DATETIME"
+                "ALTER TABLE device_subscriptions ADD COLUMN expires_at TIMESTAMP"
             ))
         except Exception:
             pass  # column already exists
         for col_sql in [
-            "ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN email_verification_token VARCHAR(255)",
-            "ALTER TABLE users ADD COLUMN email_verification_expires DATETIME",
+            "ALTER TABLE users ADD COLUMN email_verification_expires TIMESTAMP",
             "ALTER TABLE users ADD COLUMN invite_code VARCHAR(16)",
             "ALTER TABLE users ADD COLUMN bonus_quota INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN used_invite_code VARCHAR(16)",
             "ALTER TABLE users ADD COLUMN daily_position_usage INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN last_position_date DATETIME",
+            "ALTER TABLE users ADD COLUMN last_position_date TIMESTAMP",
             "ALTER TABLE usage_logs ADD COLUMN position_count INTEGER DEFAULT 0",
         ]:
             try:

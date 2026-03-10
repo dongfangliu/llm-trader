@@ -8,6 +8,7 @@ export interface ShareCardParams {
   tier: string;         // 'free' | 'basic' | 'premium'
   analyzedAt?: string | null;
   appName: string;
+  basicDailyLimit?: number;  // 标准版每日限额，动态读取自后端
   includePosition?: boolean;
   longImage?: boolean;
   positionParams?: {
@@ -21,6 +22,7 @@ export interface ShareCardParams {
 export async function generateShareCardBlob(p: ShareCardParams): Promise<{ blob: Blob; filename: string }> {
   const { result, tier, analyzedAt, appName, includePosition, positionParams } = p;
   const longImage = !!p.longImage;
+  const basicDailyLimit = p.basicDailyLimit ?? 5;
 
   const action = result?.result?.action;
   const isBuy = action === 'buy', isSell = action === 'sell';
@@ -1134,6 +1136,7 @@ export interface PredictionCardParams {
   tier: string;
   appName: string;
   appBaseUrl?: string;
+  basicDailyLimit?: number;  // 标准版每日限额，动态读取自后端
   marketDiagnosis?: string;
   opportunityAssessment?: string;
   riskAnalysis?: string;
@@ -1174,6 +1177,7 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   const { stockName, stockCode, market, action, latestPrice, targetPrice, stopLoss,
     opportunityGrade, reasonExcerpt, analyzedAt, tier, appName, appBaseUrl,
     marketDiagnosis, opportunityAssessment, riskAnalysis, executionPlan } = p;
+  const basicDailyLimit = p.basicDailyLimit ?? 5;
 
   const isBuy  = action === 'buy';
   const isSell = action === 'sell';
@@ -1549,7 +1553,7 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
 
     // CTA strip — free→basic or basic→premium
     const ctaLine1 = isFree ? '升级标准版，解锁每日深度研判' : '升级专业版，解锁优先通道';
-    const ctaLine2 = isFree ? '标准版起每天 5 次完整分析' : '深度研判 + 持仓针对性分析 · 更多分析次数';
+    const ctaLine2 = isFree ? `标准版起每天 ${basicDailyLimit} 次完整分析` : '深度研判 + 持仓针对性分析 · 更多分析次数';
     const ctaH = 80;
     const ctaGrad = ctx.createLinearGradient(PAD, y, W - PAD, y + ctaH);
     ctaGrad.addColorStop(0, upgradeTint + '1A');
@@ -1663,6 +1667,7 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
 export async function generateStatementCardBlob(p: PredictionCardParams): Promise<{ blob: Blob; filename: string }> {
   const { stockName, stockCode, market, action, confidence, latestPrice, targetPrice, stopLoss,
     opportunityGrade, reasonExcerpt, analyzedAt, tier, appName } = p;
+  const basicDailyLimit = p.basicDailyLimit ?? 5;
 
   const isBuy  = action === 'buy';
   const isSell = action === 'sell';

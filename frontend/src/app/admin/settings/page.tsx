@@ -436,7 +436,7 @@ export default function AdminSettingsPage() {
             <h2 style={{ fontWeight: 600, marginBottom: '1.25rem' }}>应用基础设置</h2>
             <Field label="站点名称" hint="显示在页面标题、导航栏及邮件中的应用名称">
               <Input value={a.name} onChange={v => setCfg({ ...cfg, app: { name: v } })}
-                placeholder="财财技术洞见" />
+                placeholder="我的AI分析" />
             </Field>
             <SaveButton loading={saving === 'app'} onClick={() => save('app', cfg.app as unknown as Record<string, unknown>)} />
             <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border)' }} />

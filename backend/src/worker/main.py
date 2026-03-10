@@ -29,7 +29,7 @@ class WorkerSettings:
     functions = [analyze_task]
     on_startup = startup
     on_shutdown = shutdown
-    redis_settings = REDIS_SETTINGS   # callable — resolved at worker start
+    redis_settings = REDIS_SETTINGS()  # call to get RedisSettings instance (arq 0.27 requires instance, not callable)
     max_jobs = 5           # max concurrent LLM calls
     job_timeout = 300      # 5 minutes per job
     keep_result = 3600     # keep job result in Redis for 1h

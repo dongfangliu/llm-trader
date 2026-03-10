@@ -56,7 +56,7 @@ import ResultSheet from '@/components/ResultSheet';
 import SharePreviewSheet from '@/components/SharePreviewSheet';
 import SavedRecordsSheet from '@/components/SavedRecordsSheet';
 
-const ENV_APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || '财财技术洞见';
+const ENV_APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || '';
 
 const HOT_STOCKS = [
   { code: '600519', name: '贵州茅台', market: 'a' },
@@ -356,7 +356,8 @@ export default function HomePage() {
         reasonExcerpt,
         analyzedAt:             activeAnalyzedAt,
         tier,
-        appName:                ENV_APP_NAME,
+        basicDailyLimit:        pricing?.basic?.daily_limit ?? 5,
+        appName:                appName,
         appBaseUrl:             typeof window !== 'undefined' ? window.location.origin : undefined,
         marketDiagnosis:        r.market_diagnosis || '',
         opportunityAssessment:  r.opportunity_assessment || '',
@@ -405,8 +406,9 @@ export default function HomePage() {
       const { blob, filename } = await generateShareCardBlob({
         result: activeResult,
         tier,
+        basicDailyLimit: pricing?.basic?.daily_limit ?? 5,
         analyzedAt: activeAnalyzedAt,
-        appName: ENV_APP_NAME,
+        appName: appName,
         includePosition,
         longImage,
         positionParams: resultPositionParams,
@@ -507,6 +509,20 @@ export default function HomePage() {
     if (tier === 'free' && market !== 'a') setMarket('a');
   }, [tier, market, setMarket]);
 
+  // Re-fetch limits whenever user navigates to the analyze panel (covers bottom nav tap)
+  useEffect(() => {
+    if (activePanel !== 'analyze') return;
+    if (user) {
+      getLimits().then((data) => setLimits({ remaining: data.remaining, daily_limit: data.daily_limit })).catch(() => {});
+    } else if (deviceId) {
+      getUsage(deviceId).then((usage) => setLimits({
+        remaining: usage.remaining,
+        daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
+      })).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanel]);
+
   useEffect(() => {
     const next = getMarketRecommendations(market);
     setHotRecommendations(next);
@@ -600,7 +616,16 @@ export default function HomePage() {
           ? { holdingQuantity, costPrice, maxPosition }
           : null;
         setResult(taskData.result);
+        // Use queued usage immediately for responsive UI, then re-fetch from server to ensure accuracy
         setLimits(queuedUsage);
+        if (user) {
+          getLimits().then((data) => setLimits({ remaining: data.remaining, daily_limit: data.daily_limit })).catch(() => {});
+        } else if (deviceId) {
+          getUsage(deviceId).then((usage) => setLimits({
+            remaining: usage.remaining,
+            daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
+          })).catch(() => {});
+        }
         const nowIso = taskData.analyzed_at || new Date().toISOString();
         setAnalyzeStartedAt(nowIso);
         setResultPositionParams(usedPosition);
@@ -736,7 +761,20 @@ export default function HomePage() {
   };
 
   const handleOpenResultPanel = () => { if (result || history.length > 0) setActivePanel('result'); };
-  const handleBackToAnalyze = () => { setResultSheetOpen(false); setActivePanel('analyze'); setAnalyzeTimedOut(false); };
+  const handleBackToAnalyze = () => {
+    setResultSheetOpen(false);
+    setActivePanel('analyze');
+    setAnalyzeTimedOut(false);
+    // Re-sync limits from server to ensure quota state is accurate
+    if (user) {
+      getLimits().then((data) => setLimits({ remaining: data.remaining, daily_limit: data.daily_limit })).catch(() => {});
+    } else if (deviceId) {
+      getUsage(deviceId).then((usage) => setLimits({
+        remaining: usage.remaining,
+        daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
+      })).catch(() => {});
+    }
+  };
   const handleLogout = () => { logout(); router.push('/login'); };
 
   const toggleAuxPeriod = (p: string) => {

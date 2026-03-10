@@ -1,11 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { resendVerification } from '@/lib/api';
-
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || '财财技术洞见';
+import { resendVerification, getAppConfig } from '@/lib/api';
 
 /* ─── Reusable iOS form-group row ─── */
 function FormRow({
@@ -47,6 +45,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [resendStatus, setResendStatus] = useState('');
+  const [appName, setAppName] = useState(process.env.NEXT_PUBLIC_APP_NAME || '');
+
+  useEffect(() => {
+    getAppConfig().then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); }).catch(() => {});
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
