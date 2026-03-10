@@ -815,6 +815,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "invite_code": current_user.invite_code,
         "bonus_quota": current_user.bonus_quota or 0,
         "used_invite_code": current_user.used_invite_code,
+        "has_had_pro_trial": current_user.has_had_pro_trial,
     }
 
 
@@ -1863,7 +1864,7 @@ async def admin_delete_user(
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    db.delete(user)
+    await db.delete(user)
     await db.commit()
     logger.info("admin deleted user=%d email=%s", user_id, user.email)
     return {"status": "deleted", "user_id": user_id}
@@ -1921,7 +1922,7 @@ async def admin_delete_device(
     row = result.scalars().first()
     if not row:
         raise HTTPException(status_code=404, detail="Device not found")
-    db.delete(row)
+    await db.delete(row)
     await db.commit()
     logger.info("admin deleted device=%s", device_id)
     return {"status": "deleted", "device_id": device_id}

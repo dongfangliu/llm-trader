@@ -45,7 +45,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [resendStatus, setResendStatus] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [appName, setAppName] = useState('');
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   useEffect(() => {
     getAppConfig().then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); }).catch(() => {});
@@ -63,10 +70,12 @@ export default function LoginPage() {
   };
 
   const handleResend = async () => {
+    if (resendCooldown > 0) return;
     setResendStatus('发送中...');
     try {
       await resendVerification(pendingVerificationEmail || email);
       setResendStatus('验证邮件已重新发送，请查收');
+      setResendCooldown(60);
     } catch {
       setResendStatus('发送失败，请稍后重试');
     }
@@ -141,22 +150,36 @@ export default function LoginPage() {
         {/* Unverified email */}
         {isUnverified && (
           <div style={{
-            background: 'white', borderRadius: 12, padding: '14px 16px',
+            background: 'white', borderRadius: 12, padding: '16px',
             marginBottom: 16, borderLeft: '3px solid #ff9500',
           }}>
-            <p style={{ fontSize: 14, color: '#000', marginBottom: 8 }}>
-              <strong>{pendingVerificationEmail}</strong> 尚未验证邮箱
-            </p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 22, lineHeight: 1 }}>📧</span>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#000', margin: '0 0 4px' }}>
+                  邮箱尚未验证
+                </p>
+                <p style={{ fontSize: 13, color: '#8e8e93', margin: 0, lineHeight: 1.5 }}>
+                  验证邮件已发送至 <strong style={{ color: '#000' }}>{pendingVerificationEmail}</strong>，请检查收件箱（或垃圾邮件文件夹）并点击链接完成验证。
+                </p>
+              </div>
+            </div>
             <button
               type="button" onClick={handleResend}
+              disabled={resendCooldown > 0}
               style={{
-                background: 'none', border: 'none', padding: 0,
-                color: '#007aff', fontSize: 14, cursor: 'pointer',
+                background: resendCooldown > 0 ? '#f2f2f7' : '#007aff',
+                border: 'none', borderRadius: 8,
+                padding: '8px 14px',
+                color: resendCooldown > 0 ? '#8e8e93' : 'white',
+                fontSize: 14, fontWeight: 500,
+                cursor: resendCooldown > 0 ? 'default' : 'pointer',
                 WebkitTapHighlightColor: 'transparent',
+                transition: 'background 0.15s',
               }}
-            >重新发送验证邮件</button>
+            >{resendCooldown > 0 ? `重新发送 (${resendCooldown}s)` : '重新发送验证邮件'}</button>
             {resendStatus && (
-              <p style={{ fontSize: 13, color: '#8e8e93', marginTop: 6 }}>{resendStatus}</p>
+              <p style={{ fontSize: 13, color: '#8e8e93', marginTop: 8, marginBottom: 0 }}>{resendStatus}</p>
             )}
           </div>
         )}

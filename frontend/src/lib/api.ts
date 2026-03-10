@@ -60,6 +60,7 @@ export interface User {
   invite_code?: string;
   bonus_quota?: number;
   used_invite_code?: string;  // non-null = already redeemed once
+  has_had_pro_trial?: boolean;
 }
 
 export const register = async (data: RegisterRequest) => {

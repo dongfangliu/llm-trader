@@ -54,6 +54,13 @@ export default function RegisterPage() {
   const [localError, setLocalError] = useState('');
   const [resendStatus, setResendStatus] = useState('');
   const [registered, setRegistered] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,10 +80,12 @@ export default function RegisterPage() {
   }, [registered, pendingVerificationEmail, router]);
 
   const handleResend = async () => {
+    if (resendCooldown > 0) return;
     setResendStatus('发送中...');
     try {
       await resendVerification(pendingVerificationEmail || email);
       setResendStatus('验证邮件已重新发送，请查收');
+      setResendCooldown(60);
     } catch {
       setResendStatus('发送失败，请稍后重试');
     }
@@ -110,13 +119,15 @@ export default function RegisterPage() {
         <div style={{ width: '100%', maxWidth: 480 }}>
           <button
             onClick={handleResend}
+            disabled={resendCooldown > 0}
             style={{
               width: '100%', height: 50, background: 'white', border: 'none',
-              borderRadius: 12, fontSize: 17, fontWeight: 500, color: '#007aff',
-              cursor: 'pointer', marginBottom: 12,
+              borderRadius: 12, fontSize: 17, fontWeight: 500,
+              color: resendCooldown > 0 ? '#c7c7cc' : '#007aff',
+              cursor: resendCooldown > 0 ? 'default' : 'pointer', marginBottom: 12,
               WebkitTapHighlightColor: 'transparent',
             }}
-          >重新发送验证邮件</button>
+          >{resendCooldown > 0 ? `重新发送 (${resendCooldown}s)` : '重新发送验证邮件'}</button>
           {resendStatus && (
             <p style={{ textAlign: 'center', fontSize: 13, color: '#8e8e93', marginBottom: 12 }}>{resendStatus}</p>
           )}

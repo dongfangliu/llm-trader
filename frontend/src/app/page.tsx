@@ -56,6 +56,7 @@ import ResultSheet from '@/components/ResultSheet';
 import SharePreviewSheet from '@/components/SharePreviewSheet';
 import SavedRecordsSheet from '@/components/SavedRecordsSheet';
 import GuestTrialEndedScreen from '@/components/GuestTrialEndedScreen';
+import ProTrialWelcomeModal from '@/components/ProTrialWelcomeModal';
 
 
 const HOT_STOCKS = [
@@ -284,6 +285,7 @@ export default function HomePage() {
   const [resultDisplayTier, setResultDisplayTier] = useState<string>(tier);
   const [guestTrialEnded, setGuestTrialEnded] = useState(false);
   const [deviceBanned, setDeviceBanned] = useState(false);
+  const [showTrialWelcome, setShowTrialWelcome] = useState(false);
 
   // Saved records — rich objects stored in localStorage
   const [savedRecords, setSavedRecords] = useState<SavedRecord[]>(() => {
@@ -497,12 +499,29 @@ export default function HomePage() {
         });
         if ((usage as any).is_banned) {
           setDeviceBanned(true);
+          setShowTrialWelcome(false);
         } else if ((usage as any).trial_used) {
           setGuestTrialEnded(true);
+          setShowTrialWelcome(false);
+        } else {
+          // Guest hasn't used trial yet — show welcome modal every page open
+          setShowTrialWelcome(true);
         }
       }).catch(console.error);
     }
   }, [deviceId, user]);
+
+  // When user logs in/registers, clear guest trial state and evaluate welcome modal
+  useEffect(() => {
+    if (user) {
+      setGuestTrialEnded(false);
+      setDeviceBanned(false);
+      // Show welcome modal for free/basic users who haven't had a trial yet
+      const needsTrial = (user.subscription_tier === 'free' || user.subscription_tier === 'basic')
+        && user.has_had_pro_trial === false;
+      setShowTrialWelcome(needsTrial);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (!deviceId) return;
@@ -844,8 +863,14 @@ export default function HomePage() {
       <GuestTrialEndedScreen
         open={guestTrialEnded}
         banned={deviceBanned}
+        appName={appName}
         onRegister={() => router.push('/register')}
         onClose={() => { setGuestTrialEnded(false); setDeviceBanned(false); }}
+      />
+      <ProTrialWelcomeModal
+        open={showTrialWelcome}
+        appName={appName}
+        onConfirm={() => setShowTrialWelcome(false)}
       />
 
       {/* ═══ MOBILE Header (hidden on desktop) ═══ */}
