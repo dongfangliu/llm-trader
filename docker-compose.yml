@@ -30,6 +30,21 @@ services:
     networks:
       - trader-network
 
+  # Redis — task queue + result cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trader-network
+
   # Backend API
   backend:
     build:
@@ -42,6 +57,7 @@ services:
       - backend_logs:/app/logs
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trader}
+      - REDIS_URL=redis://redis:6379
       - SECRET_KEY=${SECRET_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - LLM_API_KEY=${LLM_API_KEY}
@@ -118,10 +134,38 @@ services:
     networks:
       - trader-network
 
+  # arq Worker — runs LLM analysis tasks asynchronously
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "src.worker.main"]
+    volumes:
+      - backend_logs:/app/logs
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trader}
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1500}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - trader-network
+
 volumes:
   postgres_data:
   backend_data:
   backend_logs:
+  redis_data:
 
 networks:
   trader-network:
