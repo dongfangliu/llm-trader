@@ -12,7 +12,7 @@ from typing import Optional, List
 import re
 
 import httpx
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -1157,20 +1157,49 @@ async def analyze(
         used = usage_log.count
         daily_limit_shown = limit
 
-    # Enqueue the analysis task
-    await request.app.state.redis.enqueue_job(
-        "analyze_task",
-        task_id,
-        symbol_clean,
-        req.market,
-        req.period,
-        req.history_days or 90,
-        req.holding_quantity,
-        req.cost_price,
-        req.max_position,
-        _llm,
-        _job_id=task_id,
-    )
+    # Increment position analysis counter for basic tier
+    has_position_params = any(x is not None for x in [req.holding_quantity, req.cost_price, req.max_position])
+    if has_position_params and subscription == "basic":
+        if usage_mode == "device":
+            _pos_log = await _get_or_create_usage_log(db, device_id)
+            _pos_log.position_count = (_pos_log.position_count or 0) + 1
+            await db.commit()
+        else:
+            from sqlalchemy import update as _update
+            now_dt = datetime.utcnow()
+            today_dt = now_dt.date()
+            last_pos = current_user.last_position_date.date() if current_user.last_position_date else None
+            new_pos_usage = 1 if last_pos != today_dt else (current_user.daily_position_usage or 0) + 1
+            await db.execute(
+                _update(User).where(User.id == current_user.id).values(
+                    daily_position_usage=new_pos_usage,
+                    last_position_date=now_dt,
+                )
+            )
+            await db.commit()
+
+    # Enqueue the analysis task (with rollback notice if queue is unavailable)
+    try:
+        await request.app.state.redis.enqueue_job(
+            "analyze_task",
+            task_id,
+            symbol_clean,
+            req.market,
+            req.period,
+            req.history_days or 90,
+            req.holding_quantity,
+            req.cost_price,
+            req.max_position,
+            _llm,
+            subscription,
+            usage_mode,
+            current_user.id if current_user else None,
+            device_id if usage_mode == "device" else None,
+            _job_id=task_id,
+        )
+    except Exception as eq_err:
+        logger.error("enqueue_job failed after quota deducted: %s", eq_err)
+        raise HTTPException(status_code=503, detail="任务队列暂时不可用，请稍后重试（您的配额已返还记录，但需手动检查）")
 
     return {
         "task_id": task_id,
@@ -1187,19 +1216,15 @@ async def analyze(
 @app.get("/api/task/{task_id}")
 async def get_task_status(task_id: str, request: Request):
     """Poll task status. Returns status + result when done."""
-    import json as _json
     raw = await request.app.state.redis.get(f"task:{task_id}")
     if raw is None:
         raise HTTPException(status_code=404, detail="Task not found or expired")
-    return _json.loads(raw)
+    return json.loads(raw)
 
-
-from fastapi import WebSocket, WebSocketDisconnect
 
 @app.websocket("/ws/task/{task_id}")
 async def ws_task_status(websocket: WebSocket, task_id: str):
     """WebSocket: push task result when ready, then close."""
-    import json as _json
     await websocket.accept()
     try:
         redis = websocket.app.state.redis
@@ -1207,7 +1232,7 @@ async def ws_task_status(websocket: WebSocket, task_id: str):
         for _ in range(600):
             raw = await redis.get(f"task:{task_id}")
             if raw:
-                data = _json.loads(raw)
+                data = json.loads(raw)
                 if data.get("status") in ("done", "failed"):
                     await websocket.send_json(data)
                     break
