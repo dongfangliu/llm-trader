@@ -1540,6 +1540,11 @@ class AdminUpdateUserRequest(BaseModel):
     reset_usage: Optional[bool] = False
 
 
+class AdminSetQuotaRequest(BaseModel):
+    daily_usage: Optional[int] = None   # directly write users.daily_usage (0=reset, N=already used N times)
+    bonus_quota: Optional[int] = None   # directly write users.bonus_quota (permanent quota pool)
+
+
 @app.post("/api/admin/subscription")
 async def admin_set_subscription(
     req: AdminSubscriptionRequest,
@@ -1689,6 +1694,40 @@ async def admin_update_user(
         "subscription_tier": user.subscription_tier,
         "is_active": user.is_active,
         "daily_usage": user.daily_usage,
+    }
+
+
+@app.patch("/api/admin/users/{user_id}/quota")
+async def admin_set_user_quota(
+    user_id: int,
+    req: AdminSetQuotaRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Directly set a user's daily_usage and/or bonus_quota (admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if req.daily_usage is not None:
+        if req.daily_usage < 0:
+            raise HTTPException(status_code=400, detail="daily_usage 不能为负数")
+        user.daily_usage = req.daily_usage
+    if req.bonus_quota is not None:
+        if req.bonus_quota < 0:
+            raise HTTPException(status_code=400, detail="bonus_quota 不能为负数")
+        user.bonus_quota = req.bonus_quota
+    await db.commit()
+    logger.info(
+        "admin set quota user=%d daily_usage=%s bonus_quota=%s",
+        user_id, req.daily_usage, req.bonus_quota,
+    )
+    return {
+        "id": user.id,
+        "email": user.email,
+        "daily_usage": user.daily_usage,
+        "bonus_quota": user.bonus_quota,
+        "subscription_tier": user.subscription_tier,
     }
 
 
