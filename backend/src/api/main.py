@@ -5,6 +5,7 @@ import os
 import json
 import hashlib
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -49,6 +50,8 @@ from src.services.data.data_collector import (
 )
 from src.services.llm import llm_service
 from src.services.email_service import send_verification_email
+from arq import create_pool
+from src.worker.redis_client import get_redis_settings
 
 
 logger = logging.getLogger(__name__)
@@ -96,7 +99,11 @@ async def lifespan(app: FastAPI):
     if os.getenv("ENABLE_COLLECTOR", "").lower() in ("1", "true", "yes"):
         logger.info("ENABLE_COLLECTOR=true — starting embedded data collector")
         asyncio.create_task(run_collector())
+    # Initialize Redis connection pool for task queue
+    app.state.redis = await create_pool(get_redis_settings())
+    logger.info("Redis connection pool initialised")
     yield
+    await app.state.redis.aclose()
 
 
 app = FastAPI(
@@ -1131,149 +1138,89 @@ async def analyze(
                     detail="今日持仓参数分析次数已用完（标准版每日1次），升级专业版可无限使用",
                 )
 
+    # --- Enqueue async task ---
+    task_id = str(uuid.uuid4())
     _llm = _llm_config()
-    api_key = _llm["api_key"]
-    if not api_key:
+    if not _llm["api_key"]:
         raise HTTPException(status_code=503, detail="AI 分析服务暂未配置，请联系管理员")
 
-    try:
-        df = await data_service.fetch_market_data(
-            symbol=symbol_clean,
-            market=req.market,
-            period=req.period,
-            start_date=None,
-            end_date=None,
-        )
+    # Consume quota upfront (before queuing)
+    if usage_mode == "account":
+        await user_service.increment_usage(db, current_user)
+        _, new_remaining = await user_service.check_daily_limit(db, current_user)
+        used = current_user.daily_usage
+        daily_limit_shown = USER_LIMITS.get(subscription, 3)
+    else:
+        usage_log = await _increment_device_usage(db, device_id)
+        limit = LIMITS.get(subscription, 1)
+        new_remaining = max(limit - usage_log.count, 0)
+        used = usage_log.count
+        daily_limit_shown = limit
 
-        if df is None or df.empty:
-            raise HTTPException(
-                status_code=404,
-                detail=f'未找到 "{symbol_clean}" 的市场数据，请检查代码是否正确',
-            )
+    # Enqueue the analysis task
+    await request.app.state.redis.enqueue_job(
+        "analyze_task",
+        task_id,
+        symbol_clean,
+        req.market,
+        req.period,
+        req.history_days or 90,
+        req.holding_quantity,
+        req.cost_price,
+        req.max_position,
+        _llm,
+        _job_id=task_id,
+    )
 
-        # Analyze with LLM
-        result = await llm_service.analyze_with_llm(
-            df=df,
-            symbol=symbol_clean,
-            provider=_llm["provider"],
-            api_key=api_key,
-            base_url=_llm["base_url"],
-            model=_llm["model"],
-            max_tokens=_llm["max_tokens"],
-            temperature=_llm["temperature"],
-            user_context={
-                "holding_quantity": req.holding_quantity,
-                "cost_price": req.cost_price,
-                "max_position": req.max_position,
-            },
-        )
-
-        latest_price = float(df.iloc[-1]["close"])
-        normalized_result = _normalize_result(result, latest_price, req)
-
-        # Apply free-tier masking (after normalize but before response build)
-        if subscription == "free":
-            normalized_result = _mask_result_for_free_tier(normalized_result)
-
-        if usage_mode == "account":
-            await user_service.increment_usage(db, current_user)
-            _, new_remaining = await user_service.check_daily_limit(db, current_user)
-            used = current_user.daily_usage
-        else:
-            usage = await _increment_device_usage(db, device_id)
-            limit = LIMITS.get(subscription, 1)
-            new_remaining = max(limit - usage.count, 0)
-            used = usage.count
-
-        # Increment position analysis counter for basic tier
-        if has_position_params and subscription == "basic":
-            if usage_mode == "device":
-                _pos_log = await _get_or_create_usage_log(db, device_id)
-                _pos_log.position_count = (_pos_log.position_count or 0) + 1
-                await db.commit()
-            else:
-                from sqlalchemy import update as _update
-                now_dt = datetime.utcnow()
-                today_dt = now_dt.date()
-                last_pos = current_user.last_position_date.date() if current_user.last_position_date else None
-                new_pos_usage = 1 if last_pos != today_dt else (current_user.daily_position_usage or 0) + 1
-                await db.execute(
-                    _update(User).where(User.id == current_user.id).values(
-                        daily_position_usage=new_pos_usage,
-                        last_position_date=now_dt,
-                    )
-                )
-                await db.commit()
-
-        daily_limit_shown = limits_map.get(subscription, 1)
-
-        symbol_name = await get_symbol_name(symbol_clean, req.market)
-        # Persist the name so it survives restarts and is available even before
-        # the bulk name-refresh completes on the next boot.
-        if symbol_name:
-            from src.services.data.name_service import save_symbol_name
-            asyncio.create_task(save_symbol_name(symbol_clean, req.market, symbol_name))
-        latest_row = df.iloc[-1]
-        response_payload = {
-            "success": True,
+    return {
+        "task_id": task_id,
+        "status": "queued",
+        "usage": {
+            "tier": subscription,
             "remaining": new_remaining,
-            "result": {
-                **normalized_result,
-                "indicators": {
-                    "ma10": float(latest_row.get("ma10", 0) or 0),
-                    "ma30": float(latest_row.get("ma30", 0) or 0),
-                    "ma60": float(latest_row.get("ma60", 0) or 0),
-                    "rsi": float(latest_row.get("rsi", 0) or 0),
-                    "macd": float(latest_row.get("macd", 0) or 0),
-                    "macd_dea": float(latest_row.get("macd_dea", 0) or 0),
-                    "macd_bar": float(latest_row.get("macd_bar", 0) or 0),
-                    "atr": float(latest_row.get("atr", 0) or 0),
-                },
-                "raw_signal": result,
-            },
-            "usage": {
-                "remaining": new_remaining,
-                "tier": subscription,
-                "daily_limit": daily_limit_shown,
-                "used": used,
-            },
-            "data": {
-                "symbol": symbol_clean,
-                "name": symbol_name,
-                "market": req.market,
-                "latest_price": latest_price,
-                "latest_date": datetime.fromtimestamp(df.iloc[-1]["datetime"] / 1e9).isoformat(),
-            },
-        }
-        history_record = await _save_analysis_history(
-            db=db,
-            req_symbol=symbol_clean,
-            req_market=req.market,
-            req_period=req.period,
-            result_payload=response_payload,
-            current_user=current_user,
-            device_id=device_id if usage_mode == "device" else None,
-        )
-        response_payload["history"] = {
-            "id": history_record.id,
-            "analysis_date": history_record.analysis_date.isoformat(),
-            "analyzed_at": history_record.analyzed_at.isoformat(),
-        }
-        return response_payload
+            "used": used,
+            "daily_limit": daily_limit_shown,
+        },
+    }
 
-    except HTTPException:
-        raise
-    except TimeoutError as e:
-        logger.error("LLM timeout for symbol=%s market=%s: %s", symbol_clean, req.market, e)
-        raise HTTPException(status_code=504, detail=str(e))
-    except RuntimeError as e:
-        logger.error("LLM runtime error for symbol=%s: %s", symbol_clean, e)
-        raise HTTPException(status_code=502, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.exception("Unexpected analysis error for symbol=%s market=%s", symbol_clean, req.market)
-        raise HTTPException(status_code=500, detail=f"分析服务暂时不可用，请稍后重试")
+
+@app.get("/api/task/{task_id}")
+async def get_task_status(task_id: str, request: Request):
+    """Poll task status. Returns status + result when done."""
+    import json as _json
+    raw = await request.app.state.redis.get(f"task:{task_id}")
+    if raw is None:
+        raise HTTPException(status_code=404, detail="Task not found or expired")
+    return _json.loads(raw)
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws/task/{task_id}")
+async def ws_task_status(websocket: WebSocket, task_id: str):
+    """WebSocket: push task result when ready, then close."""
+    import json as _json
+    await websocket.accept()
+    try:
+        redis = websocket.app.state.redis
+        # Poll Redis until result is ready (max 5 minutes = 600 × 0.5s)
+        for _ in range(600):
+            raw = await redis.get(f"task:{task_id}")
+            if raw:
+                data = _json.loads(raw)
+                if data.get("status") in ("done", "failed"):
+                    await websocket.send_json(data)
+                    break
+            await asyncio.sleep(0.5)
+        else:
+            await websocket.send_json({"status": "timeout", "task_id": task_id})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 @app.get("/api/analyze/limits")
