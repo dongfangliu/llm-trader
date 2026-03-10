@@ -148,7 +148,18 @@ export interface AnalyzeResponse {
   };
 }
 
-export const analyze = async (data: AnalyzeRequest): Promise<AnalyzeResponse> => {
+export interface AnalyzeQueuedResponse {
+  task_id: string;
+  status: 'queued';
+  usage: {
+    tier: string;
+    remaining: number;
+    used: number;
+    daily_limit: number;
+  };
+}
+
+export const analyze = async (data: AnalyzeRequest): Promise<AnalyzeQueuedResponse> => {
   const response = await api.post('/api/analyze', data);
   return response.data;
 };
@@ -476,6 +487,64 @@ export const adminGetWatchlist = async (): Promise<{ watchlist: WatchlistEntry[]
 export const adminUpdateWatchlist = async (watchlist: WatchlistEntry[]): Promise<{ success: boolean; count: number }> => {
   const response = await adminApi.put('/api/admin/watchlist', { watchlist });
   return response.data;
+};
+
+// ── Async Task ────────────────────────────────────────────────────────────────
+
+export interface TaskStatusResponse {
+  task_id: string;
+  status: 'queued' | 'processing' | 'done' | 'failed' | 'timeout';
+  result?: any;
+  latest_price?: number;
+  analyzed_at?: string;
+  cached?: boolean;
+  error?: string;
+  usage?: {
+    tier: string;
+    remaining: number;
+    used: number;
+    daily_limit: number;
+  };
+}
+
+export const pollTask = async (taskId: string): Promise<TaskStatusResponse> => {
+  const response = await api.get(`/api/task/${taskId}`);
+  return response.data;
+};
+
+/**
+ * Connect to WebSocket for task result.
+ * Calls onMessage when status is done/failed/timeout.
+ * Returns a cleanup function to close the socket.
+ */
+export const connectTaskWebSocket = (
+  taskId: string,
+  onMessage: (data: TaskStatusResponse) => void,
+  onError?: (err: Event) => void,
+): (() => void) => {
+  // Derive WebSocket base URL from the current page origin
+  const wsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsHost = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
+  const ws = new WebSocket(`${wsProto}//${wsHost}/ws/task/${taskId}`);
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as TaskStatusResponse;
+      onMessage(data);
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  if (onError) {
+    ws.onerror = onError;
+  }
+
+  return () => {
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+  };
 };
 
 export default api;
