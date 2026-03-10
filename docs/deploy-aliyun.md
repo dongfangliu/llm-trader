@@ -232,20 +232,22 @@ Cloudflare → **SSL/TLS → Overview** → 选择 **Full**（不要选 Flexible
 
 ### 3. 申请 SSL 证书（二选一）
 
-**方式 A：Let's Encrypt（宝塔自动续期）**
+> **注意：** SSL 证书需在第八步添加站点之后才能申请，这里先了解两种方式的区别。
 
-1. 暂时将 Cloudflare DNS 的 Proxy 改为 **DNS only**（灰云）
-2. 宝塔面板 → 网站 → 该站点 → **SSL** → Let's Encrypt → 勾选域名 → **申请**
+**方式 A：Let's Encrypt（宝塔自动续期）—— 在第八步完成后操作**
+
+1. 暂时将 Cloudflare DNS 的 Proxy 改为 **DNS only**（灰云，否则无法验证域名）
+2. 第八步添加站点后，进入站点 **设置 → SSL 标签页 → Let's Encrypt 子选项卡** → 勾选域名 → **申请**
 3. 申请成功后，将 Cloudflare Proxy 改回 **Proxied**（橙云）
 
 **方式 B：Cloudflare Origin Certificate（推荐，15 年有效期）**
 
 1. Cloudflare → **SSL/TLS → Origin Server → Create Certificate** → 下载 `.pem` 和 `.key`
-2. 将文件上传到服务器（如 `/etc/nginx/ssl/`）
+2. 将文件上传到服务器（如 `/etc/ssl/trader/`）
 3. 在第八步 Nginx 配置中将证书路径替换为：
    ```nginx
-   ssl_certificate     /etc/nginx/ssl/cloudflare-origin.pem;
-   ssl_certificate_key /etc/nginx/ssl/cloudflare-origin.key;
+   ssl_certificate     /etc/ssl/trader/cloudflare-origin.pem;
+   ssl_certificate_key /etc/ssl/trader/cloudflare-origin.key;
    ```
 
 ### 4. 更新环境变量
@@ -269,9 +271,28 @@ cd /opt/trader && docker compose restart backend
 
 ## 第八步：配置 Nginx 反向代理
 
-在宝塔面板 → **网站** → **添加站点**，填入你的域名。
+### 1. 添加站点
 
-然后进入网站配置，修改 Nginx 配置（覆盖为以下内容）：
+宝塔面板左侧菜单 → **网站** → 右上角 **添加站点**：
+
+- **域名**：填入你的域名（如 `yourdomain.com`）
+- **根目录**：保持默认（不会实际使用）
+- **PHP 版本**：选 **纯静态** 即可
+- 其他保持默认 → **提交**
+
+### 2. 申请 SSL 证书（Let's Encrypt）
+
+> 如果使用 Cloudflare Origin Certificate，跳过此步。
+
+在网站列表中，找到刚添加的域名，点击右侧 **设置** 按钮（v11.x 中显示为每行末尾的操作按钮）→ 在弹出的设置面板中点击 **SSL** 标签页 → 选择 **Let's Encrypt** 子选项卡 → 勾选域名 → 点击 **申请**。
+
+申请成功后证书自动保存到 `/www/server/panel/vhost/cert/yourdomain.com/`。
+
+### 3. 编辑 Nginx 配置文件
+
+在同一设置面板中，切换到 **配置文件** 标签页，将编辑器内的全部内容**替换**为以下配置：
+
+> **v11.x 导航路径：** 网站列表 → 域名右侧 **设置** → 弹出面板顶部标签栏 → **配置文件**
 
 ```nginx
 server {
@@ -284,7 +305,7 @@ server {
     listen 443 ssl http2;
     server_name yourdomain.com;
 
-    # SSL 证书（宝塔申请 Let's Encrypt 后自动填入）
+    # SSL 证书（Let's Encrypt 申请后路径如下；Cloudflare Origin Cert 请替换为对应路径）
     ssl_certificate     /www/server/panel/vhost/cert/yourdomain.com/fullchain.pem;
     ssl_certificate_key /www/server/panel/vhost/cert/yourdomain.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -294,18 +315,13 @@ server {
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-Content-Type-Options nosniff;
 
-    # WebSocket 升级头（arq Worker 结果推送）
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        ''      close;
-    }
-
     # 所有请求转发给 Next.js（Next.js 内部代理 /api/* 和 /ws/* 到 backend）
     location / {
         proxy_pass         http://127.0.0.1:3000;
         proxy_http_version 1.1;
+        # WebSocket 升级头（map 指令不能用于 vhost 文件，直接硬编码 upgrade 即可）
         proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection $connection_upgrade;
+        proxy_set_header   Connection "upgrade";
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -316,13 +332,17 @@ server {
 }
 ```
 
-> **申请 SSL 证书：** 宝塔面板 → 网站 → 该站点 → SSL → Let's Encrypt → 申请
+### 4. 保存并重载
 
-**验证 Nginx 配置并重载：**
+点击配置文件编辑器右上角的 **保存** 按钮，宝塔面板会自动验证语法并重载 Nginx。
+
+也可在 SSH 终端手动验证：
 
 ```bash
 nginx -t && nginx -s reload
 ```
+
+> **如果宝塔安装的是 OpenResty：** 命令换为 `openresty -t && openresty -s reload`，配置语法完全相同。
 
 ---
 
@@ -386,7 +406,7 @@ crontab -e
 
 ### WebSocket 连接失败
 
-1. 确认 Nginx 配置中有 `map $http_upgrade $connection_upgrade` 和对应 header
+1. 确认 Nginx 配置中 location 块有 `proxy_set_header Upgrade $http_upgrade` 和 `Connection "upgrade"`
 2. 确认 `proxy_read_timeout 300s`（默认 60s 会断开 WS）
 
 ### Redis 连接失败（Worker 日志报错）
