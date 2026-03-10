@@ -39,7 +39,7 @@ logs/
 *.log
 
 # Data & Database
-data/
+/data/
 *.db
 *.sqlite
 *.sqlite3
