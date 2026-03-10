@@ -42,7 +42,7 @@ htmlcov/
 logs/
 
 # Data
-data/
+/data/
 *.db
 *.sqlite
 
