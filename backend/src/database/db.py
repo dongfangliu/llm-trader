@@ -122,6 +122,8 @@ class User(Base):
     invite_code = Column(String(16), nullable=True, unique=True, index=True)
     bonus_quota = Column(Integer, default=0)
     used_invite_code = Column(String(16), nullable=True)  # non-null = already redeemed once
+    has_had_pro_trial = Column(Boolean, default=False, nullable=False)
+    is_banned = Column(Boolean, default=False, nullable=False)
 
     # Position analysis tracking (basic tier daily limit)
     daily_position_usage = Column(Integer, default=0)
@@ -198,6 +200,8 @@ class DeviceSubscription(Base):
     expires_at = Column(DateTime, nullable=True)  # None = free tier; set on paid activation
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_banned = Column(Boolean, default=False, nullable=False)
+    has_had_pro_trial = Column(Boolean, default=False, nullable=False)
 
 
 class IpUsageLog(Base):
@@ -303,6 +307,10 @@ async def _migrate_db():
             "ALTER TABLE users ADD COLUMN daily_position_usage INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN last_position_date TIMESTAMP",
             "ALTER TABLE usage_logs ADD COLUMN position_count INTEGER DEFAULT 0",
+            "ALTER TABLE device_subscriptions ADD COLUMN is_banned BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE device_subscriptions ADD COLUMN has_had_pro_trial BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN has_had_pro_trial BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN is_banned BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 await conn.execute(text(col_sql))

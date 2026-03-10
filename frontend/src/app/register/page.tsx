@@ -39,9 +39,9 @@ function FormRow({
 }
 
 const BENEFITS = [
-  { icon: '📊', title: '更多分析次数', desc: '免费版每天 3 次（游客仅 1 次）' },
+  { icon: '📋', title: '免费分析', desc: '每天1次免费分析' },
   { icon: '☁️', title: '跨设备同步', desc: '任意设备登录，数据不丢失' },
-  { icon: '🎁', title: '邀请奖励', desc: '好友邀请双方各得 +10 次永久额度' },
+  { icon: '🎁', title: '邀请奖励', desc: '邀请好友共同使用，获得免费永久额度' },
   { icon: '🚀', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
 ];
 
@@ -181,7 +181,7 @@ export default function RegisterPage() {
           创建账号
         </h1>
         <p style={{ fontSize: 14, color: '#8e8e93', margin: 0 }}>
-          注册后免费每天 3 次分析
+          注册即解锁完整分析功能
         </p>
       </div>
 

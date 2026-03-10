@@ -55,6 +55,7 @@ import BottomSheet from '@/components/BottomSheet';
 import ResultSheet from '@/components/ResultSheet';
 import SharePreviewSheet from '@/components/SharePreviewSheet';
 import SavedRecordsSheet from '@/components/SavedRecordsSheet';
+import GuestTrialEndedScreen from '@/components/GuestTrialEndedScreen';
 
 const ENV_APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || '';
 
@@ -280,6 +281,9 @@ export default function HomePage() {
   const [narrativeIdx, setNarrativeIdx] = useState(0);
 
   const tier = user?.subscription_tier ?? 'free';
+  const [resultDisplayTier, setResultDisplayTier] = useState<string>(tier);
+  const [guestTrialEnded, setGuestTrialEnded] = useState(false);
+  const [deviceBanned, setDeviceBanned] = useState(false);
 
   // Saved records — rich objects stored in localStorage
   const [savedRecords, setSavedRecords] = useState<SavedRecord[]>(() => {
@@ -355,7 +359,7 @@ export default function HomePage() {
         opportunityGrade:       r.opportunity_quality ?? null,
         reasonExcerpt,
         analyzedAt:             activeAnalyzedAt,
-        tier,
+        tier: resultDisplayTier,
         basicDailyLimit:        pricing?.basic?.daily_limit ?? 5,
         appName:                appName,
         appBaseUrl:             typeof window !== 'undefined' ? window.location.origin : undefined,
@@ -489,6 +493,11 @@ export default function HomePage() {
           remaining: usage.remaining,
           daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
         });
+        if ((usage as any).is_banned) {
+          setDeviceBanned(true);
+        } else if ((usage as any).trial_used) {
+          setGuestTrialEnded(true);
+        }
       }).catch(console.error);
     }
   }, [deviceId, user]);
@@ -587,6 +596,7 @@ export default function HomePage() {
     setError(null);
     setAnalyzeTimedOut(false);
     setMultiPeriodResults([]);
+    setResultDisplayTier(tier);
 
     // ── Frontend 3-minute soft timeout ──────────────────────────────
     const timeoutHandle = setTimeout(() => {
@@ -616,6 +626,8 @@ export default function HomePage() {
           ? { holdingQuantity, costPrice, maxPosition }
           : null;
         setResult(taskData.result);
+        const displayTier = (queuedUsage as any).display_tier ?? tier;
+        setResultDisplayTier(displayTier);
         // Use queued usage immediately for responsive UI, then re-fetch from server to ensure accuracy
         setLimits(queuedUsage);
         if (user) {
@@ -713,7 +725,14 @@ export default function HomePage() {
 
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
-      if (status === 401) {
+      const errorCode = typeof detail === 'object' ? detail?.code : null;
+      if (errorCode === 'trial_expired') {
+        setGuestTrialEnded(true);
+        setActivePanel('analyze');
+      } else if (errorCode === 'device_banned') {
+        setDeviceBanned(true);
+        setActivePanel('analyze');
+      } else if (status === 401) {
         setError('🔒 登录已过期，请重新登录');
         setTimeout(() => router.push('/login'), 1500);
       } else if (isSystemError(status)) {
@@ -814,6 +833,12 @@ export default function HomePage() {
     <div className="app-shell">
       <Toast toast={toast} />
       <ErrorReportDialog error={errorReport} onClose={() => setErrorReport(null)} />
+      <GuestTrialEndedScreen
+        open={guestTrialEnded}
+        banned={deviceBanned}
+        onRegister={() => router.push('/register')}
+        onClose={() => { setGuestTrialEnded(false); setDeviceBanned(false); }}
+      />
 
       {/* ═══ MOBILE Header (hidden on desktop) ═══ */}
       <header className="app-header mobile-only" style={{
@@ -1793,7 +1818,7 @@ export default function HomePage() {
                     isOpen={resultSheetOpen}
                     onClose={() => setResultSheetOpen(false)}
                     result={result}
-                    tier={tier}
+                    tier={resultDisplayTier}
                     period={period}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}

@@ -122,7 +122,7 @@ export default function LoginPage() {
           marginBottom: 16,
         }}>📈</div>
         <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px', color: '#000', margin: '0 0 6px' }}>
-          {APP_NAME}
+          {appName}
         </h1>
         <p style={{ fontSize: 15, color: '#8e8e93', margin: 0 }}>
           AI 驱动的专业技术分析平台

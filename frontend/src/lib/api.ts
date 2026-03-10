@@ -153,6 +153,7 @@ export interface AnalyzeQueuedResponse {
   status: 'queued';
   usage: {
     tier: string;
+    display_tier?: string;
     remaining: number;
     used: number;
     daily_limit: number;
@@ -282,6 +283,8 @@ export interface AdminDevice {
   id: number;
   device_id: string;
   subscription_tier: 'free' | 'basic' | 'premium';
+  is_banned: boolean;
+  has_had_pro_trial: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -334,6 +337,31 @@ export const adminSetDeviceSubscription = async (device_id: string, tier: string
 export const adminDeleteDevice = async (device_id: string) => {
   const r = await adminApi.delete(`/api/admin/devices/${device_id}`);
   return r.data;
+};
+
+export const adminBanDevice = async (device_id: string) => {
+  const r = await adminApi.post(`/api/admin/devices/${device_id}/ban`);
+  return r.data;
+};
+
+export const adminUnbanDevice = async (device_id: string) => {
+  const r = await adminApi.post(`/api/admin/devices/${device_id}/unban`);
+  return r.data;
+};
+
+export const adminResetDeviceTrial = async (device_id: string) => {
+  const r = await adminApi.post(`/api/admin/devices/${device_id}/reset-trial`);
+  return r.data;
+};
+
+export const adminGetDeviceHistory = async (device_id: string) => {
+  const r = await adminApi.get(`/api/admin/devices/${device_id}/history`);
+  return r.data as { device_id: string; items: Array<{ id: number; symbol: string; market: string; period: string; analysis_date: string | null; analyzed_at: string | null }> };
+};
+
+export const adminBatchDevices = async (action: string, device_ids: string[]) => {
+  const r = await adminApi.post('/api/admin/devices/batch', { action, device_ids });
+  return r.data as { status: string; action: string; affected: number };
 };
 
 export interface FeatureItem {

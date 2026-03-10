@@ -548,6 +548,23 @@ async def _get_device_subscription(db: AsyncSession, device_id: str) -> str:
     return row.subscription_tier
 
 
+async def _get_or_create_device_subscription(db: AsyncSession, device_id: str) -> DeviceSubscription:
+    """Get or create DeviceSubscription record (returns full ORM object)."""
+    result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
+    row = result.scalars().first()
+    if not row:
+        row = DeviceSubscription(
+            device_id=device_id,
+            subscription_tier="free",
+            is_banned=False,
+            has_had_pro_trial=False,
+        )
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+    return row
+
+
 async def _get_or_create_usage_log(db: AsyncSession, device_id: str) -> UsageLog:
     today = datetime.utcnow().date()
     result = await db.execute(
@@ -838,6 +855,8 @@ async def get_subscription_by_device(
     sub_result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
     sub_row = sub_result.scalars().first()
     expires_at = sub_row.expires_at.isoformat() if (sub_row and sub_row.expires_at) else None
+    trial_used = bool(sub_row and sub_row.has_had_pro_trial and effective_tier == "free")
+    is_banned = bool(sub_row and sub_row.is_banned)
     return {
         "subscription": effective_tier,
         "remaining": remaining,
@@ -845,6 +864,8 @@ async def get_subscription_by_device(
         "used": usage.count,
         "resets_at": _tomorrow_reset_iso(),
         "expires_at": expires_at,
+        "trial_used": trial_used,
+        "is_banned": is_banned,
     }
 
 
@@ -1070,16 +1091,36 @@ async def analyze(
 
     if usage_mode == "account":
         subscription = current_user.subscription_tier
+        # Trial logic for registered users
+        is_first_trial = not current_user.has_had_pro_trial
+        if is_first_trial:
+            effective_tier = "premium"
+            subscription = "premium"
+        else:
+            effective_tier = current_user.subscription_tier
         has_limit, remaining = await user_service.check_daily_limit(db, current_user)
         # registered users get 3/day on free tier (vs 1/day for guests)
         limits_map = USER_LIMITS
     else:
-        subscription = await _get_device_subscription(db, device_id)
+        device_sub = await _get_or_create_device_subscription(db, device_id)
+        # Ban check — before everything
+        if device_sub.is_banned:
+            raise HTTPException(status_code=403, detail={"code": "device_banned", "message": "设备已被封禁"})
+        # Trial logic
+        is_first_trial = not device_sub.has_had_pro_trial
+        if is_first_trial:
+            effective_tier = "premium"
+            subscription = "premium"
+        elif device_sub.subscription_tier == "free":
+            raise HTTPException(status_code=403, detail={"code": "trial_expired", "message": "免费体验已结束，请注册账号继续使用"})
+        else:
+            effective_tier = device_sub.subscription_tier
+            subscription = device_sub.subscription_tier
         usage = await _get_or_create_usage_log(db, device_id)
         limits_map = LIMITS
         limit = limits_map.get(subscription, 1)
         remaining = max(limit - usage.count, 0)
-        has_limit = remaining > 0
+        has_limit = remaining > 0 or is_first_trial
 
     if req.market not in ALLOWED_MARKETS.get(subscription, {"a"}):
         raise HTTPException(status_code=403, detail="Current subscription does not support this market")
@@ -1225,11 +1266,30 @@ async def analyze(
             logger.error("quota rollback also failed: %s", rb_err)
         raise HTTPException(status_code=503, detail="任务队列暂时不可用，请稍后重试（配额已尝试回滚）")
 
+    # Mark trial as used (after successful enqueue)
+    if is_first_trial:
+        from sqlalchemy import update as _update_trial
+        if usage_mode == "device":
+            await db.execute(
+                _update_trial(DeviceSubscription)
+                .where(DeviceSubscription.device_id == device_id)
+                .values(has_had_pro_trial=True)
+            )
+        else:
+            await db.execute(
+                _update_trial(User)
+                .where(User.id == current_user.id)
+                .values(has_had_pro_trial=True)
+            )
+        await db.commit()
+
+    original_tier = current_user.subscription_tier if usage_mode == "account" else subscription
     return {
         "task_id": task_id,
         "status": "queued",
         "usage": {
-            "tier": subscription,
+            "tier": original_tier,
+            "display_tier": effective_tier,
             "remaining": new_remaining,
             "used": used,
             "daily_limit": daily_limit_shown,
@@ -1299,10 +1359,17 @@ async def get_usage_by_device(
     usage = await _get_or_create_usage_log(db, device_id)
     daily_limit = LIMITS["free"]  # guests have a single tier
     remaining = max(daily_limit - usage.count, 0)
+    sub_result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
+    sub_row = sub_result.scalars().first()
+    trial_used = bool(sub_row and sub_row.has_had_pro_trial and sub_row.subscription_tier == "free")
+    is_banned = bool(sub_row and sub_row.is_banned)
     return {
         "subscription": usage.subscription,
         "remaining": remaining,
         "resets_at": _tomorrow_reset_iso(),
+        "trial_used": trial_used,
+        "is_banned": is_banned,
+        "daily_limit": daily_limit,
     }
 
 
@@ -1775,6 +1842,8 @@ async def admin_list_devices(
                 "id": r.id,
                 "device_id": r.device_id,
                 "subscription_tier": r.subscription_tier,
+                "is_banned": r.is_banned,
+                "has_had_pro_trial": r.has_had_pro_trial,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "updated_at": r.updated_at.isoformat() if r.updated_at else None,
             }
@@ -1798,6 +1867,140 @@ async def admin_delete_device(
     await db.commit()
     logger.info("admin deleted device=%s", device_id)
     return {"status": "deleted", "device_id": device_id}
+
+
+@app.post("/api/admin/devices/{device_id}/ban")
+async def admin_ban_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Ban a device (admin only)."""
+    await _get_or_create_device_subscription(db, device_id)
+    from sqlalchemy import update as _upd
+    await db.execute(
+        _upd(DeviceSubscription)
+        .where(DeviceSubscription.device_id == device_id)
+        .values(is_banned=True)
+    )
+    await db.commit()
+    logger.info("admin banned device=%s", device_id)
+    return {"status": "banned", "device_id": device_id}
+
+
+@app.post("/api/admin/devices/{device_id}/unban")
+async def admin_unban_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Unban a device (admin only)."""
+    await _get_or_create_device_subscription(db, device_id)
+    from sqlalchemy import update as _upd
+    await db.execute(
+        _upd(DeviceSubscription)
+        .where(DeviceSubscription.device_id == device_id)
+        .values(is_banned=False)
+    )
+    await db.commit()
+    logger.info("admin unbanned device=%s", device_id)
+    return {"status": "unbanned", "device_id": device_id}
+
+
+@app.post("/api/admin/devices/{device_id}/reset-trial")
+async def admin_reset_device_trial(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Reset pro trial for a device (admin only)."""
+    await _get_or_create_device_subscription(db, device_id)
+    from sqlalchemy import update as _upd
+    await db.execute(
+        _upd(DeviceSubscription)
+        .where(DeviceSubscription.device_id == device_id)
+        .values(has_had_pro_trial=False)
+    )
+    await db.commit()
+    logger.info("admin reset trial for device=%s", device_id)
+    return {"status": "trial_reset", "device_id": device_id}
+
+
+@app.get("/api/admin/devices/{device_id}/history")
+async def admin_device_history(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Get analysis history for a device (admin only, last 50 records)."""
+    rows = (await db.execute(
+        select(AnalysisHistory)
+        .where(AnalysisHistory.device_id == device_id)
+        .order_by(AnalysisHistory.analyzed_at.desc())
+        .limit(50)
+    )).scalars().all()
+    return {
+        "device_id": device_id,
+        "items": [
+            {
+                "id": r.id,
+                "symbol": r.symbol,
+                "market": r.market,
+                "period": r.period,
+                "analysis_date": r.analysis_date.isoformat() if r.analysis_date else None,
+                "analyzed_at": r.analyzed_at.isoformat() if r.analyzed_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+class BatchDeviceAction(BaseModel):
+    action: str  # "ban" | "unban" | "delete" | "reset-trial"
+    device_ids: list[str]
+
+
+@app.post("/api/admin/devices/batch")
+async def admin_batch_devices(
+    body: BatchDeviceAction,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Batch action on devices (admin only)."""
+    from sqlalchemy import update as _upd, delete as _del
+    affected = 0
+    if body.action == "ban":
+        r = await db.execute(
+            _upd(DeviceSubscription)
+            .where(DeviceSubscription.device_id.in_(body.device_ids))
+            .values(is_banned=True)
+        )
+        affected = r.rowcount
+    elif body.action == "unban":
+        r = await db.execute(
+            _upd(DeviceSubscription)
+            .where(DeviceSubscription.device_id.in_(body.device_ids))
+            .values(is_banned=False)
+        )
+        affected = r.rowcount
+    elif body.action == "reset-trial":
+        r = await db.execute(
+            _upd(DeviceSubscription)
+            .where(DeviceSubscription.device_id.in_(body.device_ids))
+            .values(has_had_pro_trial=False)
+        )
+        affected = r.rowcount
+    elif body.action == "delete":
+        r = await db.execute(
+            _del(DeviceSubscription)
+            .where(DeviceSubscription.device_id.in_(body.device_ids))
+        )
+        affected = r.rowcount
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
+    await db.commit()
+    logger.info("admin batch action=%s devices=%s affected=%d", body.action, body.device_ids, affected)
+    return {"status": "ok", "action": body.action, "affected": affected}
 
 
 @app.post("/api/admin/refresh-names")

@@ -24,7 +24,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { href: '/admin/dashboard', label: '📊 数据看板' },
     { href: '/admin/users', label: '👤 用户管理' },
-    { href: '/admin/devices', label: '📱 设备管理' },
     { href: '/admin/market-data', label: '📈 数据采集' },
     { href: '/admin/settings', label: '⚙️ 系统设置' },
   ];
