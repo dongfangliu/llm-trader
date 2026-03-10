@@ -1140,8 +1140,7 @@ async def analyze(
 
     # --- Enqueue async task ---
     task_id = str(uuid.uuid4())
-    _llm = _llm_config()
-    if not _llm["api_key"]:
+    if not settings.llm_api_key:
         raise HTTPException(status_code=503, detail="AI 分析服务暂未配置，请联系管理员")
 
     # Consume quota upfront (before queuing)
@@ -1190,7 +1189,6 @@ async def analyze(
             req.holding_quantity,
             req.cost_price,
             req.max_position,
-            _llm,
             subscription,
             usage_mode,
             current_user.id if current_user else None,
@@ -1199,7 +1197,33 @@ async def analyze(
         )
     except Exception as eq_err:
         logger.error("enqueue_job failed after quota deducted: %s", eq_err)
-        raise HTTPException(status_code=503, detail="任务队列暂时不可用，请稍后重试（您的配额已返还记录，但需手动检查）")
+        # Attempt to roll back the quota that was consumed
+        try:
+            if usage_mode == "account" and current_user:
+                from sqlalchemy import update as _update_rb
+                if current_user.daily_usage > 0:
+                    await db.execute(
+                        _update_rb(User).where(User.id == current_user.id)
+                        .values(daily_usage=User.daily_usage - 1)
+                    )
+                else:
+                    # was consuming from bonus
+                    await db.execute(
+                        _update_rb(User).where(User.id == current_user.id)
+                        .values(bonus_quota=User.bonus_quota + 1)
+                    )
+                await db.commit()
+            elif usage_mode == "device":
+                from sqlalchemy import text as _text
+                today = datetime.utcnow().date()
+                await db.execute(
+                    _text("UPDATE usage_logs SET count = MAX(0, count - 1) WHERE device_id = :did AND date = :d"),
+                    {"did": device_id, "d": today}
+                )
+                await db.commit()
+        except Exception as rb_err:
+            logger.error("quota rollback also failed: %s", rb_err)
+        raise HTTPException(status_code=503, detail="任务队列暂时不可用，请稍后重试（配额已尝试回滚）")
 
     return {
         "task_id": task_id,

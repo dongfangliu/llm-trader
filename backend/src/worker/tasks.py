@@ -191,7 +191,6 @@ async def analyze_task(
     holding_quantity: Optional[float],
     cost_price: Optional[float],
     max_position: Optional[float],
-    llm_config: dict,
     subscription: str = "free",
     usage_mode: str = "device",
     user_id: Optional[int] = None,
@@ -218,8 +217,18 @@ async def analyze_task(
             logger.info("cache hit: %s", ck)
             cached_result = json.loads(cached_raw)
             # Apply free-tier masking even on cache hits
+            # cached_result["result"] is the full api_result envelope; mask inner "result" field
             if subscription == "free" and "result" in cached_result:
-                cached_result["result"] = _mask_result_for_free_tier(cached_result["result"])
+                cached_envelope = cached_result["result"]
+                if isinstance(cached_envelope, dict) and "result" in cached_envelope:
+                    import copy as _copy
+                    cached_envelope = _copy.deepcopy(cached_envelope)
+                    cached_envelope["result"] = _mask_result_for_free_tier(cached_envelope["result"])
+                    cached_result = dict(cached_result)
+                    cached_result["result"] = cached_envelope
+                else:
+                    # Legacy flat shape fallback
+                    cached_result["result"] = _mask_result_for_free_tier(cached_result["result"])
             payload = {"status": "done", "task_id": task_id, "cached": True, **cached_result}
             await redis.set(f"task:{task_id}", json.dumps(payload), ex=3600)
             return payload
@@ -241,16 +250,24 @@ async def analyze_task(
 
         # --- LLM analysis ---
         from src.services.llm.llm_service import analyze_with_llm
+        from src.database.db import settings as _settings
+
+        provider = _settings.llm_provider
+        api_key = _settings.llm_api_key
+        base_url = _settings.llm_base_url
+        model = _settings.llm_model
+        max_tokens = _settings.llm_max_tokens
+        temperature = _settings.llm_temperature
 
         result = await analyze_with_llm(
             df=df,
             symbol=symbol,
-            provider=llm_config["provider"],
-            api_key=llm_config["api_key"],
-            base_url=llm_config["base_url"],
-            model=llm_config["model"],
-            max_tokens=llm_config["max_tokens"],
-            temperature=llm_config["temperature"],
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
             user_context={
                 "holding_quantity": holding_quantity,
                 "cost_price": cost_price,
@@ -269,33 +286,52 @@ async def analyze_task(
             max_position=max_position,
         )
 
+        # --- Get symbol name for data envelope ---
+        from src.services.data.name_service import get_symbol_name as _get_symbol_name
+        symbol_name = await _get_symbol_name(symbol, market)
+
+        # --- Get latest date from DataFrame index ---
+        latest_date = str(df.index[-1]) if hasattr(df.index, '__len__') else str(df.iloc[-1].name)
+
+        analyzed_at_iso = datetime.utcnow().isoformat()
+
+        # --- Build full api_result envelope (matches synchronous endpoint shape) ---
+        api_result = {
+            "success": True,
+            "result": normalized,
+            "data": {
+                "symbol": symbol,
+                "name": symbol_name,
+                "market": market,
+                "latest_price": latest_price,
+                "latest_date": latest_date,
+            },
+            "usage": {},  # usage is provided by the queued response, not the task
+        }
+
         # --- Apply free-tier masking ---
         if subscription == "free":
-            display_result = _mask_result_for_free_tier(normalized)
+            api_result_display = dict(api_result)
+            api_result_display["result"] = _mask_result_for_free_tier(normalized)
         else:
-            display_result = normalized
+            api_result_display = api_result
 
-        # Store in cache (store normalized, unmasked result so paid users get full data on cache hit)
+        # Store in cache (store unmasked api_result so paid users get full data on cache hit)
         from src.worker.redis_client import cache_ttl
         cache_payload = {
-            "result": normalized,
+            "result": api_result,
             "latest_price": latest_price,
-            "analyzed_at": datetime.utcnow().isoformat(),
+            "analyzed_at": analyzed_at_iso,
         }
         await redis.set(ck, json.dumps(cache_payload), ex=cache_ttl(period))
 
         # --- Save analysis history to DB ---
         try:
-            history_payload = {
-                "result": normalized,
-                "latest_price": latest_price,
-                "analyzed_at": cache_payload["analyzed_at"],
-            }
             await _save_analysis_history_in_worker(
                 symbol=symbol,
                 market=market,
                 period=period,
-                result_payload=history_payload,
+                result_payload=api_result,
                 user_id=user_id,
                 device_id=device_id,
             )
@@ -307,9 +343,9 @@ async def analyze_task(
             "status": "done",
             "task_id": task_id,
             "cached": False,
-            "result": display_result,
+            "result": api_result_display,
             "latest_price": latest_price,
-            "analyzed_at": cache_payload["analyzed_at"],
+            "analyzed_at": analyzed_at_iso,
         }
         await redis.set(f"task:{task_id}", json.dumps(done_payload), ex=3600)
         return done_payload
