@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore, useAnalysisStore } from '@/lib/store';
 import {
   analyze,
+  connectTaskWebSocket,
+  pollTask,
   getUsage,
   getLimits,
   getMarketData,
@@ -14,6 +16,8 @@ import {
   PricingData,
   AnalyzeRequest,
   AnalysisHistoryItem,
+  AnalyzeQueuedResponse,
+  TaskStatusResponse,
 } from '@/lib/api';
 
 import { generateShareCardBlob, generatePredictionCardBlob, generateStatementCardBlob, downloadBlob } from '@/lib/shareCard';
@@ -240,6 +244,7 @@ export default function HomePage() {
   const [sharePreviewStockMeta, setSharePreviewStockMeta] = useState<{ name: string; action: string; confidence: number | null } | null>(null);
   const [sharePreviewActionColor, setSharePreviewActionColor] = useState('#60a5fa');
   const [sharePreviewAnalyzedAt, setSharePreviewAnalyzedAt] = useState<string | null>(null);
+  const [shareCardParams, setShareCardParams] = useState<any>(null);
 
   // Metadata for current result
   const [analyzeStartedAt, setAnalyzeStartedAt] = useState<string | null>(null);
@@ -359,19 +364,17 @@ export default function HomePage() {
         executionPlan:          r.execution_plan || '',
       };
 
-      // Generate social card (statement) + archive card (prediction) in parallel
-      const [socialResult, archiveResult] = await Promise.all([
-        generateStatementCardBlob(cardParams),
-        generatePredictionCardBlob(cardParams),
-      ]);
+      // Generate social card immediately; archive card is generated lazily when user switches mode
+      const socialResult = await generateStatementCardBlob(cardParams);
 
       const action: 'buy' | 'sell' | 'hold' = cardParams.action;
       const actionColor = action === 'buy' ? '#EF4444' : action === 'sell' ? '#22C55E' : '#60A5FA';
 
       setSharePreviewBlob(socialResult.blob);
       setSharePreviewFilename(socialResult.filename);
-      setSharePreviewArchiveBlob(archiveResult.blob);
-      setSharePreviewArchiveFilename(archiveResult.filename);
+      setSharePreviewArchiveBlob(null);    // lazy: generated on demand
+      setSharePreviewArchiveFilename('');
+      setShareCardParams(cardParams);      // save for lazy archive generation
       setSharePreviewStockMeta({ name: cardParams.stockName, action, confidence: cardParams.confidence });
       setSharePreviewActionColor(actionColor);
       setSharePreviewAnalyzedAt(activeAnalyzedAt);
@@ -592,52 +595,97 @@ export default function HomePage() {
         max_position: maxPosition ? Number(maxPosition) : undefined,
       };
 
-      const response = await analyze(request);
-      clearTimeout(timeoutHandle);
-      setResult(response);
-      setLimits(response.usage);
-      const nowIso = new Date().toISOString();
-      setAnalyzeStartedAt(nowIso);
-      const usedPosition = [holdingQuantity, costPrice, maxPosition].some((v) => v.trim())
-        ? { holdingQuantity, costPrice, maxPosition }
-        : null;
-      setResultPositionParams(usedPosition);
-
-      const item = {
-        id: String(response.history?.id || `${Date.now()}_${response.data?.symbol || symbol.trim()}`),
-        symbol: response.data?.symbol || symbol.trim().toUpperCase(),
-        name: response.data?.name || '',
-        market: market,
-        action: response.result?.action,
-        confidence: response.result?.confidence,
-        analyzedAt: (response.history as any)?.analyzed_at || nowIso,
-        positionParams: usedPosition,
-        detail: response,
+      const handleAnalysisResult = (taskData: TaskStatusResponse, queuedUsage: AnalyzeQueuedResponse['usage']) => {
+        const usedPosition = [holdingQuantity, costPrice, maxPosition].some((v) => v?.trim())
+          ? { holdingQuantity, costPrice, maxPosition }
+          : null;
+        setResult(taskData.result);
+        setLimits(queuedUsage);
+        const nowIso = taskData.analyzed_at || new Date().toISOString();
+        setAnalyzeStartedAt(nowIso);
+        setResultPositionParams(usedPosition);
+        const item = {
+          id: String(taskData.result?.history?.id || `${Date.now()}_${symbol.trim()}`),
+          symbol: taskData.result?.data?.symbol || symbol.trim().toUpperCase(),
+          name: taskData.result?.data?.name || '',
+          market: market,
+          action: taskData.result?.result?.action,
+          confidence: taskData.result?.result?.confidence,
+          analyzedAt: nowIso,
+          positionParams: usedPosition,
+          detail: taskData.result,
+        };
+        setHistory((prev) => [item, ...prev.filter((h) => h.id !== item.id)].slice(0, 30));
+        setSelectedHistoryId(item.id);
+        setActivePanel('result');
+        setResultSheetOpen(true);
+        setActiveTab(0);
       };
-      setHistory((prev) => [item, ...prev.filter((h) => h.id !== item.id)].slice(0, 30));
-      setSelectedHistoryId(item.id);
 
-      // Multi-period: only for basic/premium
-      if (multiPeriodEnabled && (tier === 'basic' || tier === 'premium') && auxiliaryPeriods.length > 0) {
-        const mpResults: { period: string; result: any }[] = [
-          { period, result: response },
-        ];
-        for (const auxPeriod of auxiliaryPeriods) {
-          try {
-            const auxResp = await analyze({ ...request, period: auxPeriod as any });
-            mpResults.push({ period: auxPeriod, result: auxResp });
-          } catch (auxErr) {
-            // skip failed auxiliary periods silently
-          }
-        }
-        setMultiPeriodResults(mpResults);
-      }
-
-      setActivePanel('result');
-      setResultSheetOpen(true);
-      setActiveTab(0);
-    } catch (err: any) {
+      // Submit analysis — returns task_id immediately
+      const queued = await analyze(request);
+      setLimits(queued.usage);
       clearTimeout(timeoutHandle);
+
+      // Wait for result via WebSocket (with polling fallback)
+      const wsTimeoutHandle = setTimeout(() => setAnalyzeTimedOut(true), 3 * 60 * 1000);
+
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = connectTaskWebSocket(
+          queued.task_id,
+          (data) => {
+            clearTimeout(wsTimeoutHandle);
+            cleanup();
+            if (data.status === 'failed') {
+              reject(new Error(data.error || '分析失败，请重试'));
+              return;
+            }
+            if (data.status === 'done') {
+              if (!data.result) {
+                reject(new Error('分析结果为空，请重试'));
+                return;
+              }
+              handleAnalysisResult(data, queued.usage);
+              resolve();
+            }
+            if (data.status === 'timeout') {
+              reject(new Error('分析超时，请重试'));
+            }
+          },
+          (_err) => {
+            // WebSocket error — fall back to polling
+            cleanup();
+            const poll = async () => {
+              for (let i = 0; i < 60; i++) {
+                await new Promise((r) => setTimeout(r, 3000));
+                try {
+                  const status = await pollTask(queued.task_id);
+                  if (status.status === 'done') {
+                    clearTimeout(wsTimeoutHandle);
+                    handleAnalysisResult(status, queued.usage);
+                    resolve();
+                    return;
+                  }
+                  if (status.status === 'failed') {
+                    clearTimeout(wsTimeoutHandle);
+                    reject(new Error(status.error || '分析失败'));
+                    return;
+                  }
+                } catch {
+                  // continue polling
+                }
+              }
+              clearTimeout(wsTimeoutHandle);
+              reject(new Error('分析超时，请重试'));
+            };
+            poll();
+          },
+        );
+      });
+
+      // TODO: multi-period analysis is not yet compatible with the async task model
+    } catch (err: any) {
+
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
       if (status === 401) {
@@ -2211,6 +2259,13 @@ export default function HomePage() {
         archiveBlob={sharePreviewArchiveBlob}
         archiveFilename={sharePreviewArchiveFilename}
         analyzedAt={sharePreviewAnalyzedAt}
+        onRequestArchive={async () => {
+          if (shareCardParams && !sharePreviewArchiveBlob) {
+            const archiveResult = await generatePredictionCardBlob(shareCardParams);
+            setSharePreviewArchiveBlob(archiveResult.blob);
+            setSharePreviewArchiveFilename(archiveResult.filename);
+          }
+        }}
       />
 
       <SavedRecordsSheet

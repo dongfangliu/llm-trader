@@ -12,6 +12,7 @@ interface SharePreviewSheetProps {
   archiveBlob?: Blob | null;
   archiveFilename?: string;
   analyzedAt?: string | null;
+  onRequestArchive?: () => Promise<void>;
 }
 
 export default function SharePreviewSheet({
@@ -24,6 +25,7 @@ export default function SharePreviewSheet({
   archiveBlob,
   archiveFilename,
   analyzedAt,
+  onRequestArchive,
 }: SharePreviewSheetProps) {
   const [closing, setClosing] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -84,8 +86,11 @@ export default function SharePreviewSheet({
     a.click();
   };
 
-  const switchMode = (next: 'social' | 'archive') => {
+  const switchMode = async (next: 'social' | 'archive') => {
     if (next === mode) return;
+    if (next === 'archive' && !archiveBlob && onRequestArchive) {
+      await onRequestArchive();
+    }
     setMode(next);
     setCardEntered(false);
     setTimeout(() => setCardEntered(true), 16);
@@ -94,7 +99,7 @@ export default function SharePreviewSheet({
   if (!isOpen && !closing) return null;
 
   const activeImageUrl = mode === 'archive' ? archiveImageUrl : imageUrl;
-  const hasArchiveMode = !!archiveBlob;
+  const hasArchiveMode = !!archiveBlob || !!onRequestArchive;
 
   const actionLabel =
     stockMeta?.action === 'buy' ? '买入' :
