@@ -1118,18 +1118,6 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Viral Social Share Card — Compliance-safe, emotion-first,
-// brand-prominent. No price targets, no specific signals.
-// Designed for 小红书 / 微信 virality + 拉新.
-// ═══════════════════════════════════════════════════════════════
-export interface ViralShareCardParams {
-  result: any;
-  tier: string;
-  analyzedAt?: string | null;
-  appName: string;
-}
-
 /** Richer params for the prediction certificate card */
 export interface PredictionCardParams {
   stockName: string;
@@ -1150,191 +1138,6 @@ export interface PredictionCardParams {
   opportunityAssessment?: string;
   riskAnalysis?: string;
   executionPlan?: string;
-}
-
-export async function generateViralShareCardBlob(p: ViralShareCardParams): Promise<{ blob: Blob; filename: string }> {
-  const { result, tier, appName } = p;
-
-  const action = result?.result?.action;
-  const isBuy  = action === 'buy';
-  const isSell = action === 'sell';
-
-  const stockName = result?.data?.name || result?.data?.symbol || '';
-  const stockCode = result?.data?.symbol || '';
-  const confidence: number | null = result?.result?.confidence ?? null;
-
-  // Compliance-safe wording
-  const actionWord   = isBuy ? '看好' : isSell ? '看空' : '观望';
-  const actionSub    = isBuy ? '技术面呈现上行信号' : isSell ? '技术面呈现下行压力' : '等待更明确的方向';
-  const actionEn     = isBuy ? 'BULLISH' : isSell ? 'BEARISH' : 'NEUTRAL';
-
-  // Color palette — R6: deep dark with vivid accent
-  const bgColor  = isBuy ? '#0a0007' : isSell ? '#00080a' : '#06050a';
-  const accent   = isBuy ? '#ff453a' : isSell ? '#30d158' : '#ffd60a';
-  const accentDim = isBuy ? '#ff453a33' : isSell ? '#30d15833' : '#ffd60a33';
-
-  const W = 600, H = 900;
-  const canvas = document.createElement('canvas');
-  const dpr = 2;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  const ctx = canvas.getContext('2d')!;
-  ctx.scale(dpr, dpr);
-
-  const FONT  = '"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif';
-  const MONO  = '"SF Mono","Courier New",monospace';
-
-  // ── R6: MEGA TYPOGRAPHY ──────────────────────────────────────
-  // Concept: the verdict word IS the design. 140px. Left-aligned editorial.
-
-  // Background
-  ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
-
-  // Subtle vertical noise lines (depth texture)
-  ctx.globalAlpha = 0.03;
-  for (let x = 0; x < W; x += 4) {
-    ctx.fillStyle = x % 8 === 0 ? '#ffffff' : accent;
-    ctx.fillRect(x, 0, 1, H);
-  }
-  ctx.globalAlpha = 1;
-
-  // Left-side accent bar
-  const barGrad = ctx.createLinearGradient(0, 0, 0, H);
-  barGrad.addColorStop(0, accent);
-  barGrad.addColorStop(0.5, accent + 'cc');
-  barGrad.addColorStop(1, accent + '22');
-  ctx.fillStyle = barGrad; ctx.fillRect(0, 0, 5, H);
-
-  // Top confidence bar (thin, full-width, shows confidence level)
-  const confWidth = confidence != null ? W * (Math.max(confidence, 20) / 100) : W * 0.5;
-  const confGrad = ctx.createLinearGradient(0, 0, confWidth, 0);
-  confGrad.addColorStop(0, accent);
-  confGrad.addColorStop(1, accent + '44');
-  ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(0, 0, W, 3);
-  ctx.fillStyle = confGrad; ctx.fillRect(0, 0, confWidth, 3);
-
-  // Brand — top left (small, elegant)
-  ctx.font = `500 11px ${FONT}`; ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.fillText(`${appName}  ✦  AI研判`, 24, 36);
-
-  // Date — top right
-  const dateStr = p.analyzedAt
-    ? new Date(p.analyzedAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
-    : new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
-  ctx.font = `400 11px ${MONO}`; ctx.textAlign = 'right';
-  ctx.fillStyle = 'rgba(255,255,255,0.2)';
-  ctx.fillText(dateStr, W - 24, 36);
-
-  // ── HERO SECTION: Verdict word ────────────────────────────────
-  // Big English label (decorative, editorial) — very faint
-  ctx.font = `900 180px ${FONT}`; ctx.textAlign = 'left';
-  ctx.fillStyle = accent + '08';
-  ctx.fillText(actionEn, 14, 280);
-
-  // THE verdict word in Chinese — huge, left-aligned
-  ctx.font = `900 138px ${FONT}`; ctx.textAlign = 'left';
-  ctx.shadowColor = accent; ctx.shadowBlur = 40; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-  ctx.fillStyle = accent;
-  ctx.fillText(actionWord, 24, 270);
-  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-
-  // ── Stock name row ────────────────────────────────────────────
-  let y = 320;
-
-  // Thin separator line
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(24, y); ctx.lineTo(W - 24, y); ctx.stroke();
-  y += 28;
-
-  ctx.font = `700 38px ${FONT}`; ctx.textAlign = 'left';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(stockName, 24, y);
-
-  if (stockCode && stockCode !== stockName) {
-    ctx.font = `500 14px ${MONO}`; ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.fillText(stockCode, W - 24, y);
-  }
-  y += 48;
-
-  // Sub-verdict text
-  ctx.font = `300 18px ${FONT}`; ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fillText(actionSub, 24, y);
-  y += 52;
-
-  // ── Stats row (left-aligned, clean) ───────────────────────────
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.5;
-  ctx.beginPath(); ctx.moveTo(24, y); ctx.lineTo(W - 24, y); ctx.stroke();
-  y += 28;
-
-  const stats = [
-    { label: '置信强度', value: confidence != null ? (confidence >= 80 ? '极强' : confidence >= 65 ? '较强' : confidence >= 45 ? '中等' : '偏弱') : '—' },
-    { label: '研判类型', value: 'AI深度' },
-    { label: '研判时间', value: p.analyzedAt ? new Date(p.analyzedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) },
-  ];
-
-  const statW = (W - 48) / stats.length;
-  stats.forEach((s, i) => {
-    const sx = 24 + i * statW;
-    if (i > 0) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 0.5;
-      ctx.beginPath(); ctx.moveTo(sx, y - 6); ctx.lineTo(sx, y + 50); ctx.stroke();
-    }
-    ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillText(s.label, sx + (i === 0 ? 0 : 14), y + 12);
-    ctx.font = `700 18px ${FONT}`;
-    ctx.fillStyle = i === 0 ? accent : '#ffffff';
-    ctx.fillText(s.value, sx + (i === 0 ? 0 : 14), y + 38);
-  });
-  y += 66;
-
-  // ── CTA section ───────────────────────────────────────────────
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.5;
-  ctx.beginPath(); ctx.moveTo(24, y); ctx.lineTo(W - 24, y); ctx.stroke();
-  y += 32;
-
-  // CTA text left
-  ctx.font = `700 15px ${FONT}`; ctx.textAlign = 'left';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('AI 投资研判 — 免费体验', 24, y);
-  y += 20;
-  ctx.font = `400 12px ${FONT}`;
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillText('扫码获取每日研判 · 专业 · 深度 · 实时', 24, y);
-
-  // QR code right
-  const qrS = 80, qrX2 = W - 24 - qrS, qrY2 = y - 42;
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.beginPath(); ctx.roundRect(qrX2, qrY2, qrS, qrS, 6); ctx.fill();
-  ctx.fillStyle = bgColor + 'ee';
-  ctx.beginPath(); ctx.roundRect(qrX2 + 4, qrY2 + 4, qrS - 8, qrS - 8, 4); ctx.fill();
-  ctx.fillStyle = accent;
-  const qrGrid = [[1,1,1,0,1,1,1],[1,0,1,0,1,0,1],[1,1,1,0,1,1,1],[0,0,0,1,0,0,0],[1,1,1,0,1,1,1],[1,0,1,0,1,0,1],[1,1,1,0,1,1,1]];
-  const qrCell = (qrS - 16) / 7;
-  qrGrid.forEach((row, ri) => row.forEach((cell, ci) => {
-    if (cell) { ctx.beginPath(); ctx.roundRect(qrX2 + 8 + ci * qrCell, qrY2 + 8 + ri * qrCell, qrCell - 1, qrCell - 1, 1); ctx.fill(); }
-  }));
-
-  y += 56;
-
-  // ── Disclaimer ────────────────────────────────────────────────
-  ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
-  ctx.fillText('本内容仅为技术分析参考，不构成投资建议  ·  市场有风险，投资需谨慎', 24, y);
-
-  const tierBadge = tier === 'premium' ? '◈ 专业版' : tier === 'basic' ? '◉ 标准版' : '◎ 体验版';
-  ctx.font = `500 10px ${FONT}`; ctx.textAlign = 'right';
-  ctx.fillStyle = accent + '88';
-  ctx.fillText(tierBadge, W - 24, y);
-
-  return new Promise<{ blob: Blob; filename: string }>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) { reject(new Error('canvas.toBlob failed')); return; }
-      resolve({ blob, filename: `${stockCode || stockName}_洞见卡片.png` });
-    }, 'image/png');
-  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1392,9 +1195,9 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   const heroStr    = (heroValue != null && Math.abs(heroValue) >= 0.05) ? `${heroSign}${heroValue.toFixed(1)}%` : '—';
 
   // ── Color palette: strategy-driven, Chinese convention ────────
-  // Red = 看好(buy/up), Green = 看空(sell/down), Amber = 观望(hold)
-  const heroColor  = isBuy ? '#FF3B30' : isSell ? '#34C759' : '#FF9F0A';
-  const heroDark   = isBuy ? '#8B0000' : isSell ? '#0A4520' : '#7A4A00'; void heroDark;
+  // Red = 看好(buy/up), Green = 看空(sell/down), Gray = 观望(hold)
+  const heroColor  = isBuy ? '#FF3B30' : isSell ? '#34C759' : '#6B7280';
+  const heroDark   = isBuy ? '#8B0000' : isSell ? '#0A4520' : '#374151'; void heroDark;
   const accentText = heroColor;
   const actionCN   = isBuy ? '看好' : isSell ? '看空' : '观望';
   const isFree     = tier === 'free';
@@ -1425,12 +1228,14 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   ctx.fillStyle = vgr;
   ctx.fillRect(0, 0, W, HERO_H);
 
-  // Smooth fade into white zone at bottom of hero — starts BELOW sub-note text
-  const heroFade = ctx.createLinearGradient(0, HERO_H - 38, 0, HERO_H);
+  // Gradual fade into white zone — starts below all hero text, eases over 72px
+  const heroFade = ctx.createLinearGradient(0, HERO_H - 72, 0, HERO_H);
   heroFade.addColorStop(0, 'rgba(250,250,250,0)');
+  heroFade.addColorStop(0.4, 'rgba(250,250,250,0.05)');
+  heroFade.addColorStop(0.75, 'rgba(250,250,250,0.45)');
   heroFade.addColorStop(1, '#FAFAFA');
   ctx.fillStyle = heroFade;
-  ctx.fillRect(0, HERO_H - 38, W, 38);
+  ctx.fillRect(0, HERO_H - 72, W, 72);
 
   // ── WHITE ZONE ────────────────────────────────────────────────
   ctx.fillStyle = '#FAFAFA';
@@ -1486,17 +1291,21 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
 
   // ── HERO NUMBER ───────────────────────────────────────────────
   ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8;
-  const heroFontSize = heroStr.length > 7 ? 118 : heroStr.length > 5 ? 136 : 152;
+  const heroFontSize = finalHeroStr.length > 7 ? 118 : finalHeroStr.length > 5 ? 136 : 152;
   ctx.font = `800 ${heroFontSize}px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(heroStr, W / 2, 440);
+  ctx.fillText(finalHeroStr, W / 2, 440);
   ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
 
   // Hero label
   ctx.font = `500 24px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.72)';
-  ctx.fillText(heroLabel, W / 2, 490);
+  ctx.fillText(finalHeroLabel, W / 2, 490);
 
-  // Sub-note: R:R or action context
-  const rrNote = rr != null
+  // Sub-note: R:R or action context (free tier: generic, no ratio leakage)
+  const rrNote = isFree
+    ? (isBuy ? '技术面看好 · 升级解锁完整分析'
+       : isSell ? '技术面看空 · 升级解锁完整分析'
+       : '观望等待 · 升级解锁完整研判')
+    : rr != null
     ? `风险收益比  ${rr.toFixed(1)} : 1`
     : isBuy ? '技术面看好 · 目标上行空间估算'
     : isSell ? '技术面看空 · 目标下行空间估算'
@@ -1520,37 +1329,93 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   ctx.fillText(stockName, PAD + pillW + 18, y - 1);
   y += 42;
 
-  // ── STATS: 3 white cards ──────────────────────────────────────
+  // ── STATS ─────────────────────────────────────────────────────
   const statColW = Math.floor((W - PAD * 2 - 24) / 3);
   const statH = 100;
   const priceLabel = (m: string) => (m === 'us' ? '$' : '¥');
   const fmt = (v: number | null) => v != null ? `${priceLabel(market)}${v.toFixed(2)}` : '—';
-  const statItems: { label: string; value: string; sub?: string; color: string }[] = [
-    { label: '研判时价', value: fmt(latestPrice),  color: '#1C1C1E' },
-    { label: '目标估价', value: fmt(targetPrice),  color: accentText },
-    { label: '止损参考', value: fmt(stopLoss), sub: (maxLoss != null && Math.abs(maxLoss) >= 0.05) ? `${maxLoss.toFixed(1)}%` : undefined, color: '#FF9F0A' },
-  ];
+  const showPrices = !isFree;
 
-  statItems.forEach((item, i) => {
-    const sx = PAD + i * (statColW + 12);
+  // Current price card (always visible)
+  const sx0 = PAD;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,0,0,0.07)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
+  ctx.beginPath(); ctx.roundRect(sx0, y, statColW, statH, 14); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
+  ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
+  ctx.fillText('研判时价', sx0 + 20, y + 30);
+  ctx.font = `700 27px ${M}`; ctx.fillStyle = '#1C1C1E';
+  ctx.fillText(fmt(latestPrice), sx0 + 20, y + 66);
+
+  if (showPrices) {
+    // Target price card
+    const sx1 = PAD + statColW + 12;
     ctx.fillStyle = '#FFFFFF';
     ctx.shadowColor = 'rgba(0,0,0,0.07)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
-    ctx.beginPath(); ctx.roundRect(sx, y, statColW, statH, 14); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(sx1, y, statColW, statH, 14); ctx.fill();
+    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
+    ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
+    ctx.fillText('目标估价', sx1 + 20, y + 30);
+    ctx.font = `700 27px ${M}`; ctx.fillStyle = accentText;
+    ctx.fillText(fmt(targetPrice), sx1 + 20, y + 66);
+
+    // Stop loss card
+    const sx2 = PAD + (statColW + 12) * 2;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.07)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
+    ctx.beginPath(); ctx.roundRect(sx2, y, statColW, statH, 14); ctx.fill();
+    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
+    ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
+    ctx.fillText('止损参考', sx2 + 20, y + 30);
+    ctx.font = `700 27px ${M}`; ctx.fillStyle = '#FF9F0A';
+    ctx.fillText(fmt(stopLoss), sx2 + 20, y + 66);
+    if (maxLoss != null && Math.abs(maxLoss) >= 0.05) {
+      ctx.font = `400 15px ${F}`; ctx.fillStyle = '#FF9F0Acc';
+      ctx.fillText(`${maxLoss.toFixed(1)}%`, sx2 + 20, y + 86);
+    }
+  } else {
+    // Elegant single locked block spanning the 2 right columns
+    const lockX = PAD + statColW + 12;
+    const lockW = (statColW + 12) * 2 - 12; // spans 2 columns
+    const lockTint = '#60A5FA'; // blue — points toward upgrade
+
+    // Frosted glass card
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.06)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    ctx.beginPath(); ctx.roundRect(lockX, y, lockW, statH, 14); ctx.fill();
     ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
 
-    ctx.font = `400 17px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
-    ctx.fillText(item.label, sx + 20, y + 30);
+    // Subtle gradient wash inside the card
+    const lockGrad = ctx.createLinearGradient(lockX, y, lockX + lockW, y + statH);
+    lockGrad.addColorStop(0, lockTint + '10');
+    lockGrad.addColorStop(1, lockTint + '05');
+    ctx.fillStyle = lockGrad;
+    ctx.beginPath(); ctx.roundRect(lockX, y, lockW, statH, 14); ctx.fill();
 
-    ctx.font = `700 27px ${M}`; ctx.fillStyle = item.color;
-    ctx.fillText(item.value, sx + 20, y + 66);
+    // Left accent line
+    ctx.fillStyle = lockTint + '55';
+    ctx.beginPath(); ctx.roundRect(lockX, y + 14, 3, statH - 28, 2); ctx.fill();
 
-    if (item.sub) {
-      ctx.font = `400 15px ${F}`; ctx.fillStyle = '#FF9F0Acc';
-      const vw = ctx.measureText(item.value).width;
-      ctx.fillText(item.sub, sx + 20, y + 86);
-      void vw; // suppress unused warning
-    }
-  });
+    // Ghost label row — "目标估价" left, "止损参考" right
+    ctx.font = `400 14px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#C7C7CC';
+    ctx.fillText('目标估价', lockX + 20, y + 24);
+    ctx.textAlign = 'right';
+    ctx.fillText('止损参考', lockX + lockW - 20, y + 24);
+    ctx.textAlign = 'left';
+
+    // Main CTA — centered, no icon
+    ctx.font = `600 19px ${F}`; ctx.fillStyle = lockTint;
+    const ctaTxt = '升级解锁价格目标';
+    const ctaW2 = ctx.measureText(ctaTxt).width;
+    ctx.fillText(ctaTxt, lockX + (lockW - ctaW2) / 2, y + 58);
+
+    // Sub hint
+    ctx.font = `400 13px ${F}`; ctx.fillStyle = '#AEAEB2';
+    const hint = '标准版起可见';
+    const hintW = ctx.measureText(hint).width;
+    ctx.fillText(hint, lockX + (lockW - hintW) / 2, y + 80);
+    void ctaW2;
+  }
   y += statH + 28;
 
   // ── DIVIDER ───────────────────────────────────────────────────
@@ -1558,13 +1423,48 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
   y += 30;
 
-  // ── DEEP ANALYSIS: 4 sections ─────────────────────────────────
-  const sections: { label: string; icon: string; tint: string; content: string }[] = [
+  // ── DEEP ANALYSIS: tier-gated sections ───────────────────────
+  // Free:    0 full sections — show brief summary excerpt + locked teaser
+  // Basic:   all 4 sections + soft upgrade-to-premium CTA
+  // Premium: all 4 sections, no CTA
+  const allSections: { label: string; icon: string; tint: string; content: string }[] = [
     { label: '市场诊断', icon: '诊', tint: '#0071e3', content: marketDiagnosis || reasonExcerpt || '' },
     { label: '机会评估', icon: '机', tint: '#f59e0b', content: opportunityAssessment || '' },
     { label: '风险收益', icon: '险', tint: '#ef4444', content: riskAnalysis || '' },
     { label: '执行方案', icon: '行', tint: '#10b981', content: executionPlan || '' },
   ];
+  const isBasic   = tier === 'basic';
+  const isPremium = tier === 'premium';
+  const visibleCount = isFree ? 0 : 4;
+  const sections = allSections.slice(0, visibleCount);
+  const showUpgradeCTA = isFree || isBasic; // free→basic, basic→premium
+
+  // Free tier: draw a brief summary card instead of full sections
+  if (isFree) {
+    const summary = reasonExcerpt || (marketDiagnosis || '').slice(0, 60).trim();
+    const summaryH = 84;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.06)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    ctx.beginPath(); ctx.roundRect(PAD, y, W - PAD * 2, summaryH, 14); ctx.fill();
+    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
+
+    // Tinted left bar matching action color
+    ctx.fillStyle = accentText + 'AA';
+    ctx.beginPath(); ctx.roundRect(PAD, y + 12, 3, summaryH - 24, 2); ctx.fill();
+
+    ctx.font = `500 16px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#8E8E93';
+    ctx.fillText('研判摘要', PAD + 20, y + 28);
+    ctx.font = `400 19px ${F}`; ctx.fillStyle = '#3A3A3C';
+    // wrap summary to 2 lines max
+    let rem = summary, lineY = y + 52, linesLeft = 2;
+    while (rem && linesLeft > 0) {
+      let seg = rem;
+      while (seg.length > 0 && ctx.measureText(seg + (linesLeft === 1 ? '…' : '')).width > W - PAD * 2 - 40) seg = seg.slice(0, -1);
+      ctx.fillText(seg + (linesLeft === 1 && seg.length < rem.length ? '…' : ''), PAD + 20, lineY);
+      rem = rem.slice(seg.length); lineY += 28; linesLeft--;
+    }
+    y += summaryH + 16;
+  }
 
   const drawWrappedText = (text: string, x: number, startY: number, maxW: number, lineH: number, maxLines: number): number => {
     if (!text) return startY;
@@ -1628,6 +1528,50 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
 
     y += cardH + 16;
   }
+
+  // ── UPGRADE TEASER ─────────────────────────────────────────────
+  if (showUpgradeCTA) {
+    const upgradeTint = isFree ? '#60A5FA' : '#A855F7';
+
+    if (isFree) {
+      // Free: show 4 blurred locked section previews
+      for (const sec of allSections) {
+        const lockCardH = 58;
+        ctx.fillStyle = '#F5F5F7';
+        ctx.shadowColor = 'rgba(0,0,0,0.03)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+        ctx.beginPath(); ctx.roundRect(PAD, y, W - PAD * 2, lockCardH, 12); ctx.fill();
+        ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
+        // Dimmed section label
+        ctx.font = `500 16px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#C7C7CC';
+        ctx.fillText(sec.label, PAD + 20, y + 22);
+        // Placeholder content bars
+        ctx.fillStyle = '#E5E5EA';
+        ctx.beginPath(); ctx.roundRect(PAD + 20, y + 32, 380, 9, 4); ctx.fill();
+        ctx.fillStyle = '#EBEBF0';
+        ctx.beginPath(); ctx.roundRect(PAD + 20, y + 44, 240, 9, 4); ctx.fill();
+        y += lockCardH + 8;
+      }
+    }
+
+    // CTA strip — free→basic or basic→premium
+    const ctaLine1 = isFree ? '升级标准版，解锁每日深度研判' : '升级专业版，解锁优先通道';
+    const ctaLine2 = isFree ? '标准版起每天 5 次完整分析' : '深度研判 + 持仓针对性分析 · 更多分析次数';
+    const ctaH = 80;
+    const ctaGrad = ctx.createLinearGradient(PAD, y, W - PAD, y + ctaH);
+    ctaGrad.addColorStop(0, upgradeTint + '1A');
+    ctaGrad.addColorStop(1, upgradeTint + '0A');
+    ctx.fillStyle = ctaGrad;
+    ctx.beginPath(); ctx.roundRect(PAD, y, W - PAD * 2, ctaH, 14); ctx.fill();
+    ctx.strokeStyle = upgradeTint + '35'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(PAD, y, W - PAD * 2, ctaH, 14); ctx.stroke();
+
+    ctx.font = `600 20px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = upgradeTint;
+    ctx.fillText(ctaLine1, W / 2, y + 32);
+    ctx.font = `400 15px ${F}`; ctx.fillStyle = upgradeTint + 'AA';
+    ctx.fillText(ctaLine2, W / 2, y + 57);
+    y += ctaH + 16;
+  }
+
   y += 10;
 
   // ── TIMESTAMP SEAL ────────────────────────────────────────────
@@ -1701,13 +1645,14 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   ctx.fillStyle = heroColor;
   ctx.fillRect(0, footerY + 20, W, 6);
 
-  // Crop canvas to actual content height (no bottom whitespace)
-  const actualH = footerY + 30;
+  // Crop canvas to exact content height (tight — no bottom whitespace)
+  const actualH = footerY + 28; // bar ends at footerY+26, add 2px breathing room
   const croppedCanvas = document.createElement('canvas');
   croppedCanvas.width = W * dpr;
   croppedCanvas.height = actualH * dpr;
   const croppedCtx = croppedCanvas.getContext('2d')!;
-  croppedCtx.drawImage(canvas, 0, 0);
+  // Use source rect to guarantee pixel-perfect crop
+  croppedCtx.drawImage(canvas, 0, 0, W * dpr, actualH * dpr, 0, 0, W * dpr, actualH * dpr);
 
   return new Promise<{ blob: Blob; filename: string }>((resolve, reject) => {
     croppedCanvas.toBlob(blob => {

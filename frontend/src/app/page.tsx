@@ -16,7 +16,7 @@ import {
   AnalysisHistoryItem,
 } from '@/lib/api';
 
-import { generateShareCardBlob, generateViralShareCardBlob, generatePredictionCardBlob, generateStatementCardBlob, downloadBlob } from '@/lib/shareCard';
+import { generateShareCardBlob, generatePredictionCardBlob, generateStatementCardBlob, downloadBlob } from '@/lib/shareCard';
 import { Toast, useToast } from '@/components/Toast';
 
 /** Saved analysis record — persisted to localStorage as 'saved_records_v2' */
