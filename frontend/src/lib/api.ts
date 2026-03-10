@@ -412,6 +412,16 @@ export const adminUpdateSettings = async (section: string, data: Record<string, 
   return r.data;
 };
 
+export const adminExportSettings = async (): Promise<SystemSettings> => {
+  const r = await adminApi.get('/api/admin/settings/export');
+  return r.data;
+};
+
+export const adminImportSettings = async (data: SystemSettings): Promise<{ success: boolean; imported: string[] }> => {
+  const r = await adminApi.post('/api/admin/settings/import', data);
+  return r.data;
+};
+
 export const adminRefreshNames = async (market?: 'a' | 'hk' | 'us') => {
   const params = market ? { market } : {};
   const r = await adminApi.post('/api/admin/refresh-names', null, { params });

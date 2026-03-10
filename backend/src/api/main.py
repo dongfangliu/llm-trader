@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header, Request, WebSocket,
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     _load_settings_cache()
     async with async_session() as db:
+        await _seed_settings_from_json(db)
         await _apply_db_overrides(db)
     # Preload stock name mappings in background — non-blocking, refreshes daily
     asyncio.create_task(preload_names())
@@ -107,7 +108,17 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Return rate-limit errors using the standard `detail` key so the frontend can display them."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"请求过于频繁，请稍后再试（限制：{exc.detail}）"},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 # CORS middleware — restrict to configured origins in production
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
@@ -326,6 +337,32 @@ def _apply_quota_settings():
     USER_LIMITS["free"] = int(p.get("free_daily", 3))
     USER_LIMITS["basic"] = int(p.get("basic", {}).get("daily", 5))
     USER_LIMITS["premium"] = int(p.get("premium", {}).get("daily", 15))
+
+
+_SEED_FILE = __import__("pathlib").Path(__file__).parent.parent.parent / "initial_settings.json"
+
+
+async def _seed_settings_from_json(db: AsyncSession):
+    """Seed missing DB sections from initial_settings.json on first startup."""
+    if not _SEED_FILE.exists():
+        return
+    try:
+        seed: dict = json.loads(_SEED_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning("Could not read initial_settings.json: %s", e)
+        return
+    seeded = []
+    for section, data in seed.items():
+        if not isinstance(data, dict):
+            continue
+        row = await db.get(SystemSetting, section)
+        if row:
+            continue  # already has data, never overwrite
+        db.add(SystemSetting(key=section, value=json.dumps(data)))
+        seeded.append(section)
+    if seeded:
+        await db.commit()
+        logger.info("Seeded settings from initial_settings.json: %s", seeded)
 
 
 async def _apply_db_overrides(db: AsyncSession):
@@ -663,7 +700,11 @@ async def register(
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    user = await user_service.register_user(db, email, req.password, req.username)
+    try:
+        user = await user_service.register_user(db, email, req.password, req.username)
+    except Exception as e:
+        logger.exception("register_user failed for %s: %s", email, e)
+        raise HTTPException(status_code=500, detail="注册失败，数据库写入出错，请稍后重试")
 
     resend_key = _email("resend_api_key")
     if resend_key:
@@ -2116,15 +2157,21 @@ async def admin_get_settings(db: AsyncSession = Depends(get_db), _: None = Depen
     """Return all runtime-configurable system settings (admin only)."""
     import copy
     result = copy.deepcopy(_settings_cache)
-    _SENSITIVE_KEYS = {"api_key", "api_token", "resend_api_key", "webhook_token"}
-    for section in result.values():
-        if isinstance(section, dict):
-            for key in _SENSITIVE_KEYS:
-                if key in section:
-                    # Non-empty → "__CONFIGURED__" so frontend can show "已配置" hint
-                    # Empty → "" so frontend shows "未填写" state
-                    section[key] = "__CONFIGURED__" if section[key] else ""
-    # Load pricing.features from DB
+
+    # Always overlay DB-saved values before returning.  This ensures correctness in
+    # multi-worker deployments where only one worker updated its in-memory cache after a PUT.
+    for section in ("llm", "afdian", "email", "app"):
+        row = await db.get(SystemSetting, section)
+        if not row:
+            continue
+        try:
+            data = json.loads(row.value)
+            if section in result and isinstance(result[section], dict):
+                result[section].update(data)
+        except Exception:
+            pass
+
+    # Load pricing from DB
     row = await db.get(SystemSetting, "pricing")
     if row:
         try:
@@ -2144,8 +2191,6 @@ async def admin_update_settings(
     """Update settings sections and persist to database (admin only)."""
     global _settings_cache
 
-    _SENSITIVE_KEYS = {"api_key", "api_token", "resend_api_key", "webhook_token"}
-    _SENTINEL = {"***REDACTED***", "__CONFIGURED__", ""}
     updated_sections = []
 
     for section, data in body.items():
@@ -2186,8 +2231,6 @@ async def admin_update_settings(
                 val = data.get(field_key)
                 if val is None:
                     continue
-                if field_key in _SENSITIVE_KEYS and val in _SENTINEL:
-                    continue
                 existing[field_key] = val
 
         if row:
@@ -2208,8 +2251,71 @@ async def admin_update_settings(
     return {"success": True, "updated": updated_sections}
 
 
+def _full_settings_snapshot(cache: dict, db_rows: dict[str, dict]) -> dict:
+    """Merge cache defaults with DB rows and return a complete settings snapshot."""
+    import copy
+    result = copy.deepcopy(cache)
+    for section in ("llm", "afdian", "email", "app"):
+        data = db_rows.get(section)
+        if data and section in result and isinstance(result[section], dict):
+            result[section].update(data)
+    pricing_data = db_rows.get("pricing")
+    if pricing_data:
+        cache_p = result["pricing"]
+        for k, v in pricing_data.items():
+            if k in ("basic", "premium") and isinstance(v, dict):
+                cache_p[k].update(v)
+            else:
+                cache_p[k] = v
+    return result
 
-# ===================== Admin: Market Data Pipeline =====================
+
+async def _load_all_db_rows(db: AsyncSession) -> dict[str, dict]:
+    rows: dict[str, dict] = {}
+    for section in ("llm", "afdian", "email", "app", "pricing"):
+        row = await db.get(SystemSetting, section)
+        if row:
+            try:
+                rows[section] = json.loads(row.value)
+            except Exception:
+                pass
+    return rows
+
+
+@app.get("/api/admin/settings/export")
+async def admin_export_settings(db: AsyncSession = Depends(get_db), _: None = Depends(_verify_admin)):
+    """Export a complete settings snapshot as JSON (all fields, including sensitive)."""
+    db_rows = await _load_all_db_rows(db)
+    return _full_settings_snapshot(_settings_cache, db_rows)
+
+
+@app.post("/api/admin/settings/import")
+async def admin_import_settings(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Import a settings snapshot, overwriting every section present in the payload."""
+    allowed = set(_SETTINGS_ENV_MAP.keys()) | {"pricing"}
+    imported = []
+    for section, data in body.items():
+        if section not in allowed or not isinstance(data, dict):
+            continue
+        row = await db.get(SystemSetting, section)
+        if row:
+            row.value = json.dumps(data)
+            row.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemSetting(key=section, value=json.dumps(data)))
+        imported.append(section)
+    await db.commit()
+    _load_settings_cache()
+    await _apply_db_overrides(db)
+    logger.info("admin imported settings snapshot: %s", imported)
+    return {"success": True, "imported": imported}
+
+
+
 
 
 @app.get("/api/admin/market-data/status")

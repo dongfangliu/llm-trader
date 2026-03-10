@@ -52,8 +52,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const pendingEmail = response.pending_verification ? response.email : null;
       set({ isLoading: false, pendingVerificationEmail: pendingEmail });
     } catch (error: any) {
+      const data = error.response?.data;
+      let detail: string;
+      if (data?.detail) {
+        detail = Array.isArray(data.detail)
+          ? data.detail.map((d: any) => d.msg ?? String(d)).join('；')
+          : String(data.detail);
+      } else if (data?.error) {
+        detail = String(data.error);
+      } else if (error.message) {
+        detail = `网络错误：${error.message}`;
+      } else {
+        detail = '注册失败，请重试';
+      }
       set({
-        error: error.response?.data?.detail || '注册失败，请重试',
+        error: detail,
         isLoading: false,
       });
       throw error;

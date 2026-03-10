@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { adminGetSettings, adminUpdateSettings, SystemSettings, FeatureItem } from '@/lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { adminGetSettings, adminUpdateSettings, adminExportSettings, adminImportSettings, SystemSettings, FeatureItem } from '@/lib/api';
 import { Toast, useToast } from '@/components/Toast';
 
 type Section = 'llm' | 'pricing' | 'afdian' | 'email' | 'app';
@@ -28,17 +28,16 @@ function Field({
   );
 }
 
-function Input({ value, onChange, type = 'text', placeholder, configured }: {
+function Input({ value, onChange, type = 'text', placeholder }: {
   value: string | number; onChange: (v: string) => void;
-  type?: string; placeholder?: string; configured?: boolean;
+  type?: string; placeholder?: string;
 }) {
-  const effectivePlaceholder = configured && !value ? '已配置，留空则不更改' : placeholder;
   return (
     <input
       type={type}
       value={value}
       onChange={e => onChange(e.target.value)}
-      placeholder={effectivePlaceholder}
+      placeholder={placeholder}
       style={{
         width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
         borderRadius: '0.375rem', background: 'var(--background)', color: 'var(--foreground)',
@@ -193,33 +192,13 @@ export default function AdminSettingsPage() {
   const [cfg, setCfg] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Section | null>(null);
+  const [ioWorking, setIoWorking] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
   const { toast, show: showToast } = useToast();
-
-  const [configuredKeys, setConfiguredKeys] = useState<Set<string>>(new Set());
-
-  /** Parse sensitive field sentinel: "__CONFIGURED__" means set but hidden. */
-  const parseSensitive = (d: ReturnType<typeof adminGetSettings> extends Promise<infer T> ? T : never) => {
-    const CONFIGURED = '__CONFIGURED__';
-    const keys = new Set<string>();
-    const clean = (obj: Record<string, unknown>, section: string) =>
-      Object.fromEntries(Object.entries(obj).map(([k, v]) => {
-        if (v === CONFIGURED) { keys.add(`${section}.${k}`); return [k, '']; }
-        return [k, v];
-      }));
-    if (d.email) d.email = clean(d.email as Record<string, unknown>, 'email') as typeof d.email;
-    if (d.llm)   d.llm   = clean(d.llm   as Record<string, unknown>, 'llm')   as typeof d.llm;
-    if (d.afdian) d.afdian = clean(d.afdian as Record<string, unknown>, 'afdian') as typeof d.afdian;
-    return { data: d, keys };
-  };
 
   useEffect(() => {
     adminGetSettings()
-      .then(d => {
-        const { data, keys } = parseSensitive(d);
-        setCfg(data);
-        setConfiguredKeys(keys);
-        setLoading(false);
-      })
+      .then(d => { setCfg(d); setLoading(false); })
       .catch(e => { showToast(e?.response?.data?.detail || '加载失败', 'error'); setLoading(false); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,17 +206,54 @@ export default function AdminSettingsPage() {
     setSaving(section);
     try {
       await adminUpdateSettings(section, data);
-      // Re-fetch settings to update configured indicators
       const updated = await adminGetSettings();
-      const { data: parsed, keys } = parseSensitive(updated);
-      setCfg(parsed);
-      setConfiguredKeys(keys);
+      setCfg(updated);
       showToast('保存成功', 'ok');
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
       showToast(err?.response?.data?.detail || '保存失败', 'error');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const handleExport = async () => {
+    setIoWorking(true);
+    try {
+      const data = await adminExportSettings();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('已导出配置', 'ok');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      showToast(err?.response?.data?.detail || '导出失败', 'error');
+    } finally {
+      setIoWorking(false);
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setIoWorking(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as SystemSettings;
+      await adminImportSettings(data);
+      const updated = await adminGetSettings();
+      setCfg(updated);
+      showToast('配置已导入并生效', 'ok');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      showToast(err?.response?.data?.detail || '导入失败，请检查 JSON 格式', 'error');
+    } finally {
+      setIoWorking(false);
     }
   };
 
@@ -248,9 +264,30 @@ export default function AdminSettingsPage() {
     <div>
       <Toast toast={toast} />
 
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>系统设置</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>所有修改实时生效，无需重启服务器</p>
+      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>系统设置</h1>
+          <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>所有修改实时生效，无需重启服务器</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportFile} />
+          <button
+            className="btn"
+            onClick={() => importRef.current?.click()}
+            disabled={ioWorking}
+            style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}
+          >
+            📥 导入配置
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={handleExport}
+            disabled={ioWorking}
+            style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}
+          >
+            📤 导出配置
+          </button>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -288,7 +325,6 @@ export default function AdminSettingsPage() {
             </Field>
             <Field label="API Key" hint="AI 服务商的 API 密钥，留空则使用服务器环境变量">
               <Input value={l.api_key} type="password"
-                configured={configuredKeys.has('llm.api_key')}
                 onChange={v => setCfg({ ...cfg, llm: { ...l, api_key: v } })}
                 placeholder="sk-xxxxxxxx" />
             </Field>
@@ -393,13 +429,11 @@ export default function AdminSettingsPage() {
                 </Field>
                 <Field label="API Token" hint="爱发电开发者后台生成的 Token">
                   <Input value={a.api_token} type="password"
-                    configured={configuredKeys.has('afdian.api_token')}
                     onChange={v => setCfg({ ...cfg, afdian: { ...a, api_token: v } })} />
                 </Field>
               </div>
               <Field label="Webhook Token" hint="用于验证爱发电主动推送的请求是否合法">
                 <Input value={a.webhook_token} type="password"
-                  configured={configuredKeys.has('afdian.webhook_token')}
                   onChange={v => setCfg({ ...cfg, afdian: { ...a, webhook_token: v } })} />
               </Field>
             </div>
@@ -416,7 +450,6 @@ export default function AdminSettingsPage() {
             <h2 style={{ fontWeight: 600, marginBottom: '1.25rem' }}>邮件服务配置</h2>
             <Field label="Resend API Key" hint="从 resend.com 申请，用于发送注册验证邮件">
               <Input value={e.resend_api_key} type="password"
-                configured={configuredKeys.has('email.resend_api_key')}
                 onChange={v => setCfg({ ...cfg, email: { ...e, resend_api_key: v } })} placeholder="re_xxxxxxxx" />
             </Field>
             <Field label="前端域名 (APP_BASE_URL)" hint="验证邮件中的链接会带上这个地址">
