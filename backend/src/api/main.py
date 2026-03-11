@@ -20,7 +20,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.database.db import (
@@ -31,6 +31,7 @@ from src.database.db import (
     UsageLog,
     DeviceSubscription,
     AnalysisHistory,
+    AnalysisRequest,
     AfdianOrder,
     SystemSetting,
     MarketBar,
@@ -2528,6 +2529,27 @@ async def get_pricing():
             "daily_limit": int(premium.get("daily", 15)),
         },
     }
+
+
+@app.post("/api/admin/reset-all")
+async def admin_reset_all(
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(_verify_admin),
+):
+    """Delete all users, devices, and associated records (admin only)."""
+    tables = [
+        (AnalysisRequest, "analysis_requests"),
+        (AnalysisHistory, "analysis_history"),
+        (UsageLog, "usage_logs"),
+        (DeviceSubscription, "device_subscriptions"),
+        (User, "users"),
+    ]
+    counts = {}
+    for model, key in tables:
+        result = await db.execute(delete(model))
+        counts[key] = result.rowcount
+    await db.commit()
+    return {"deleted": counts}
 
 
 # ===================== Root =====================
