@@ -129,6 +129,12 @@ class User(Base):
     daily_position_usage = Column(Integer, default=0)
     last_position_date = Column(DateTime, nullable=True)
 
+    # Subscription expiry for account-linked paid tiers (set when activating Afdian order)
+    subscription_expires_at = Column(DateTime, nullable=True)
+
+    # Device linking — last device_id used to log in
+    last_device_id = Column(String(255), nullable=True)
+
 
 class AnalysisRequest(Base):
     """Analysis request log."""
@@ -311,6 +317,8 @@ async def _migrate_db():
             "ALTER TABLE device_subscriptions ADD COLUMN has_had_pro_trial BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN has_had_pro_trial BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN is_banned BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN subscription_expires_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN last_device_id VARCHAR(255)",
         ]:
             try:
                 await conn.execute(text(col_sql))

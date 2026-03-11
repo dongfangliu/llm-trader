@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import {
-  adminGetUsers, adminUpdateUser, adminDeleteUser, AdminUser,
+  adminGetUsers, adminUpdateUser, adminSetUserQuota, adminDeleteUser, AdminUser,
   adminGetDevices, adminBanDevice, adminUnbanDevice, adminResetDeviceTrial, adminDeleteDevice,
   adminGetDeviceHistory, adminBatchDevices, AdminDevice,
 } from '@/lib/api';
@@ -16,16 +16,23 @@ interface UnifiedRow {
   userId?: number;
   email?: string;
   username?: string;
+  emailVerified?: boolean;
+  hasHadProTrial: boolean;
+  usedInviteCode?: string | null;
+  subscriptionExpiresAt?: string | null;
+  lastDeviceId?: string | null;
   // device fields
   deviceId?: string;
   // common
   subscriptionTier: string;
   isBanned: boolean;
-  hasHadProTrial: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   isActive?: boolean;
   dailyUsage?: number;
+  dailyLimit?: number;
+  dailyRemaining?: number;
+  totalAvailable?: number;
   bonusQuota?: number;
   inviteCode?: string;
 }
@@ -87,13 +94,20 @@ export default function AdminMembersPage() {
         userId: u.id,
         email: u.email,
         username: u.username || undefined,
+        emailVerified: u.email_verified,
+        hasHadProTrial: u.has_had_pro_trial ?? false,
+        usedInviteCode: u.used_invite_code,
+        subscriptionExpiresAt: (u as any).subscription_expires_at,
+        lastDeviceId: (u as any).last_device_id,
         subscriptionTier: u.subscription_tier,
         isBanned: !u.is_active,
-        hasHadProTrial: false, // users don't have this flag shown yet
         createdAt: u.created_at,
         updatedAt: null,
         isActive: u.is_active,
         dailyUsage: u.daily_usage,
+        dailyLimit: (u as any).daily_limit,
+        dailyRemaining: (u as any).daily_remaining,
+        totalAvailable: (u as any).total_available,
         bonusQuota: u.bonus_quota,
         inviteCode: u.invite_code || undefined,
       }));
@@ -186,6 +200,46 @@ export default function AdminMembersPage() {
       await adminResetDeviceTrial(row.deviceId);
       setRows((prev) => prev.map((r) => r.key === row.key ? { ...r, hasHadProTrial: false } : r));
       flash('✓ 已重置体验次数');
+    } catch { flash('❌ 操作失败'); } finally { setSaving(null); }
+  };
+
+  const handleChangeTier = async (row: UnifiedRow, newTier: string) => {
+    if (row.rowType !== 'user' || !row.userId) return;
+    setSaving(row.key);
+    try {
+      await adminUpdateUser(row.userId, { subscription_tier: newTier });
+      setRows((prev) => prev.map((r) => r.key === row.key ? { ...r, subscriptionTier: newTier } : r));
+      flash(`✓ 已将订阅改为 ${TIER_LABEL[newTier] || newTier}`);
+    } catch { flash('❌ 操作失败'); } finally { setSaving(null); }
+  };
+
+  const handleSetBonusQuota = async (row: UnifiedRow, newQuota: number) => {
+    if (row.rowType !== 'user' || !row.userId) return;
+    setSaving(row.key);
+    try {
+      await adminSetUserQuota(row.userId, { bonus_quota: newQuota });
+      setRows((prev) => prev.map((r) => r.key === row.key ? { ...r, bonusQuota: newQuota } : r));
+      flash(`✓ 已设置永久额度为 ${newQuota}`);
+    } catch { flash('❌ 操作失败'); } finally { setSaving(null); }
+  };
+
+  const handleSetVerified = async (row: UnifiedRow, verified: boolean) => {
+    if (row.rowType !== 'user' || !row.userId) return;
+    setSaving(row.key);
+    try {
+      await adminUpdateUser(row.userId, { email_verified: verified });
+      setRows((prev) => prev.map((r) => r.key === row.key ? { ...r, emailVerified: verified } : r));
+      flash(verified ? '✓ 已设为已验证' : '✓ 已取消邮箱验证');
+    } catch { flash('❌ 操作失败'); } finally { setSaving(null); }
+  };
+
+  const handleResetDailyUsage = async (row: UnifiedRow) => {
+    if (row.rowType !== 'user' || !row.userId) return;
+    setSaving(row.key);
+    try {
+      await adminSetUserQuota(row.userId, { daily_usage: 0 });
+      setRows((prev) => prev.map((r) => r.key === row.key ? { ...r, dailyUsage: 0 } : r));
+      flash('✓ 已重置今日用量');
     } catch { flash('❌ 操作失败'); } finally { setSaving(null); }
   };
 
@@ -295,14 +349,14 @@ export default function AdminMembersPage() {
                       checked={rows.length > 0 && selected.size === rows.length}
                       onChange={toggleSelectAll} />
                   </th>
-                  {['用户/设备', '类型', '订阅', '首次体验', '状态', '创建时间', '操作'].map((h) => (
+                  {['用户/设备', '类型', '订阅', '今日/永久额度', '体验', '邀请', '状态', '注册时间', '操作'].map((h) => (
                     <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>暂无数据</td></tr>
+                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>暂无数据</td></tr>
                 )}
                 {rows.map((row) => (
                   <tr key={row.key} style={{ borderBottom: '1px solid var(--border)', background: row.isBanned ? '#fff5f5' : undefined }}>
@@ -311,11 +365,22 @@ export default function AdminMembersPage() {
                         <input type="checkbox" checked={selected.has(row.key)} onChange={() => toggleSelect(row.key)} />
                       )}
                     </td>
+                    {/* User/Device identifier */}
                     <td style={{ padding: '0.75rem 1rem', maxWidth: '200px' }}>
                       {row.rowType === 'user' ? (
                         <div>
-                          <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.email}</div>
+                          <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {row.email}
+                            {row.emailVerified === false && (
+                              <span style={{ marginLeft: 4, fontSize: '0.7rem', color: '#f59e0b', fontWeight: 600 }}>未验证</span>
+                            )}
+                          </div>
                           {row.username && <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{row.username}</div>}
+                          {row.lastDeviceId && (
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                              设备: {row.lastDeviceId}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -323,6 +388,7 @@ export default function AdminMembersPage() {
                         </div>
                       )}
                     </td>
+                    {/* Account type */}
                     <td style={{ padding: '0.75rem 1rem' }}>
                       <span style={{
                         display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 500,
@@ -332,18 +398,88 @@ export default function AdminMembersPage() {
                         {row.rowType === 'user' ? '注册用户' : '未注册'}
                       </span>
                     </td>
+                    {/* Subscription — users get inline dropdown */}
                     <td style={{ padding: '0.75rem 1rem' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 500,
-                        background: row.subscriptionTier === 'premium' ? '#f3e8ff' : row.subscriptionTier === 'basic' ? '#fef3c7' : '#f1f5f9',
-                        color: row.subscriptionTier === 'premium' ? '#7c3aed' : row.subscriptionTier === 'basic' ? '#92400e' : '#475569',
-                      }}>
-                        {TIER_LABEL[row.subscriptionTier] || row.subscriptionTier}
-                      </span>
+                      {row.rowType === 'user' ? (
+                        <div>
+                          <select
+                            value={row.subscriptionTier}
+                            disabled={saving === row.key}
+                            onChange={(e) => handleChangeTier(row, e.target.value)}
+                            style={{
+                              fontSize: '0.75rem', fontWeight: 600, padding: '0.15rem 0.4rem',
+                              borderRadius: '6px', border: '1px solid var(--border)',
+                              background: row.subscriptionTier === 'premium' ? '#f3e8ff' : row.subscriptionTier === 'basic' ? '#fef3c7' : '#f1f5f9',
+                              color: row.subscriptionTier === 'premium' ? '#7c3aed' : row.subscriptionTier === 'basic' ? '#92400e' : '#475569',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value="free">免费版</option>
+                            <option value="basic">标准版</option>
+                            <option value="premium">专业版</option>
+                          </select>
+                          {row.subscriptionExpiresAt && (
+                            <div style={{ fontSize: '0.7rem', color: new Date(row.subscriptionExpiresAt) < new Date() ? '#ef4444' : '#22c55e', marginTop: 2 }}>
+                              {new Date(row.subscriptionExpiresAt) < new Date() ? '已过期' : `至 ${row.subscriptionExpiresAt.slice(0, 10)}`}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{
+                          display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 500,
+                          background: row.subscriptionTier === 'premium' ? '#f3e8ff' : row.subscriptionTier === 'basic' ? '#fef3c7' : '#f1f5f9',
+                          color: row.subscriptionTier === 'premium' ? '#7c3aed' : row.subscriptionTier === 'basic' ? '#92400e' : '#475569',
+                        }}>
+                          {TIER_LABEL[row.subscriptionTier] || row.subscriptionTier}
+                        </span>
+                      )}
                     </td>
+                    {/* Daily usage / bonus quota */}
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem' }}>
+                      {row.rowType === 'user' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ color: (row.dailyRemaining ?? 0) === 0 ? '#dc2626' : '#22c55e', fontWeight: 600 }}>
+                            日剩余 {row.dailyRemaining ?? 0}/{row.dailyLimit ?? '—'}
+                          </span>
+                          <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>
+                            当前可用 {row.totalAvailable ?? 0}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>永久:</span>
+                            <input
+                              type="number"
+                              defaultValue={row.bonusQuota ?? 0}
+                              min={0}
+                              style={{ width: 52, fontSize: '0.75rem', padding: '1px 4px', borderRadius: 4, border: '1px solid var(--border)' }}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                if (!isNaN(val) && val >= 0 && val !== (row.bonusQuota ?? 0)) {
+                                  handleSetBonusQuota(row, val);
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>—</span>
+                      )}
+                    </td>
+                    {/* Trial status */}
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                      {row.rowType === 'device' ? (row.hasHadProTrial ? '✅ 已用' : '⬜ 未用') : '—'}
+                      {row.hasHadProTrial ? '✅ 已用' : '⬜ 未用'}
                     </td>
+                    {/* Invite code */}
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                      {row.rowType === 'user' ? (
+                        <div>
+                          <div style={{ fontFamily: 'monospace' }}>{row.inviteCode || '—'}</div>
+                          {row.usedInviteCode && (
+                            <div style={{ color: '#22c55e', fontSize: '0.7rem' }}>已邀请</div>
+                          )}
+                        </div>
+                      ) : '—'}
+                    </td>
+                    {/* Status */}
                     <td style={{ padding: '0.75rem 1rem' }}>
                       <span style={{
                         display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 500,
@@ -353,9 +489,11 @@ export default function AdminMembersPage() {
                         {row.isBanned ? '🚫 封禁' : '✓ 正常'}
                       </span>
                     </td>
+                    {/* Created at */}
                     <td style={{ padding: '0.75rem 1rem', color: 'var(--muted)', whiteSpace: 'nowrap', fontSize: '0.8125rem' }}>
                       {row.createdAt ? row.createdAt.slice(0, 10) : '—'}
                     </td>
+                    {/* Actions */}
                     <td style={{ padding: '0.75rem 1rem' }}>
                       <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'nowrap' }}>
                         {/* Ban / Unban */}
@@ -372,6 +510,33 @@ export default function AdminMembersPage() {
                             disabled={saving === row.key}
                             onClick={() => row.rowType === 'user' ? handleBanUser(row) : handleBanDevice(row)}>
                             封禁
+                          </button>
+                        )}
+                        {/* Verify / Unverify email (users only) */}
+                        {row.rowType === 'user' && (
+                          row.emailVerified ? (
+                            <button className="btn"
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: '#f59e0b', color: '#fff', border: 'none' }}
+                              disabled={saving === row.key}
+                              onClick={() => handleSetVerified(row, false)}>
+                              取消验证
+                            </button>
+                          ) : (
+                            <button className="btn"
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: '#0ea5e9', color: '#fff', border: 'none' }}
+                              disabled={saving === row.key}
+                              onClick={() => handleSetVerified(row, true)}>
+                              设为已验证
+                            </button>
+                          )
+                        )}
+                        {/* Reset daily usage (users only) */}
+                        {row.rowType === 'user' && (row.dailyUsage ?? 0) > 0 && (
+                          <button className="btn"
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: '#6366f1', color: '#fff', border: 'none' }}
+                            disabled={saving === row.key}
+                            onClick={() => handleResetDailyUsage(row)}>
+                            重置用量
                           </button>
                         )}
                         {/* Reset trial (devices only) */}

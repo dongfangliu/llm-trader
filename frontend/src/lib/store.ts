@@ -28,8 +28,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await apiLogin(data);
       const { access_token, user } = response;
+      // Always store in localStorage — user stays logged in until explicit logout
       localStorage.setItem('token', access_token);
       localStorage.setItem('user', JSON.stringify(user));
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       set({ user, token: access_token, isLoading: false, pendingVerificationEmail: null });
     } catch (error: any) {
       const detail = error.response?.data?.detail || '邮箱或密码错误';
@@ -76,14 +79,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     set({ user: null, token: null, pendingVerificationEmail: null });
   },
 
   clearPendingVerification: () => set({ pendingVerificationEmail: null }),
 
   checkAuth: async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    // Check both localStorage (auto-login) and sessionStorage (session-only login)
+    const token = typeof window !== 'undefined'
+      ? (localStorage.getItem('token') || sessionStorage.getItem('token'))
+      : null;
+    const userStr = typeof window !== 'undefined'
+      ? (localStorage.getItem('user') || sessionStorage.getItem('user'))
+      : null;
 
     if (!token || !userStr) {
       set({ user: null, token: null });

@@ -47,6 +47,7 @@ export default function LoginPage() {
   const [resendStatus, setResendStatus] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [appName, setAppName] = useState('');
+  const [rememberCredentials, setRememberCredentials] = useState(true);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -56,11 +57,27 @@ export default function LoginPage() {
 
   useEffect(() => {
     getAppConfig().then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); }).catch(() => {});
+    // Restore saved credentials
+    const savedEmail = localStorage.getItem('savedEmail');
+    const savedPassword = localStorage.getItem('savedPassword');
+    if (savedEmail) setEmail(savedEmail);
+    if (savedPassword) setPassword(savedPassword);
+    // Restore remember credentials preference
+    const saved = localStorage.getItem('rememberCredentials');
+    if (saved === 'false') setRememberCredentials(false);
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setResendStatus('');
+    localStorage.setItem('rememberCredentials', rememberCredentials ? 'true' : 'false');
+    if (rememberCredentials) {
+      localStorage.setItem('savedEmail', email);
+      localStorage.setItem('savedPassword', password);
+    } else {
+      localStorage.removeItem('savedEmail');
+      localStorage.removeItem('savedPassword');
+    }
     try {
       await login({ email, password });
       router.push('/');
@@ -90,7 +107,8 @@ export default function LoginPage() {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      padding: '0 0 40px',
+      justifyContent: 'center',
+      padding: '40px 0',
     }}>
       {/* ── Hero block ── */}
       <div style={{
@@ -118,10 +136,6 @@ export default function LoginPage() {
 
       {/* ── Form card ── */}
       <form onSubmit={handleLogin} style={{ width: '100%', maxWidth: 480, padding: '0 16px' }}>
-        {/* Section label */}
-        <p style={{ fontSize: 12, fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 4px', marginBottom: 8 }}>
-          账号登录
-        </p>
         <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
           <FormRow
             label="邮箱" type="email" placeholder="your@email.com"
@@ -183,6 +197,38 @@ export default function LoginPage() {
             )}
           </div>
         )}
+
+        {/* Auto-login toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px', marginBottom: 16 }}>
+          <div
+            onClick={() => setRememberCredentials(!rememberCredentials)}
+            style={{
+              width: 44, height: 26,
+              borderRadius: 13,
+              background: rememberCredentials ? '#34c759' : '#d1d1d6',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              flexShrink: 0,
+            }}
+          >
+            <div style={{
+              position: 'absolute',
+              top: 2, left: rememberCredentials ? 20 : 2,
+              width: 22, height: 22,
+              borderRadius: '50%',
+              background: 'white',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+              transition: 'left 0.2s',
+            }} />
+          </div>
+          <label
+            onClick={() => setRememberCredentials(!rememberCredentials)}
+            style={{ fontSize: 14, color: '#3c3c43', cursor: 'pointer', userSelect: 'none' }}
+          >
+            记住账号和密码
+          </label>
+        </div>
 
         {/* Login button */}
         <button

@@ -39,10 +39,10 @@ function FormRow({
 }
 
 const BENEFITS = [
-  { icon: '📋', title: '免费分析', desc: '每天1次免费分析' },
-  { icon: '☁️', title: '跨设备同步', desc: '任意设备登录，数据不丢失' },
-  { icon: '🎁', title: '邀请奖励', desc: '邀请好友共同使用，获得免费永久额度' },
-  { icon: '🚀', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
+  { icon: '📊', bg: 'linear-gradient(135deg, #007aff, #3b9eff)', title: '免费分析', desc: '每天 1 次免费深度研判' },
+  { icon: '☁', bg: 'linear-gradient(135deg, #34c759, #30d158)', title: '跨设备同步', desc: '任意设备登录，数据不丢失' },
+  { icon: '★', bg: 'linear-gradient(135deg, #ff9500, #ffcc02)', title: '邀请奖励', desc: '邀请好友，获得免费永久额度' },
+  { icon: '↑', bg: 'linear-gradient(135deg, #5856d6, #7c3aed)', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
 ];
 
 export default function RegisterPage() {
@@ -97,7 +97,8 @@ export default function RegisterPage() {
       <div style={{
         minHeight: '100dvh', background: '#f2f2f7',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        padding: '60px 16px 40px',
+        justifyContent: 'center',
+        padding: '40px 16px',
       }}>
         <div style={{
           width: 88, height: 88,
@@ -154,26 +155,9 @@ export default function RegisterPage() {
     <div style={{
       minHeight: '100dvh', background: '#f2f2f7',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '0 0 40px',
+      justifyContent: 'center',
+      padding: '40px 0',
     }}>
-      {/* ── Back button ── */}
-      <div style={{ width: '100%', maxWidth: 480, padding: '12px 8px 0', display: 'flex', alignItems: 'center' }}>
-        <button
-          onClick={() => router.push('/login')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 4,
-            color: '#007aff', fontSize: 17, padding: '8px',
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          <svg width="10" height="17" viewBox="0 0 10 17" fill="none">
-            <path d="M8.5 1.5L1.5 8.5L8.5 15.5" stroke="#007aff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          登录
-        </button>
-      </div>
-
       {/* ── Hero ── */}
       <div style={{
         width: '100%', maxWidth: 480,
@@ -197,10 +181,6 @@ export default function RegisterPage() {
       </div>
 
       <div style={{ width: '100%', maxWidth: 480, padding: '0 16px' }}>
-        {/* Section label */}
-        <p style={{ fontSize: 12, fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 4px', marginBottom: 8 }}>
-          账号信息
-        </p>
         <form onSubmit={handleRegister}>
           <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
             <FormRow label="邮箱" type="email" placeholder="your@email.com"
@@ -255,9 +235,11 @@ export default function RegisterPage() {
               borderBottom: i < BENEFITS.length - 1 ? '0.5px solid rgba(60,60,67,0.1)' : 'none',
             }}>
               <div style={{
-                width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-                background: '#f2f2f7',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                background: b.bg,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17,
+                color: 'white', fontWeight: 700,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
               }}>{b.icon}</div>
               <div>
                 <p style={{ fontSize: 14, fontWeight: 500, color: '#000', margin: '0 0 1px' }}>{b.title}</p>

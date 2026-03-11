@@ -489,12 +489,15 @@ export default function ResultSheet({
         </div>
         {/* END hero — V3: price data lives outside the colored stage */}
 
-        {/* ── V3: Price strip — clean white section outside hero ── */}
-        {/* STRIP_LABEL: always dark since bg is white regardless of hero isDark */}
-        <div className="rs-price-strip" style={{
-          background: '#fff',
-          borderBottom: '0.5px solid rgba(0,0,0,0.08)',
-        }}>
+        {/* ── V2: Tinted scroll body — price + analysis scroll together ── */}
+        <div className="rs-scroll" style={{ background: `linear-gradient(to bottom, ${info.tint} 0%, transparent 120px)`, WebkitOverflowScrolling: 'touch' }}>
+
+          {/* Price strip — now inside scroll */}
+          {/* STRIP_LABEL: always dark since bg is white regardless of hero isDark */}
+          <div className="rs-price-strip" style={{
+            background: '#fff',
+            borderBottom: '0.5px solid rgba(0,0,0,0.08)',
+          }}>
             <div className="rs-price-col">
               <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>最新价</div>
               <div className="rs-price-value" style={{ color: '#1c1c1e' }}>
@@ -540,6 +543,7 @@ export default function ResultSheet({
             )}
           </div>
 
+          {/* Profit row — now inside scroll */}
           {/* V5: Profit potential row (premium only, when prices make sense) */}
           {!isFree && showProfitRow && (
             <div className="rs-profit-row" style={{ background: isDark ? 'rgba(0,0,0,0.18)' : undefined }}>
@@ -568,9 +572,6 @@ export default function ResultSheet({
               </div>
             </div>
           )}
-
-        {/* ── V2: Tinted scroll body ── */}
-        <div className="rs-scroll" style={{ background: `linear-gradient(to bottom, ${info.tint} 0%, transparent 120px)` }}>
 
           {/* Analysis reason — V11: lead sentence + body */}
           {result?.result?.reason && (() => {

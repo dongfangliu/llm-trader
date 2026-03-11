@@ -12,6 +12,7 @@ import {
   getMarketData,
   getAnalysisHistory,
   getAppConfig,
+  AppConfig,
   getPricing,
   PricingData,
   AnalyzeRequest,
@@ -203,6 +204,7 @@ export default function HomePage() {
 
   const [authChecked, setAuthChecked] = useState(false);
   const [appName, setAppName] = useState('');
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [limits, setLimits] = useState<any>(null);
   const [marketData, setMarketData] = useState<any>(null);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
@@ -282,10 +284,21 @@ export default function HomePage() {
   const [narrativeIdx, setNarrativeIdx] = useState(0);
 
   const tier = user?.subscription_tier ?? 'free';
+  // Tracks whether the trial was consumed this session (avoids an extra getMe() call).
+  const [proTrialConsumed, setProTrialConsumed] = useState(false);
+  // Free/basic registered users who haven't used their one-time pro trial yet
+  // are treated as premium in the UI so they can access all premium features.
+  const isRegisteredProTrial = user !== null && (tier === 'free' || tier === 'basic') && !user.has_had_pro_trial && !proTrialConsumed;
+  const effectiveTier = isRegisteredProTrial ? 'premium' : tier;
   const [resultDisplayTier, setResultDisplayTier] = useState<string>(tier);
-  const [guestTrialEnded, setGuestTrialEnded] = useState(false);
+  const [guestTrialUsed, setGuestTrialUsed] = useState(false);
   const [deviceBanned, setDeviceBanned] = useState(false);
   const [showTrialWelcome, setShowTrialWelcome] = useState(false);
+  const [guestChecked, setGuestChecked] = useState(false);
+  // True after guest confirms the welcome modal — prevents redirect after dismiss
+  const [guestTrialConfirmed, setGuestTrialConfirmed] = useState(false);
+  // Registered user quota exhausted (daily + bonus both = 0)
+  const [userQuotaExhausted, setUserQuotaExhausted] = useState(false);
 
   // Saved records — rich objects stored in localStorage
   const [savedRecords, setSavedRecords] = useState<SavedRecord[]>(() => {
@@ -475,7 +488,7 @@ export default function HomePage() {
       .finally(() => setAuthChecked(true));
 
     getAppConfig()
-      .then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); })
+      .then((cfg) => { if (cfg?.app_name) setAppName(cfg.app_name); setAppConfig(cfg); })
       .catch(() => {});
 
     getPricing()
@@ -501,24 +514,29 @@ export default function HomePage() {
           setDeviceBanned(true);
           setShowTrialWelcome(false);
         } else if ((usage as any).trial_used) {
-          setGuestTrialEnded(true);
+          setGuestTrialUsed(true);
           setShowTrialWelcome(false);
         } else {
           // Guest hasn't used trial yet — show welcome modal every page open
           setShowTrialWelcome(true);
         }
-      }).catch(console.error);
+        setGuestChecked(true);
+      }).catch(() => {
+        // API unreachable — treat as fresh device (no trial used yet)
+        setShowTrialWelcome(true);
+        setGuestChecked(true);
+      });
     }
   }, [deviceId, user]);
 
   // When user logs in/registers, clear guest trial state and evaluate welcome modal
   useEffect(() => {
     if (user) {
-      setGuestTrialEnded(false);
+      setGuestTrialUsed(false);
       setDeviceBanned(false);
       // Show welcome modal for free/basic users who haven't had a trial yet
       const needsTrial = (user.subscription_tier === 'free' || user.subscription_tier === 'basic')
-        && user.has_had_pro_trial === false;
+        && !user.has_had_pro_trial;
       setShowTrialWelcome(needsTrial);
     }
   }, [user?.id]);
@@ -531,13 +549,20 @@ export default function HomePage() {
   }, [deviceId, user?.id]);
 
   useEffect(() => {
-    if (limits && limits.remaining <= 0) setShowUpgradeBanner(true);
+    // Upgrade banner only for logged-in users who hit their daily quota
+    if (user && limits && limits.remaining <= 0) setShowUpgradeBanner(true);
     else if (limits && limits.remaining > 0) setShowUpgradeBanner(false);
-  }, [limits, tier]);
+    // Show quota exhausted screen for logged-in users with no remaining quota
+    if (user && limits && limits.remaining <= 0 && !(user.bonus_quota && user.bonus_quota > 0)) {
+      setUserQuotaExhausted(true);
+    } else {
+      setUserQuotaExhausted(false);
+    }
+  }, [limits, tier, user]);
 
   useEffect(() => {
-    if (tier === 'free' && market !== 'a') setMarket('a');
-  }, [tier, market, setMarket]);
+    if (effectiveTier === 'free' && market !== 'a') setMarket('a');
+  }, [effectiveTier, market, setMarket]);
 
   // Re-fetch limits whenever user navigates to the analyze panel (covers bottom nav tap)
   useEffect(() => {
@@ -592,12 +617,15 @@ export default function HomePage() {
   }, [activePanel]);
 
   const handleAnalyze = async () => {
+    // ── Guest trial/ban — GuestTrialEndedScreen shows automatically via open prop ──
+    if (!user && (guestTrialUsed || deviceBanned)) return;
+
     // ── Client-side validation ──────────────────────────────────────
     const symErr = validateSymbol(symbol, market);
     if (symErr) { setError(symErr); return; }
 
-    const isPremium = tier === 'premium';
-    if (isPremium || tier === 'basic') {
+    const isPremium = effectiveTier === 'premium';
+    if (isPremium || effectiveTier === 'basic') {
       const hqErr = validatePositiveInt(holdingQuantity, '持有数量');
       if (hqErr) { setError(hqErr); return; }
       const cpErr = validatePositiveFloat(costPrice, '成本价');
@@ -653,11 +681,22 @@ export default function HomePage() {
         setLimits(queuedUsage);
         if (user) {
           getLimits().then((data) => setLimits({ remaining: data.remaining, daily_limit: data.daily_limit })).catch(() => {});
+          // If this was a trial analysis, mark it consumed locally so the UI
+          // immediately returns to the user's actual tier without an extra server round-trip.
+          if (isRegisteredProTrial) {
+            setProTrialConsumed(true);
+          }
         } else if (deviceId) {
-          getUsage(deviceId).then((usage) => setLimits({
-            remaining: usage.remaining,
-            daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
-          })).catch(() => {});
+          getUsage(deviceId).then((usage) => {
+            setLimits({
+              remaining: usage.remaining,
+              daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
+            });
+            if ((usage as any).trial_used) {
+              setGuestTrialUsed(true);
+              setShowTrialWelcome(false);
+            }
+          }).catch(() => {});
         }
         const nowIso = taskData.analyzed_at || new Date().toISOString();
         setAnalyzeStartedAt(nowIso);
@@ -748,7 +787,7 @@ export default function HomePage() {
       const detail = err?.response?.data?.detail;
       const errorCode = typeof detail === 'object' ? detail?.code : null;
       if (errorCode === 'trial_expired') {
-        setGuestTrialEnded(true);
+        setGuestTrialUsed(true);
         setActivePanel('analyze');
       } else if (errorCode === 'device_banned') {
         setDeviceBanned(true);
@@ -825,8 +864,8 @@ export default function HomePage() {
     });
   };
 
-  // Show spinner while verifying auth; redirect to login if not authenticated
-  if (!authChecked) {
+  // Show spinner while verifying auth + guest usage check
+  if (!authChecked || (!user && !guestChecked)) {
     return (
       <div className="app-shell" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <div className="spinner"></div>
@@ -834,7 +873,8 @@ export default function HomePage() {
     );
   }
 
-  if (!user) {
+  // Redirect to login only if guest has no trial and no device (shouldn't normally happen)
+  if (!user && !deviceId) {
     router.replace('/login');
     return null;
   }
@@ -851,7 +891,7 @@ export default function HomePage() {
     { label: '⚖️ 风险收益', key: 'risk_analysis' },
     { label: '📋 执行方案', key: 'execution_plan' },
   ];
-  const hasMultiPeriod = (tier === 'premium' || tier === 'basic') && multiPeriodResults.length > 1;
+  const hasMultiPeriod = (effectiveTier === 'premium' || effectiveTier === 'basic') && multiPeriodResults.length > 1;
   const allTabs = hasMultiPeriod
     ? [...fourStepTabs, { label: '📊 多周期对比', key: '__multiperiod__' }]
     : fourStepTabs;
@@ -860,17 +900,67 @@ export default function HomePage() {
     <div className="app-shell">
       <Toast toast={toast} />
       <ErrorReportDialog error={errorReport} onClose={() => setErrorReport(null)} />
-      <GuestTrialEndedScreen
-        open={guestTrialEnded}
-        banned={deviceBanned}
-        appName={appName}
-        onRegister={() => router.push('/register')}
-        onClose={() => { setGuestTrialEnded(false); setDeviceBanned(false); }}
-      />
+      {/* Registered user daily quota exhausted */}
+      {userQuotaExhausted && !guestTrialUsed && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: '#f2f2f7',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', padding: '0 0 40px', overflowY: 'auto',
+        }}>
+          <div style={{
+            width: '100%', maxWidth: 480,
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            padding: '48px 16px 24px', textAlign: 'center',
+          }}>
+            <div style={{
+              width: 80, height: 80,
+              background: 'linear-gradient(145deg, #007aff, #5856d6)',
+              borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 40, boxShadow: '0 8px 24px rgba(0,122,255,0.3)', marginBottom: 16,
+            }}>📈</div>
+            <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px', color: '#000', margin: '0 0 6px' }}>{appName}</h1>
+            <p style={{ fontSize: 15, color: '#8e8e93', margin: 0 }}>AI 驱动的专业技术分析平台</p>
+          </div>
+          <div style={{ width: '100%', maxWidth: 480, padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ background: 'white', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
+              <div style={{ background: 'linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%)', padding: '20px 24px', textAlign: 'center' }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>🌙</div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '0 0 4px', letterSpacing: '-0.3px' }}>今日额度已用完</h2>
+                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', margin: 0 }}>明天 0 点自动重置，明天再来</p>
+              </div>
+              <div style={{ padding: '16px 20px 20px' }}>
+                <p style={{ fontSize: 14, color: '#3c3c43', margin: '0 0 16px', lineHeight: 1.6 }}>
+                  升级套餐可获得更多每日分析次数，专业版每天最多 15 次。
+                </p>
+                <a href="/upgrade?plan=basic" style={{
+                  display: 'block', width: '100%', height: 50, lineHeight: '50px',
+                  background: '#007aff', color: 'white', borderRadius: 12,
+                  fontSize: 17, fontWeight: 600, textDecoration: 'none', textAlign: 'center',
+                  boxShadow: '0 4px 16px rgba(0,122,255,0.3)', marginBottom: 10,
+                }}>升级获取更多次数</a>
+                <button
+                  onClick={() => setUserQuotaExhausted(false)}
+                  style={{
+                    width: '100%', height: 44, background: 'none', border: 'none',
+                    color: '#007aff', fontSize: 15, fontWeight: 500, cursor: 'pointer',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >明天再来 →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <ProTrialWelcomeModal
         open={showTrialWelcome}
         appName={appName}
-        onConfirm={() => setShowTrialWelcome(false)}
+        onConfirm={() => { setShowTrialWelcome(false); setGuestTrialConfirmed(true); }}
+        title={appConfig?.trial_modal_title}
+        subtitle={appConfig?.trial_modal_subtitle}
+        perksLabel={appConfig?.trial_modal_perks_label}
+        perks={appConfig?.trial_modal_perks}
+        buttonText={appConfig?.trial_modal_button}
       />
 
       {/* ═══ MOBILE Header (hidden on desktop) ═══ */}
@@ -1031,7 +1121,50 @@ export default function HomePage() {
           }}
         >
           {/* ═══ ANALYZE PANEL ═══ */}
-          {activePanel === 'analyze' && (
+          {activePanel === 'analyze' && !user && (guestTrialUsed || deviceBanned) && (
+            <div style={{ minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 16px 16px', gap: 12 }}>
+              <div style={{ width: '100%', maxWidth: 480, background: 'white', borderRadius: 20, overflow: 'hidden', boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
+                <div style={{ background: 'linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%)', padding: '20px 24px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>{deviceBanned ? '🚫' : '⏳'}</div>
+                  <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '0 0 4px', letterSpacing: '-0.3px' }}>
+                    {deviceBanned ? '此设备已被限制' : (appConfig?.trial_ended_title || '专业版体验已结束')}
+                  </h2>
+                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                    {deviceBanned ? '如有疑问，请联系管理员' : (appConfig?.trial_ended_subtitle || '游客仅限一次免费体验')}
+                  </p>
+                </div>
+                {!deviceBanned && (
+                  <div style={{ padding: '16px 20px 20px' }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>
+                      {appConfig?.trial_ended_perks_label || '注册账号，每天继续使用'}
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+                      {(appConfig?.trial_ended_perks || [
+                        { icon: '📊', text: '每天 1 次免费深度研判' },
+                        { icon: '☁', text: '跨设备同步，数据不丢失' },
+                        { icon: '★', text: '邀请好友获得额外永久额度' },
+                      ]).map((p: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: ['linear-gradient(135deg,#007aff,#3b9eff)','linear-gradient(135deg,#34c759,#30d158)','linear-gradient(135deg,#ff9500,#ffcc02)'][i%3], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, color: 'white', fontWeight: 700 }}>{p.icon}</div>
+                          <p style={{ fontSize: 14, color: '#1c1c1e', margin: 0, fontWeight: 500 }}>{p.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => router.push('/register')} style={{ width: '100%', height: 50, background: '#007aff', color: 'white', border: 'none', borderRadius: 12, fontSize: 17, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent', marginBottom: 10, boxShadow: '0 4px 16px rgba(0,122,255,0.3)' }}>
+                      {appConfig?.trial_ended_register_button || '免费注册，继续使用'}
+                    </button>
+                    <a href="/login" style={{ display: 'block', width: '100%', height: 44, color: '#007aff', fontSize: 15, fontWeight: 500, textDecoration: 'none', lineHeight: '44px', textAlign: 'center' }}>已有账号？登录</a>
+                  </div>
+                )}
+              </div>
+              {result && (
+                <button onClick={() => setActivePanel('result')} style={{ fontSize: 15, color: '#007aff', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', padding: '8px 0' }}>
+                  查看上次分析结果 →
+                </button>
+              )}
+            </div>
+          )}
+          {activePanel === 'analyze' && (user || (!guestTrialUsed && !deviceBanned)) && (
             <div style={{ minWidth: 0, width: '100%', overflow: 'hidden' }}>
               <div className="card mobile-card-padless mb-3" style={{ marginTop: '0' }}>
                 {/* ── Desktop content — all original form layout ── */}
@@ -1043,9 +1176,9 @@ export default function HomePage() {
                     <label className="label">市场</label>
                     <select className="select" value={market} onChange={(e) => setMarket(e.target.value)}>
                       <option value="a">A股</option>
-                      <option value="hk" disabled={tier === 'free'}>港股{tier === 'free' ? '（基础版起）' : ''}</option>
-                      <option value="us" disabled={tier === 'free'}>美股{tier === 'free' ? '（基础版起）' : ''}</option>
-                      <option value="futures" disabled={tier === 'free'}>期货{tier === 'free' ? '（基础版起）' : ''}</option>
+                      <option value="hk" disabled={effectiveTier === 'free'}>港股{effectiveTier === 'free' ? '（基础版起）' : ''}</option>
+                      <option value="us" disabled={effectiveTier === 'free'}>美股{effectiveTier === 'free' ? '（基础版起）' : ''}</option>
+                      <option value="futures" disabled={effectiveTier === 'free'}>期货{effectiveTier === 'free' ? '（基础版起）' : ''}</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -1100,12 +1233,12 @@ export default function HomePage() {
                   </div>
                   <div className="form-group" style={{ marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <input type="checkbox" id="multi-period-toggle-d" checked={multiPeriodEnabled} disabled={tier === 'free'} onChange={(e) => { setMultiPeriodEnabled(e.target.checked); if (!e.target.checked) setAuxiliaryPeriods([]); }} style={{ width: '1rem', height: '1rem', cursor: tier === 'free' ? 'not-allowed' : 'pointer' }} />
-                      <label htmlFor="multi-period-toggle-d" style={{ fontSize: '0.875rem', fontWeight: 500, cursor: tier === 'free' ? 'not-allowed' : 'pointer', color: tier === 'free' ? 'var(--muted)' : undefined }} title={tier === 'free' ? '基础版起可用' : undefined}>
-                        多周期分析{tier === 'free' && <span style={{ marginLeft: '0.35rem', fontSize: '0.75rem' }}>(基础版起可用)</span>}
+                      <input type="checkbox" id="multi-period-toggle-d" checked={multiPeriodEnabled} disabled={effectiveTier === 'free'} onChange={(e) => { setMultiPeriodEnabled(e.target.checked); if (!e.target.checked) setAuxiliaryPeriods([]); }} style={{ width: '1rem', height: '1rem', cursor: effectiveTier === 'free' ? 'not-allowed' : 'pointer' }} />
+                      <label htmlFor="multi-period-toggle-d" style={{ fontSize: '0.875rem', fontWeight: 500, cursor: effectiveTier === 'free' ? 'not-allowed' : 'pointer', color: effectiveTier === 'free' ? 'var(--muted)' : undefined }} title={effectiveTier === 'free' ? '基础版起可用' : undefined}>
+                        多周期分析{effectiveTier === 'free' && <span style={{ marginLeft: '0.35rem', fontSize: '0.75rem' }}>(基础版起可用)</span>}
                       </label>
                     </div>
-                    {multiPeriodEnabled && tier !== 'free' && (
+                    {multiPeriodEnabled && effectiveTier !== 'free' && (
                       <div style={{ marginTop: '0.6rem', padding: '0.6rem', background: '#f8fafc', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
                         <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: '0.4rem' }}>选择辅助周期（最多3个）：</p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
@@ -1126,13 +1259,13 @@ export default function HomePage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', background: '#fde68a', padding: '0.2rem 0.5rem', borderRadius: '9999px' }}>专业版特别功能</span>
-                        {(tier === 'basic' || tier === 'premium') && (
+                        {(effectiveTier === 'basic' || effectiveTier === 'premium') && (
                           <span style={{ fontSize: '0.75rem', color: '#92400e' }}>
                             {([holdingQuantity, costPrice, maxPosition].filter((v) => v.trim()).length === 0) ? '当前：空仓模式' : '当前：已填写持仓参数'}
                           </span>
                         )}
                       </div>
-                      {tier === 'premium' ? (
+                      {effectiveTier === 'premium' ? (
                         <button className="btn btn-secondary" style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', minWidth: '72px' }} onClick={() => setPremiumInputsOpen((v) => !v)}>
                           {premiumInputsOpen ? '收起模块' : '展开模块'}
                         </button>
@@ -1148,7 +1281,7 @@ export default function HomePage() {
                       <span style={{ fontSize: '0.75rem', color: '#92400e', background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: '9999px' }}>历史回看详情</span>
                       <span style={{ fontSize: '0.75rem', color: '#92400e', background: '#fef3c7', padding: '0.15rem 0.5rem', borderRadius: '9999px' }}>持仓参数可选</span>
                     </div>
-                    {(tier === 'basic' || tier === 'premium') && premiumInputsOpen && (
+                    {(effectiveTier === 'basic' || effectiveTier === 'premium') && premiumInputsOpen && (
                       <div style={{ marginTop: '0.85rem' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
                           <div className="form-group"><label className="label">持有数量(股)</label><input className="input" value={holdingQuantity} onChange={(e) => setHoldingQuantity(e.target.value)} /></div>
@@ -1162,7 +1295,7 @@ export default function HomePage() {
                   {error && <div className="error">{error}</div>}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <button className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} onClick={handleAnalyze} disabled={!symbol.trim()}>
-                      {tier === 'premium' && premiumPendingCount > 0 ? `开始分析（进行中 ${premiumPendingCount}）` : '开始分析'}
+                      {effectiveTier === 'premium' && premiumPendingCount > 0 ? `开始分析（进行中 ${premiumPendingCount}）` : '开始分析'}
                     </button>
                     {result && (
                       <button className="btn btn-secondary" style={{ width: '100%' }} onClick={handleOpenResultPanel}>
@@ -1413,10 +1546,13 @@ export default function HomePage() {
                     <>
                       {/* ── Hero: Title + Market ── */}
                       <div style={{ background: 'white', padding: '22px 16px 16px' }}>
-                        <h2 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.8px', color: '#1c1c1e', margin: '0 0 16px', lineHeight: 1.1 }}>
+                        <h2 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.8px', color: '#1c1c1e', margin: '0 0 16px', lineHeight: 1.1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                           今天分析哪只？
+                          {isRegisteredProTrial && (
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed', background: '#ede9fe', borderRadius: '20px', padding: '3px 10px', letterSpacing: '0.2px', lineHeight: 1.4 }}>专业版体验中</span>
+                          )}
                         </h2>
-                        <MarketSegmented value={market} onChange={setMarket} tier={tier} onLockedClick={() => router.push('/upgrade')} />
+                        <MarketSegmented value={market} onChange={setMarket} tier={effectiveTier} onLockedClick={() => router.push('/upgrade')} />
                       </div>
 
                       {/* ── Hairline divider ── */}
@@ -1474,12 +1610,12 @@ export default function HomePage() {
                           costPrice={costPrice} setCostPrice={setCostPrice}
                           maxPosition={maxPosition} setMaxPosition={setMaxPosition}
                           premiumInputsOpen={premiumInputsOpen} setPremiumInputsOpen={setPremiumInputsOpen}
-                          tier={tier} onUpgrade={() => router.push('/upgrade')}
+                          tier={effectiveTier} onUpgrade={() => router.push('/upgrade')}
                         />
                       </div>
 
                       {/* ── Upgrade teaser ── */}
-                      {tier !== 'premium' && (
+                      {effectiveTier !== 'premium' && (
                         <>
                           <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)' }} />
                           <div style={{ background: 'white' }}>
@@ -1499,7 +1635,7 @@ export default function HomePage() {
               {showUpgradeBanner && (
                 <div className="desktop-only card mb-3" style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b' }}>
                   <div style={{ textAlign: 'center' }}>
-                    {tier === 'basic' ? (
+                    {effectiveTier === 'basic' ? (
                       <>
                         <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>今日标准版次数已用完</p>
                         <p style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>升级专业版，每天 {pricing?.premium?.daily_limit ?? 15} 次分析，仅需 ¥{pricing?.premium?.price ?? '49'}/月</p>
@@ -1517,11 +1653,11 @@ export default function HomePage() {
               )}
 
               {/* Desktop: upgrade cards */}
-              {tier !== 'premium' && (
+              {effectiveTier !== 'premium' && (
                 <div className="desktop-only" style={{ marginTop: '0.5rem' }}>
                   <p style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.7rem', color: 'var(--muted)', textAlign: 'center' }}>🔒 升级后解锁以下功能</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-                    {tier === 'free' && (
+                    {effectiveTier === 'free' && (
                       <div style={{ border: '2px solid #3b82f6', borderRadius: '0.75rem', padding: '1rem', background: '#eff6ff', transition: 'transform 0.2s' }} onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')} onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                           <div>
@@ -1557,7 +1693,7 @@ export default function HomePage() {
               <div className="mobile-only fab-container">
                 {error && <div className="error" style={{ marginBottom: '8px', fontSize: '13px', borderRadius: '8px' }}>{error}</div>}
                 {showUpgradeBanner ? (
-                  tier === 'premium' ? (
+                  effectiveTier === 'premium' ? (
                     <button
                       className="fab-btn"
                       disabled
@@ -1570,13 +1706,13 @@ export default function HomePage() {
                       className="fab-btn"
                       onClick={() => router.push('/upgrade')}
                       style={{
-                        background: tier === 'basic'
+                        background: effectiveTier === 'basic'
                           ? 'linear-gradient(135deg, #7c3aed, #a855f7)'
                           : 'linear-gradient(135deg, #ff9500, #ff6b00)',
                         opacity: 1,
                       }}
                     >
-                      {tier === 'basic' ? '升级专业版 →' : '立即升级 →'}
+                      {effectiveTier === 'basic' ? '升级专业版 →' : '立即升级 →'}
                     </button>
                   )
                 ) : (
@@ -1585,7 +1721,7 @@ export default function HomePage() {
                     onClick={handleAnalyze}
                     disabled={!symbol.trim()}
                   >
-                    {tier === 'premium' && premiumPendingCount > 0 ? `分析中（${premiumPendingCount}）` : '开始分析'}
+                    {effectiveTier === 'premium' && premiumPendingCount > 0 ? `分析中（${premiumPendingCount}）` : '开始分析'}
                   </button>
                 )}
               </div>
@@ -1684,7 +1820,7 @@ export default function HomePage() {
                         ))}
                       </div>
 
-                      {tier === 'premium' && (
+                      {effectiveTier === 'premium' && (
                         <button
                           onClick={() => setActivePanel('analyze')}
                           style={{ background: 'none', border: 'none', fontSize: '14px', fontWeight: 500, color: '#aeaeb2', cursor: 'pointer', marginTop: '48px', padding: '4px 0' }}
@@ -1735,7 +1871,7 @@ export default function HomePage() {
                           <span key={step} style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', borderRadius: '9999px', background: '#f1f5f9', color: 'var(--muted)', animation: `pulse-step 2s ${i * 0.5}s infinite` }}>{step}</span>
                         ))}
                       </div>
-                      {tier === 'premium' && (<button className="btn btn-secondary" style={{ marginTop: '0.5rem' }} onClick={() => setActivePanel('analyze')}>继续下一个分析 →</button>)}
+                      {effectiveTier === 'premium' && (<button className="btn btn-secondary" style={{ marginTop: '0.5rem' }} onClick={() => setActivePanel('analyze')}>继续下一个分析 →</button>)}
                     </>
                   )}
                 </div>
@@ -1909,7 +2045,7 @@ export default function HomePage() {
                             {analyzeStartedAt && <span>分析 {new Date(analyzeStartedAt).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
                           </div>
                         </div>
-                        {tier === 'free' ? (
+                        {effectiveTier === 'free' ? (
                           <button onClick={() => generateShareCard()} disabled={shareLoading} style={{ fontSize: '0.82rem', padding: '0.35rem 0.85rem', background: shareLoading ? '#fca5a5' : 'linear-gradient(135deg,#dc2626,#ef4444)', border: 'none', borderRadius: '0.5rem', cursor: shareLoading ? 'default' : 'pointer', color: 'white', fontWeight: 700, whiteSpace: 'nowrap', boxShadow: shareLoading ? 'none' : '0 2px 8px rgba(220,38,38,0.4)' }}>{shareLoading ? '生成中…' : '📤 分享研判'}</button>
                         ) : (
                           <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -1949,11 +2085,11 @@ export default function HomePage() {
                     <div className="result-section result-section-animated">
                       {/* Mobile: SignalHero component */}
                       <div className="mobile-only">
-                        <SignalHero result={result} tier={tier} period={period} />
+                        <SignalHero result={result} tier={resultDisplayTier} period={period} />
                       </div>
                       {/* Desktop: original signal block */}
                       <div className="desktop-only">
-                        {tier === 'free' ? (
+                        {effectiveTier === 'free' ? (
                           <div style={{ marginBottom: '1.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', background: result.result?.action === 'buy' ? '#fee2e2' : result.result?.action === 'sell' ? '#dcfce7' : '#f3f4f6', borderRadius: (result.result as any)?.opportunity_quality ? '0.75rem 0.75rem 0 0' : '0.75rem' }}>
                               <div>
@@ -1998,7 +2134,7 @@ export default function HomePage() {
                     <div className="result-section result-section-animated">
                       <div className="result-section-title">分析要点</div>
                       <h3 className="desktop-only" style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>分析要点</h3>
-                      {tier === 'free' ? (
+                      {effectiveTier === 'free' ? (
                         <div style={{ position: 'relative' }}>
                           <div className="result-reason-block">
                             <p className="result-reason-text" style={{ maxHeight: '7.5em', overflow: 'hidden' }}>
@@ -2163,17 +2299,17 @@ export default function HomePage() {
 
                     {/* ── Upgrade banners / nudge ── */}
                     {/* Mobile: UpgradeNudge */}
-                    {tier !== 'premium' && (
+                    {effectiveTier !== 'premium' && (
                       <>
                         <div className="result-section mobile-only result-section-animated" style={{ padding: 0 }}>
-                          <UpgradeNudge tier={tier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                          <UpgradeNudge tier={effectiveTier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
                         </div>
                         <div className="result-section-gap mobile-only" />
                       </>
                     )}
                     {/* Desktop: original banners */}
                     <div className="desktop-only">
-                      {tier === 'free' && (
+                      {effectiveTier === 'free' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1.25rem' }}>
                           <div style={{ padding: '0.8rem 1rem', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', border: '1px solid #93c5fd', borderRadius: '0.625rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                             <div><p style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1d4ed8', marginBottom: '0.15rem' }}>📊 标准版 ¥19.9/月</p><p style={{ fontSize: '0.78rem', color: '#1e40af' }}>解锁深度研判 · 目标价止损 · 港股美股期货</p></div>
@@ -2185,7 +2321,7 @@ export default function HomePage() {
                           </div>
                         </div>
                       )}
-                      {tier === 'basic' && (
+                      {effectiveTier === 'basic' && (
                         <div style={{ marginBottom: '1.25rem', padding: '0.8rem 1rem', background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', border: '1px solid #a78bfa', borderRadius: '0.625rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                           <div><p style={{ fontWeight: 700, fontSize: '0.85rem', color: '#6d28d9', marginBottom: '0.15rem' }}>💎 专业版 ¥49/月</p><p style={{ fontSize: '0.78rem', color: '#5b21b6' }}>持仓智能分析不限次 · 每日15次 · 优先通道</p></div>
                           <button onClick={() => router.push('/upgrade')} style={{ fontSize: '0.82rem', fontWeight: 700, color: 'white', background: '#7c3aed', border: 'none', borderRadius: '0.4rem', padding: '0.4rem 1rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>升级专业版 →</button>
@@ -2206,7 +2342,7 @@ export default function HomePage() {
                           </div>
                         )}
                         {/* Share row */}
-                        {tier === 'free' ? (
+                        {effectiveTier === 'free' ? (
                           <button
                             onClick={() => generateShareCard()}
                             disabled={shareLoading}
@@ -2249,7 +2385,7 @@ export default function HomePage() {
                         <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--muted)' }}>
                           今日剩余次数: {result.usage?.remaining}
                         </div>
-                        {tier === 'free' ? (
+                        {effectiveTier === 'free' ? (
                           <button onClick={() => generateShareCard()} disabled={shareLoading} style={{ width: '100%', padding: '0.6rem', fontSize: '0.9rem', fontWeight: 700, background: shareLoading ? '#fca5a5' : 'linear-gradient(135deg,#dc2626,#ef4444)', border: 'none', borderRadius: '0.5rem', cursor: shareLoading ? 'default' : 'pointer', color: 'white', boxShadow: shareLoading ? 'none' : '0 3px 10px rgba(220,38,38,0.4)' }}>
                             {shareLoading ? '生成中…' : '📤 分享研判卡片'}
                           </button>
@@ -2280,7 +2416,7 @@ export default function HomePage() {
                                   {selectedHistoryId === h.id ? '当前查看' : '查看详情'}
                                 </button>
                                 {h.detail && (
-                                  tier === 'free' ? (
+                                  effectiveTier === 'free' ? (
                                     <button style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', background: 'linear-gradient(135deg,#dc2626,#ef4444)', color: 'white', border: 'none', borderRadius: '0.4rem', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }} onClick={() => generateShareCard(undefined, h.detail as typeof result, h.analyzedAt)}>📤 分享</button>
                                   ) : (
                                     <>

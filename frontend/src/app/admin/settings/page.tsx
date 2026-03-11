@@ -464,13 +464,83 @@ export default function AdminSettingsPage() {
       {/* ── 应用 ── */}
       {activeTab === 'app' && (() => {
         const a = cfg.app;
+        const setApp = (patch: Partial<typeof a>) => setCfg({ ...cfg, app: { ...a, ...patch } });
+        const setModalPerk = (i: number, field: 'icon' | 'text', val: string) => {
+          const perks = [...(a.trial_modal_perks ?? [])];
+          perks[i] = { ...perks[i], [field]: val };
+          setApp({ trial_modal_perks: perks });
+        };
+        const setEndedPerk = (i: number, field: 'icon' | 'text', val: string) => {
+          const perks = [...(a.trial_ended_perks ?? [])];
+          perks[i] = { ...perks[i], [field]: val };
+          setApp({ trial_ended_perks: perks });
+        };
         return (
           <div className="card">
             <h2 style={{ fontWeight: 600, marginBottom: '1.25rem' }}>应用基础设置</h2>
             <Field label="站点名称" hint="显示在页面标题、导航栏及邮件中的应用名称">
-              <Input value={a.name} onChange={v => setCfg({ ...cfg, app: { name: v } })}
-                placeholder="我的AI分析" />
+              <Input value={a.name} onChange={v => setApp({ name: v })} placeholder="我的AI分析" />
             </Field>
+
+            <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border)' }} />
+            <h3 style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: '1rem' }}>🎁 体验专业版弹窗文案</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <Field label="标题">
+                <Input value={a.trial_modal_title ?? ''} onChange={v => setApp({ trial_modal_title: v })} placeholder="你获得一次专业版体验" />
+              </Field>
+              <Field label="副标题">
+                <Input value={a.trial_modal_subtitle ?? ''} onChange={v => setApp({ trial_modal_subtitle: v })} placeholder="仅限一次 · 用完即止" />
+              </Field>
+            </div>
+            <Field label="权益列表标题">
+              <Input value={a.trial_modal_perks_label ?? ''} onChange={v => setApp({ trial_modal_perks_label: v })} placeholder="本次体验包含" />
+            </Field>
+            <Field label="权益条目（最多显示3条）" hint="每条包含 emoji 图标和描述文字">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {(a.trial_modal_perks ?? [{ icon: '', text: '' }, { icon: '', text: '' }, { icon: '', text: '' }]).map((p, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '0.5rem' }}>
+                    <Input value={p.icon} onChange={v => setModalPerk(i, 'icon', v)} placeholder="🔍" />
+                    <Input value={p.text} onChange={v => setModalPerk(i, 'text', v)} placeholder={['完整深度研判报告', '多周期联合分析', 'AI 买卖点精准定位'][i] ?? ''} />
+                  </div>
+                ))}
+              </div>
+            </Field>
+            <Field label="确认按钮文字">
+              <Input value={a.trial_modal_button ?? ''} onChange={v => setApp({ trial_modal_button: v })} placeholder="立即开始体验" />
+            </Field>
+
+            <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border)' }} />
+            <h3 style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: '1rem' }}>⏳ 体验结束页文案</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <Field label="标题">
+                <Input value={a.trial_ended_title ?? ''} onChange={v => setApp({ trial_ended_title: v })} placeholder="专业版体验已结束" />
+              </Field>
+              <Field label="副标题">
+                <Input value={a.trial_ended_subtitle ?? ''} onChange={v => setApp({ trial_ended_subtitle: v })} placeholder="游客仅限一次免费体验" />
+              </Field>
+            </div>
+            <Field label="权益列表标题">
+              <Input value={a.trial_ended_perks_label ?? ''} onChange={v => setApp({ trial_ended_perks_label: v })} placeholder="注册账号，每天继续使用" />
+            </Field>
+            <Field label="注册权益条目（最多显示3条）">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {(a.trial_ended_perks ?? [{ icon: '', text: '' }, { icon: '', text: '' }, { icon: '', text: '' }]).map((p, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '0.5rem' }}>
+                    <Input value={p.icon} onChange={v => setEndedPerk(i, 'icon', v)} placeholder={['📊', '☁', '★'][i] ?? ''} />
+                    <Input value={p.text} onChange={v => setEndedPerk(i, 'text', v)} placeholder={['每天 1 次免费深度研判', '跨设备同步，数据不丢失', '邀请好友获得额外永久额度'][i] ?? ''} />
+                  </div>
+                ))}
+              </div>
+            </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <Field label="注册按钮文字">
+                <Input value={a.trial_ended_register_button ?? ''} onChange={v => setApp({ trial_ended_register_button: v })} placeholder="免费注册，继续使用" />
+              </Field>
+              <Field label="套餐提示文字" hint="显示在升级横条中">
+                <Input value={a.trial_ended_upgrade_hint ?? ''} onChange={v => setApp({ trial_ended_upgrade_hint: v })} placeholder="标准版 ¥19.9/月 · 专业版 ¥49/月" />
+              </Field>
+            </div>
+
             <SaveButton loading={saving === 'app'} onClick={() => save('app', cfg.app as unknown as Record<string, unknown>)} />
             <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border)' }} />
             <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>

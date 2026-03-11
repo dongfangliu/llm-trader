@@ -61,6 +61,8 @@ export interface User {
   bonus_quota?: number;
   used_invite_code?: string;  // non-null = already redeemed once
   has_had_pro_trial?: boolean;
+  subscription_expires_at?: string | null;
+  last_device_id?: string | null;
 }
 
 export const register = async (data: RegisterRequest) => {
@@ -69,7 +71,8 @@ export const register = async (data: RegisterRequest) => {
 };
 
 export const login = async (data: LoginRequest) => {
-  const response = await api.post('/api/auth/login', data);
+  const device_id = typeof window !== 'undefined' ? localStorage.getItem('device_id') : null;
+  const response = await api.post('/api/auth/login', { ...data, device_id });
   return response.data;
 };
 
@@ -278,6 +281,11 @@ export interface AdminUser {
   created_at: string | null;
   invite_code: string | null;
   bonus_quota: number;
+  email_verified?: boolean;
+  has_had_pro_trial?: boolean;
+  used_invite_code?: string | null;
+  subscription_expires_at?: string | null;
+  last_device_id?: string | null;
 }
 
 export interface AdminDevice {
@@ -312,9 +320,17 @@ export const adminGetUsers = async (params?: {
 
 export const adminUpdateUser = async (
   userId: number,
-  data: { subscription_tier?: string; is_active?: boolean; reset_usage?: boolean }
+  data: { subscription_tier?: string; is_active?: boolean; reset_usage?: boolean; email_verified?: boolean }
 ): Promise<AdminUser> => {
   const r = await adminApi.put(`/api/admin/users/${userId}`, data);
+  return r.data;
+};
+
+export const adminSetUserQuota = async (
+  userId: number,
+  data: { daily_usage?: number; bonus_quota?: number }
+): Promise<AdminUser> => {
+  const r = await adminApi.patch(`/api/admin/users/${userId}/quota`, data);
   return r.data;
 };
 
@@ -400,7 +416,20 @@ export interface SystemSettings {
     resend_api_key: string;
     app_base_url: string;
   };
-  app: { name: string };
+  app: {
+    name: string;
+    trial_modal_title: string;
+    trial_modal_subtitle: string;
+    trial_modal_perks_label: string;
+    trial_modal_perks: TrialPerk[];
+    trial_modal_button: string;
+    trial_ended_title: string;
+    trial_ended_subtitle: string;
+    trial_ended_perks_label: string;
+    trial_ended_perks: TrialPerk[];
+    trial_ended_register_button: string;
+    trial_ended_upgrade_hint: string;
+  };
 }
 
 export const adminGetSettings = async (): Promise<SystemSettings> => {
@@ -453,14 +482,34 @@ export const adminGetSymbolNames = async (params?: {
 
 // ===================== Afdian Activation =====================
 
-export const activateAfdianOrder = async (data: { out_trade_no: string; device_id: string }) => {
+export const activateAfdianOrder = async (data: { out_trade_no: string; device_id?: string }) => {
   const response = await api.post('/api/subscription/activate', data);
-  return response.data as { status: string; device_id: string; tier: string };
+  return response.data as { status: string; tier: string; expires_at?: string };
 };
 
 // ===================== App Config =====================
 
-export const getAppConfig = async (): Promise<{ app_name: string; version: string; afdian_basic_link: string; afdian_premium_link: string }> => {
+export interface TrialPerk { icon: string; text: string; }
+
+export interface AppConfig {
+  app_name: string;
+  version: string;
+  afdian_basic_link: string;
+  afdian_premium_link: string;
+  trial_modal_title: string;
+  trial_modal_subtitle: string;
+  trial_modal_perks_label: string;
+  trial_modal_perks: TrialPerk[];
+  trial_modal_button: string;
+  trial_ended_title: string;
+  trial_ended_subtitle: string;
+  trial_ended_perks_label: string;
+  trial_ended_perks: TrialPerk[];
+  trial_ended_register_button: string;
+  trial_ended_upgrade_hint: string;
+}
+
+export const getAppConfig = async (): Promise<AppConfig> => {
   const response = await api.get('/api/config');
   return response.data;
 };

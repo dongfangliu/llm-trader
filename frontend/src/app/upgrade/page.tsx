@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { activateAfdianOrder, getPricing, getAppConfig, PricingData, FeatureItem } from '@/lib/api';
 
-export default function UpgradePage() {
+function UpgradePageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, checkAuth } = useAuthStore();
   const [deviceId, setDeviceId] = useState('');
   const [pricing, setPricing] = useState<PricingData | null>(null);
@@ -15,10 +16,13 @@ export default function UpgradePage() {
 
   const [orderNo, setOrderNo] = useState('');
   const [activating, setActivating] = useState(false);
-  const [activateResult, setActivateResult] = useState<{ tier: string } | null>(null);
+  const [activateResult, setActivateResult] = useState<{ tier: string; expires_at?: string } | null>(null);
   const [activateError, setActivateError] = useState('');
 
-  const [pricingCardIdx, setPricingCardIdx] = useState(1);
+  // Determine initial card index from URL param: ?tier=basic → 1, ?tier=premium → 2
+  const tierParam = searchParams.get('tier') || searchParams.get('plan');
+  const initialCardIdx = tierParam === 'premium' ? 2 : tierParam === 'basic' ? 1 : 1;
+  const [pricingCardIdx, setPricingCardIdx] = useState(initialCardIdx);
   const swipeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,13 +39,14 @@ export default function UpgradePage() {
   useEffect(() => {
     const el = swipeRef.current;
     if (!el) return;
-    const child = el.children[1] as HTMLElement;
+    const targetIdx = tierParam === 'premium' ? 2 : tierParam === 'basic' ? 1 : 1;
+    const child = el.children[targetIdx] as HTMLElement;
     if (child) {
       setTimeout(() => {
         el.scrollTo({ left: child.offsetLeft - (el.clientWidth - child.clientWidth) / 2, behavior: 'instant' as ScrollBehavior });
       }, 50);
     }
-  }, []);
+  }, [tierParam]);
 
   const handleSwipeScroll = () => {
     const el = swipeRef.current;
@@ -53,12 +58,22 @@ export default function UpgradePage() {
 
   const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderNo.trim() || !deviceId) return;
+    if (!orderNo.trim()) return;
+    // Require either login (for account binding) or device_id (for guest)
+    if (!user) {
+      setActivateError('请先登录账号后再激活订阅');
+      return;
+    }
     setActivating(true);
     setActivateError('');
     setActivateResult(null);
     try {
-      const result = await activateAfdianOrder({ out_trade_no: orderNo.trim(), device_id: deviceId });
+      // If logged in: no need to pass device_id (server uses auth token to bind to account)
+      // If guest: pass device_id
+      const payload = user
+        ? { out_trade_no: orderNo.trim() }
+        : { out_trade_no: orderNo.trim(), device_id: deviceId };
+      const result = await activateAfdianOrder(payload);
       setActivateResult(result);
       await checkAuth();
     } catch (err: unknown) {
@@ -139,13 +154,13 @@ export default function UpgradePage() {
             <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', marginBottom: '8px' }}>
               {tier === 'basic' ? '升级专业版' : '解锁专业研判'}
             </h1>
-            <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, maxWidth: '260px', margin: '0 auto' }}>
-              AI 驱动 · 全市场覆盖 · 每天最多 {premiumLimit} 次深度研判
+            <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.55)', lineHeight: 1.7, maxWidth: '300px', margin: '0 auto' }}>
+              AI 驱动 · 全市场覆盖<br />每天最多 {premiumLimit} 次深度研判
             </p>
             {!user && (
-              <div style={{ marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', padding: '6px 14px', borderRadius: '9999px' }}>
-                <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>登录后可订阅 ·</span>
-                <a href="/register" style={{ fontSize: '12px', fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>免费注册</a>
+              <div style={{ marginTop: '20px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', padding: '8px 18px', borderRadius: '9999px' }}>
+                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>订阅需先登录</span>
+                <a href="/register" style={{ fontSize: '13px', fontWeight: 700, color: '#93c5fd', textDecoration: 'none' }}>免费注册 →</a>
               </div>
             )}
           </>
@@ -344,19 +359,39 @@ export default function UpgradePage() {
       </div>
 
       {/* ── Activation Form ── */}
-      {user && (
-        <div style={{ padding: '24px 16px 0' }}>
-          <p style={{ fontSize: '12px', fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px', paddingLeft: '4px' }}>
-            激活订阅
-          </p>
+      <div style={{ padding: '24px 16px 0' }}>
+        <p style={{ fontSize: '12px', fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px', paddingLeft: '4px' }}>
+          激活订阅
+        </p>
+        {!user ? (
+          <div style={{
+            background: 'white', borderRadius: 16, padding: '20px',
+            textAlign: 'center',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+          }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🔒</div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: '#000', margin: '0 0 6px' }}>请先登录账号</p>
+            <p style={{ fontSize: 13, color: '#8e8e93', margin: '0 0 16px' }}>激活订阅需要绑定到您的账号</p>
+            <a href="/login" style={{
+              display: 'inline-block', padding: '10px 24px',
+              background: '#007aff', color: 'white', borderRadius: 10,
+              fontSize: 15, fontWeight: 600, textDecoration: 'none',
+            }}>去登录</a>
+          </div>
+        ) : (
           <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
             {activateResult ? (
               <div style={{ padding: '36px 20px', textAlign: 'center' }}>
                 <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #34c759, #30d158)', margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', boxShadow: '0 4px 20px rgba(52,199,89,0.3)' }}>✓</div>
                 <div style={{ fontSize: '18px', fontWeight: 700, color: '#000', marginBottom: '6px' }}>订阅激活成功！</div>
-                <div style={{ fontSize: '14px', color: '#8e8e93', marginBottom: '28px' }}>
+                <div style={{ fontSize: '14px', color: '#8e8e93', marginBottom: activateResult.expires_at ? '8px' : '28px' }}>
                   当前等级：{activateResult.tier === 'premium' ? '👑 专业版' : '📊 标准版'}
                 </div>
+                {activateResult.expires_at && (
+                  <div style={{ fontSize: '13px', color: '#8e8e93', marginBottom: '28px' }}>
+                    有效期至：{new Date(activateResult.expires_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </div>
+                )}
                 <button
                   onClick={() => router.push('/')}
                   style={{ width: '100%', height: 50, borderRadius: '12px', border: 'none', background: '#007aff', color: 'white', fontSize: '17px', fontWeight: 600, cursor: 'pointer' }}
@@ -364,8 +399,11 @@ export default function UpgradePage() {
               </div>
             ) : (
               <form onSubmit={handleActivate} style={{ padding: '20px 16px 16px' }}>
-                {/* Hidden device_id field */}
-                <input type="hidden" value={deviceId} />
+                {/* Account binding notice */}
+                <div style={{ background: '#f0f9ff', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#0369a1', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                  <span style={{ flexShrink: 0 }}>🔗</span>
+                  <span>订阅将绑定到您的账号 <strong>{user?.email}</strong>，换设备后仍可使用</span>
+                </div>
 
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 600, color: '#3c3c43', display: 'block', marginBottom: '8px' }}>
@@ -390,33 +428,43 @@ export default function UpgradePage() {
 
                 <button
                   type="submit"
-                  disabled={activating || !deviceId}
-                  style={{ width: '100%', height: 50, borderRadius: '12px', border: 'none', background: activating || !deviceId ? '#c7c7cc' : '#007aff', color: 'white', fontSize: '17px', fontWeight: 600, cursor: activating || !deviceId ? 'default' : 'pointer', transition: 'background 0.15s' }}
+                  disabled={activating}
+                  style={{ width: '100%', height: 50, borderRadius: '12px', border: 'none', background: activating ? '#c7c7cc' : '#007aff', color: 'white', fontSize: '17px', fontWeight: 600, cursor: activating ? 'default' : 'pointer', transition: 'background 0.15s' }}
                 >
                   {activating ? '验证中...' : '验证并激活'}
                 </button>
               </form>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Not logged in prompt */}
       {!user && (
-        <div style={{ padding: '20px 16px 0' }}>
-          <div style={{ background: 'rgba(0,122,255,0.06)', borderRadius: '12px', padding: '14px 16px', textAlign: 'center', border: '1px solid rgba(0,122,255,0.12)' }}>
-            <p style={{ fontSize: '14px', color: '#007aff', margin: 0 }}>
-              <a href="/login" style={{ color: '#007aff', fontWeight: 600, textDecoration: 'none' }}>登录</a>
-              {' 或 '}
-              <a href="/register" style={{ color: '#007aff', fontWeight: 600, textDecoration: 'none' }}>注册</a>
-              {' 后即可订阅升级'}
-            </p>
-          </div>
+        <div style={{ padding: '20px 16px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <a href="/register" style={{
+            display: 'block', width: '100%', height: 50, borderRadius: 12,
+            background: '#007aff', color: 'white', fontSize: 17, fontWeight: 600,
+            textDecoration: 'none', textAlign: 'center', lineHeight: '50px',
+            boxSizing: 'border-box',
+          }}>免费注册，开始使用</a>
+          <p style={{ textAlign: 'center', fontSize: 14, color: '#8e8e93', margin: 0 }}>
+            已有账号？{' '}
+            <a href="/login" style={{ color: '#007aff', fontWeight: 600, textDecoration: 'none' }}>登录</a>
+          </p>
         </div>
       )}
 
       <div style={{ height: '48px' }} />
     </div>
+  );
+}
+
+export default function UpgradePage() {
+  return (
+    <Suspense fallback={null}>
+      <UpgradePageInner />
+    </Suspense>
   );
 }
 

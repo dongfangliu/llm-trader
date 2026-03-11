@@ -137,6 +137,7 @@ class LoginRequest(BaseModel):
     """Email/password login request."""
     email: str
     password: str
+    device_id: Optional[str] = None  # optional, records the device that logged in
 
 
 class ResendVerificationRequest(BaseModel):
@@ -269,6 +270,7 @@ _SETTINGS_ENV_MAP = {
     },
     "app": {
         "name": "APP_NAME",
+        # trial screen copy — not env-var backed, defaults handled in _load_settings_cache
     },
     "pricing": {
         "period": "PRICING_PERIOD",
@@ -311,6 +313,27 @@ def _load_settings_cache():
         },
         "app": {
             "name": settings.app_name,
+            # ProTrialWelcomeModal copy
+            "trial_modal_title": "你获得一次专业版体验",
+            "trial_modal_subtitle": "仅限一次 · 用完即止",
+            "trial_modal_perks_label": "本次体验包含",
+            "trial_modal_perks": [
+                {"icon": "🔍", "text": "完整深度研判报告"},
+                {"icon": "📐", "text": "多周期联合分析"},
+                {"icon": "💹", "text": "AI 买卖点精准定位"},
+            ],
+            "trial_modal_button": "立即开始体验",
+            # GuestTrialEndedScreen copy
+            "trial_ended_title": "专业版体验已结束",
+            "trial_ended_subtitle": "游客仅限一次免费体验",
+            "trial_ended_perks_label": "注册账号，每天继续使用",
+            "trial_ended_perks": [
+                {"icon": "📊", "text": "每天 1 次免费深度研判"},
+                {"icon": "☁", "text": "跨设备同步，数据不丢失"},
+                {"icon": "★", "text": "邀请好友获得额外永久额度"},
+            ],
+            "trial_ended_register_button": "免费注册，继续使用",
+            "trial_ended_upgrade_hint": "标准版 ¥19.9/月 · 专业版 ¥49/月",
         },
         "pricing": {
             "period": settings.pricing_period,
@@ -789,6 +812,11 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             headers={"X-Unverified-Email": user.email},
         )
 
+    # Record device_id if provided
+    if req.device_id:
+        user.last_device_id = req.device_id.strip()
+        await db.commit()
+
     access_token = user_service.create_access_token(data={"sub": str(user.id)})
     return {
         "access_token": access_token,
@@ -798,6 +826,7 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             "username": user.username,
             "email": user.email,
             "subscription_tier": user.subscription_tier,
+            "has_had_pro_trial": user.has_had_pro_trial,
         },
     }
 
@@ -816,6 +845,8 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "bonus_quota": current_user.bonus_quota or 0,
         "used_invite_code": current_user.used_invite_code,
         "has_had_pro_trial": current_user.has_had_pro_trial,
+        "subscription_expires_at": current_user.subscription_expires_at.isoformat() if current_user.subscription_expires_at else None,
+        "last_device_id": current_user.last_device_id,
     }
 
 
@@ -954,8 +985,8 @@ def _afdian_tier_from_order(order: dict) -> str:
 
 
 class ActivateRequest(BaseModel):
-    out_trade_no: str   # Afdian order number shown in order confirmation
-    device_id: str      # user's device_id
+    out_trade_no: str          # Afdian order number shown in order confirmation
+    device_id: Optional[str] = None  # user's device_id (used when not logged in)
 
 
 @app.post("/api/subscription/activate")
@@ -964,18 +995,24 @@ async def activate_subscription(
     request: Request,
     req: ActivateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
-    Activate device subscription by verifying an Afdian order number.
+    Activate subscription by verifying an Afdian order number.
+    - If user is authenticated: binds to their account (User.subscription_tier + subscription_expires_at).
+    - Otherwise: binds to device_id (DeviceSubscription), unchanged legacy behavior.
     No webhook or public domain required — the backend queries Afdian API directly.
     """
     if not _afdian("user_id") or not _afdian("api_token"):
         raise HTTPException(status_code=503, detail="Afdian API not configured")
 
     out_trade_no = req.out_trade_no.strip()
-    device_id = req.device_id.strip()
-    if not out_trade_no or not device_id:
-        raise HTTPException(status_code=400, detail="out_trade_no and device_id are required")
+    # When logged in, device_id is optional; when not, it's required
+    device_id = (req.device_id or "").strip()
+    if not out_trade_no:
+        raise HTTPException(status_code=400, detail="out_trade_no is required")
+    if not current_user:
+        raise HTTPException(status_code=401, detail="请先登录账号后再激活订阅")
 
     # Check if this order was already activated
     existing = await db.execute(
@@ -1023,40 +1060,54 @@ async def activate_subscription(
     if tier == "free":
         raise HTTPException(status_code=400, detail="Order amount does not match any subscription plan")
 
-    # Activate or renew device subscription
-    result = await db.execute(
-        select(DeviceSubscription).where(DeviceSubscription.device_id == device_id)
-    )
-    row = result.scalars().first()
     now = datetime.utcnow()
     new_expires = now + timedelta(days=30)
-    if row:
-        same_tier = (row.subscription_tier == tier)
-        still_active = (row.expires_at is not None and row.expires_at > now)
-        if same_tier and still_active:
-            # Renewal: stack 30 days onto current expiry
-            new_expires = row.expires_at + timedelta(days=30)
-        row.expires_at = new_expires
-        row.subscription_tier = tier
-    else:
-        db.add(DeviceSubscription(device_id=device_id, subscription_tier=tier, expires_at=new_expires))
 
-    # Update usage log
-    usage = await _get_or_create_usage_log(db, device_id)
-    usage.subscription = tier
+    if current_user:
+        # ── Account-linked activation ──────────────────────────────
+        # Stack 30 days onto current expiry if renewing the same tier
+        if (current_user.subscription_tier == tier
+                and current_user.subscription_expires_at is not None
+                and current_user.subscription_expires_at > now):
+            new_expires = current_user.subscription_expires_at + timedelta(days=30)
+        current_user.subscription_tier = tier
+        current_user.subscription_expires_at = new_expires
+        bind_target = f"user:{current_user.id}"
+        order_device_id = device_id or f"user:{current_user.id}"
+    else:
+        # ── Device-linked activation (legacy / guest) ─────────────
+        result = await db.execute(
+            select(DeviceSubscription).where(DeviceSubscription.device_id == device_id)
+        )
+        row = result.scalars().first()
+        if row:
+            same_tier = (row.subscription_tier == tier)
+            still_active = (row.expires_at is not None and row.expires_at > now)
+            if same_tier and still_active:
+                new_expires = row.expires_at + timedelta(days=30)
+            row.expires_at = new_expires
+            row.subscription_tier = tier
+        else:
+            db.add(DeviceSubscription(device_id=device_id, subscription_tier=tier, expires_at=new_expires))
+
+        # Update usage log
+        usage = await _get_or_create_usage_log(db, device_id)
+        usage.subscription = tier
+        bind_target = f"device:{device_id}"
+        order_device_id = device_id
 
     # Record this order to prevent reuse
     db.add(AfdianOrder(
         out_trade_no=out_trade_no,
-        device_id=device_id,
+        device_id=order_device_id,
         plan_id=str(matched.get("plan_id") or ""),
         tier=tier,
         total_amount=str(matched.get("total_amount") or ""),
     ))
 
     await db.commit()
-    logger.info("afdian_activate device=%s tier=%s order=%s expires=%s", device_id, tier, out_trade_no, new_expires)
-    return {"status": "activated", "device_id": device_id, "tier": tier, "expires_at": new_expires.isoformat()}
+    logger.info("afdian_activate bind=%s tier=%s order=%s expires=%s", bind_target, tier, out_trade_no, new_expires)
+    return {"status": "activated", "tier": tier, "expires_at": new_expires.isoformat()}
 
 
 # ===================== 爱发电 Webhook =====================
@@ -1149,6 +1200,13 @@ async def analyze(
         raise HTTPException(status_code=400, detail="device_id is required for guest mode")
 
     if usage_mode == "account":
+        # Check if paid subscription has expired; if so, reset to free
+        if (current_user.subscription_tier in ("basic", "premium")
+                and current_user.subscription_expires_at is not None
+                and current_user.subscription_expires_at < datetime.utcnow()):
+            current_user.subscription_tier = "free"
+            current_user.subscription_expires_at = None
+            await db.commit()
         subscription = current_user.subscription_tier
         # Trial logic for registered users
         is_first_trial = not current_user.has_had_pro_trial
@@ -1415,13 +1473,13 @@ async def get_usage_by_device(
     db: AsyncSession = Depends(get_db),
 ):
     """Usage endpoint from commercial plan (device-based, no login required)."""
+    # Ensure DeviceSubscription exists so trial_used reflects accurately on first visit
+    sub_row = await _get_or_create_device_subscription(db, device_id)
     usage = await _get_or_create_usage_log(db, device_id)
     daily_limit = LIMITS["free"]  # guests have a single tier
     remaining = max(daily_limit - usage.count, 0)
-    sub_result = await db.execute(select(DeviceSubscription).where(DeviceSubscription.device_id == device_id))
-    sub_row = sub_result.scalars().first()
-    trial_used = bool(sub_row and sub_row.has_had_pro_trial and sub_row.subscription_tier == "free")
-    is_banned = bool(sub_row and sub_row.is_banned)
+    trial_used = bool(sub_row.has_had_pro_trial and sub_row.subscription_tier == "free")
+    is_banned = bool(sub_row.is_banned)
     return {
         "subscription": usage.subscription,
         "remaining": remaining,
@@ -1660,6 +1718,7 @@ class AdminUpdateUserRequest(BaseModel):
     subscription_tier: Optional[str] = None   # free, basic, premium
     is_active: Optional[bool] = None
     reset_usage: Optional[bool] = False
+    email_verified: Optional[bool] = None
 
 
 class AdminSetQuotaRequest(BaseModel):
@@ -1777,6 +1836,14 @@ async def admin_list_users(
                 "created_at": u.created_at.isoformat() if u.created_at else None,
                 "invite_code": u.invite_code,
                 "bonus_quota": u.bonus_quota or 0,
+                "email_verified": bool(u.email_verified),
+                "has_had_pro_trial": bool(u.has_had_pro_trial),
+                "used_invite_code": u.used_invite_code,
+                "subscription_expires_at": u.subscription_expires_at.isoformat() if u.subscription_expires_at else None,
+                "last_device_id": u.last_device_id,
+                "daily_limit": USER_LIMITS.get(u.subscription_tier, 3),
+                "daily_remaining": max(0, USER_LIMITS.get(u.subscription_tier, 3) - (u.daily_usage or 0)),
+                "total_available": max(0, USER_LIMITS.get(u.subscription_tier, 3) - (u.daily_usage or 0)) + (u.bonus_quota or 0),
             }
             for u in rows
         ],
@@ -1808,8 +1875,11 @@ async def admin_update_user(
         user.daily_usage = 0
         user.last_usage_date = None
 
+    if req.email_verified is not None:
+        user.email_verified = req.email_verified
+
     await db.commit()
-    logger.info("admin updated user=%d tier=%s is_active=%s reset=%s", user_id, req.subscription_tier, req.is_active, req.reset_usage)
+    logger.info("admin updated user=%d tier=%s is_active=%s reset=%s email_verified=%s", user_id, req.subscription_tier, req.is_active, req.reset_usage, req.email_verified)
     return {
         "id": user.id,
         "email": user.email,
@@ -2227,6 +2297,23 @@ async def admin_update_settings(
                 existing.setdefault("premium", {})["daily"] = premium["daily"]
             if "features" in data:
                 existing["features"] = data["features"]
+        elif section == "app":
+            # Save env-backed fields
+            for field_key in _SETTINGS_ENV_MAP.get(section, {}):
+                val = data.get(field_key)
+                if val is None:
+                    continue
+                existing[field_key] = val
+            # Save trial screen copy fields (not env-backed)
+            _APP_TRIAL_FIELDS = (
+                "trial_modal_title", "trial_modal_subtitle", "trial_modal_perks_label",
+                "trial_modal_perks", "trial_modal_button",
+                "trial_ended_title", "trial_ended_subtitle", "trial_ended_perks_label",
+                "trial_ended_perks", "trial_ended_register_button", "trial_ended_upgrade_hint",
+            )
+            for field_key in _APP_TRIAL_FIELDS:
+                if field_key in data:
+                    existing[field_key] = data[field_key]
         else:
             for field_key in _SETTINGS_ENV_MAP.get(section, {}):
                 val = data.get(field_key)
@@ -2397,11 +2484,24 @@ async def health_check():
 @app.get("/api/config")
 async def get_config():
     """Public config — app name and other frontend settings."""
+    app_cfg = _settings_cache.get("app", {})
     return {
         "app_name": _app("name"),
         "version": "1.0.0",
         "afdian_basic_link": _afdian("basic_link"),
         "afdian_premium_link": _afdian("premium_link"),
+        # trial screen copy
+        "trial_modal_title": app_cfg.get("trial_modal_title", "你获得一次专业版体验"),
+        "trial_modal_subtitle": app_cfg.get("trial_modal_subtitle", "仅限一次 · 用完即止"),
+        "trial_modal_perks_label": app_cfg.get("trial_modal_perks_label", "本次体验包含"),
+        "trial_modal_perks": app_cfg.get("trial_modal_perks", []),
+        "trial_modal_button": app_cfg.get("trial_modal_button", "立即开始体验"),
+        "trial_ended_title": app_cfg.get("trial_ended_title", "专业版体验已结束"),
+        "trial_ended_subtitle": app_cfg.get("trial_ended_subtitle", "游客仅限一次免费体验"),
+        "trial_ended_perks_label": app_cfg.get("trial_ended_perks_label", "注册账号，每天继续使用"),
+        "trial_ended_perks": app_cfg.get("trial_ended_perks", []),
+        "trial_ended_register_button": app_cfg.get("trial_ended_register_button", "免费注册，继续使用"),
+        "trial_ended_upgrade_hint": app_cfg.get("trial_ended_upgrade_hint", "标准版 ¥19.9/月 · 专业版 ¥49/月"),
     }
 
 

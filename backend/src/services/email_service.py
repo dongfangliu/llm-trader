@@ -79,14 +79,19 @@ async def send_verification_email(
 """
 
     try:
-        await asyncio.to_thread(resend.Emails.send, {
+        result = await asyncio.to_thread(resend.Emails.send, {
             "from": sender,
             "to": [to_email],
-            "subject": f"【{app_name}】请验证您的邮箱",
+            "subject": f"验证您的 {app_name} 账号邮箱",
             "html": html_body,
+            "headers": {
+                "X-Entity-Ref-ID": f"verify-{token[:8]}",
+                "List-Unsubscribe": "<mailto:unsubscribe@resend.dev>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
         })
-        logger.info("Verification email sent to %s via Resend", to_email)
+        logger.info("Verification email sent to %s via Resend: %s", to_email, result)
         return True
     except Exception as exc:
-        logger.error("Resend failed for %s: %s", to_email, exc)
+        logger.error("Resend failed for %s: %s — check domain verification at resend.com/domains", to_email, exc)
         return False
