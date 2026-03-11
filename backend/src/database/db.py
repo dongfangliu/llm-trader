@@ -296,31 +296,25 @@ async def init_db():
 
 async def _migrate_db():
     """Add new columns to existing databases without Alembic."""
+    # Use IF NOT EXISTS so each statement is a no-op when the column already
+    # exists, keeping the transaction alive for all subsequent statements.
     async with engine.begin() as conn:
-        try:
-            await conn.execute(text(
-                "ALTER TABLE device_subscriptions ADD COLUMN expires_at TIMESTAMP"
-            ))
-        except Exception:
-            pass  # column already exists
         for col_sql in [
-            "ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN email_verification_token VARCHAR(255)",
-            "ALTER TABLE users ADD COLUMN email_verification_expires TIMESTAMP",
-            "ALTER TABLE users ADD COLUMN invite_code VARCHAR(16)",
-            "ALTER TABLE users ADD COLUMN bonus_quota INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN used_invite_code VARCHAR(16)",
-            "ALTER TABLE users ADD COLUMN daily_position_usage INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN last_position_date TIMESTAMP",
-            "ALTER TABLE usage_logs ADD COLUMN position_count INTEGER DEFAULT 0",
-            "ALTER TABLE device_subscriptions ADD COLUMN is_banned BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE device_subscriptions ADD COLUMN has_had_pro_trial BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN has_had_pro_trial BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN is_banned BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN subscription_expires_at TIMESTAMP",
-            "ALTER TABLE users ADD COLUMN last_device_id VARCHAR(255)",
+            "ALTER TABLE device_subscriptions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_code VARCHAR(16)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_quota INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS used_invite_code VARCHAR(16)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_position_usage INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_position_date TIMESTAMP",
+            "ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS position_count INTEGER DEFAULT 0",
+            "ALTER TABLE device_subscriptions ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE device_subscriptions ADD COLUMN IF NOT EXISTS has_had_pro_trial BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_had_pro_trial BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_device_id VARCHAR(255)",
         ]:
-            try:
-                await conn.execute(text(col_sql))
-            except Exception:
-                pass  # column already exists
+            await conn.execute(text(col_sql))
