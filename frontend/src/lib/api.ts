@@ -577,6 +577,13 @@ export const adminUpdateWatchlist = async (watchlist: WatchlistEntry[]): Promise
   return response.data;
 };
 
+export const adminResetAll = async (): Promise<{
+  deleted: Record<string, number>;
+}> => {
+  const r = await adminApi.post('/api/admin/reset-all');
+  return r.data;
+};
+
 // ── Async Task ────────────────────────────────────────────────────────────────
 
 export interface TaskStatusResponse {

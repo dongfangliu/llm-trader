@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   adminGetUsers, adminUpdateUser, adminSetUserQuota, adminDeleteUser, AdminUser,
   adminGetDevices, adminBanDevice, adminUnbanDevice, adminResetDeviceTrial, adminDeleteDevice,
-  adminGetDeviceHistory, adminBatchDevices, AdminDevice,
+  adminGetDeviceHistory, adminBatchDevices, AdminDevice, adminResetAll,
 } from '@/lib/api';
 
 type RowType = 'user' | 'device';
@@ -284,6 +284,20 @@ export default function AdminMembersPage() {
     } catch { flash('❌ 批量操作失败'); } finally { setSaving(null); }
   };
 
+  const handleResetAll = async () => {
+    if (!confirm('此操作将永久删除所有用户、设备和历史记录，无法恢复。确认继续？')) return;
+    setSaving('reset-all');
+    try {
+      await adminResetAll();
+      flash('✓ 已清空全部数据');
+    } catch {
+      flash('❌ 清空失败');
+    } finally {
+      setSaving(null);
+      await load();
+    }
+  };
+
   return (
     <div>
       {/* Header */}
@@ -309,6 +323,19 @@ export default function AdminMembersPage() {
           <option value="guests">游客设备</option>
         </select>
         <button className="btn btn-secondary" onClick={load} style={{ padding: '0.5rem 1rem' }}>刷新</button>
+        <button
+          className="btn"
+          onClick={handleResetAll}
+          disabled={saving === 'reset-all'}
+          style={{
+            padding: '0.5rem 1rem',
+            background: '#ef4444',
+            color: '#fff',
+            border: 'none',
+          }}
+        >
+          {saving === 'reset-all' ? '清空中…' : '清空全部数据'}
+        </button>
       </div>
 
       {error && <div className="error" style={{ marginBottom: '1rem' }}>{error}</div>}
