@@ -289,7 +289,6 @@ export default function HomePage() {
   // Free/basic registered users who haven't used their one-time pro trial yet
   // are treated as premium in the UI so they can access all premium features.
   const isRegisteredProTrial = user !== null && (tier === 'free' || tier === 'basic') && !user.has_had_pro_trial && !proTrialConsumed;
-  const effectiveTier = isRegisteredProTrial ? 'premium' : tier;
   const [resultDisplayTier, setResultDisplayTier] = useState<string>(tier);
   const [guestTrialUsed, setGuestTrialUsed] = useState(false);
   const [deviceBanned, setDeviceBanned] = useState(false);
@@ -297,6 +296,9 @@ export default function HomePage() {
   const [guestChecked, setGuestChecked] = useState(false);
   // True after guest confirms the welcome modal — prevents redirect after dismiss
   const [guestTrialConfirmed, setGuestTrialConfirmed] = useState(false);
+  // Guests who confirmed the welcome modal and haven't used their one-time trial get full premium features
+  const isGuestTrial = user === null && !guestTrialUsed && !deviceBanned && guestChecked && guestTrialConfirmed;
+  const effectiveTier = (isRegisteredProTrial || isGuestTrial) ? 'premium' : tier;
   // Registered user quota exhausted (daily + bonus both = 0)
   const [userQuotaExhausted, setUserQuotaExhausted] = useState(false);
 
@@ -498,14 +500,16 @@ export default function HomePage() {
 
   // Load limits
   useEffect(() => {
+    let cancelled = false;
     if (user) {
       // Logged-in: use account-based limits (USER_LIMITS, free=3/day)
       getLimits().then((data) => {
-        setLimits({ remaining: data.remaining, daily_limit: data.daily_limit });
+        if (!cancelled) setLimits({ remaining: data.remaining, daily_limit: data.daily_limit });
       }).catch(console.error);
     } else if (deviceId) {
       // Guest: use device-based limits (LIMITS, free=1/day)
       getUsage(deviceId).then((usage) => {
+        if (cancelled) return; // user logged in while request was in flight
         setLimits({
           remaining: usage.remaining,
           daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
@@ -522,11 +526,13 @@ export default function HomePage() {
         }
         setGuestChecked(true);
       }).catch(() => {
+        if (cancelled) return;
         // API unreachable — treat as fresh device (no trial used yet)
         setShowTrialWelcome(true);
         setGuestChecked(true);
       });
     }
+    return () => { cancelled = true; };
   }, [deviceId, user]);
 
   // When user logs in/registers, clear guest trial state and evaluate welcome modal
@@ -1025,9 +1031,9 @@ export default function HomePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{
                 fontSize: '12px', fontWeight: 500,
-                color: tier === 'premium' ? '#7c3aed' : tier === 'basic' ? '#007aff' : '#8e8e93',
+                color: effectiveTier === 'premium' ? '#7c3aed' : effectiveTier === 'basic' ? '#007aff' : '#8e8e93',
               }}>
-                {tierLabel} · {limits?.remaining ?? '-'}次
+                {(isRegisteredProTrial || isGuestTrial) ? '专业版体验' : tierLabel} · {limits?.remaining ?? '-'}次
               </span>
               {user ? (
                 <button
@@ -1080,7 +1086,7 @@ export default function HomePage() {
             {user ? (
               <>
                 <button onClick={() => router.push('/account')} className="btn btn-secondary" style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}>账号</button>
-                {tier !== 'premium' && (
+                {effectiveTier !== 'premium' && (
                   <button onClick={() => router.push('/upgrade')} style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}>升级</button>
                 )}
                 <button onClick={handleLogout} className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>退出</button>
@@ -1326,7 +1332,7 @@ export default function HomePage() {
                       flexDirection: 'column',
                       zIndex: 10,
                     }}>
-                    {tier === 'premium' ? (
+                    {effectiveTier === 'premium' ? (
                       /* ══════════════════════════════════════════
                          PREMIUM TIER: daily limit reached, reset tomorrow
                          No upsell — affirming, calm, informative
@@ -1353,7 +1359,7 @@ export default function HomePage() {
                           <div style={{ fontSize: '18px', fontWeight: 700, color: '#c4b5fd' }}>明天 00:00</div>
                         </div>
                       </div>
-                    ) : tier === 'basic' ? (
+                    ) : effectiveTier === 'basic' ? (
                       /* ══════════════════════════════════════════
                          BASIC TIER: single-focus premium upsell
                          Dark immersive screen, premium feel
@@ -1548,7 +1554,7 @@ export default function HomePage() {
                       <div style={{ background: 'white', padding: '22px 16px 16px' }}>
                         <h2 style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.8px', color: '#1c1c1e', margin: '0 0 16px', lineHeight: 1.1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                           今天分析哪只？
-                          {isRegisteredProTrial && (
+                          {(isRegisteredProTrial || isGuestTrial) && (
                             <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed', background: '#ede9fe', borderRadius: '20px', padding: '3px 10px', letterSpacing: '0.2px', lineHeight: 1.4 }}>专业版体验中</span>
                           )}
                         </h2>
@@ -2158,7 +2164,7 @@ export default function HomePage() {
                     <div className="result-section-gap" />
 
                     {/* ── Deep analysis tabs ── */}
-                    {tier !== 'free' && result.result && (
+                    {effectiveTier !== 'free' && result.result && (
                       <>
                         <div className="result-section result-section-animated" style={{ padding: 0 }}>
                           {/* Mobile: ResultTabs component */}
@@ -2220,7 +2226,7 @@ export default function HomePage() {
                     )}
 
                     {/* ── Risk factors + Technical indicators (combined section) ── */}
-                    {tier !== 'free' && (result.result?.risk_factors?.length > 0 || result.result?.indicators) && (
+                    {effectiveTier !== 'free' && (result.result?.risk_factors?.length > 0 || result.result?.indicators) && (
                       <>
                         <div className="result-section result-section-animated">
                           {result.result?.risk_factors && result.result.risk_factors.length > 0 && (
@@ -2269,7 +2275,7 @@ export default function HomePage() {
                     )}
 
                     {/* ── Position advice + params (combined section) ── */}
-                    {tier !== 'free' && (result.result?.position_advice || (resultPositionParams && Object.values(resultPositionParams).some((v) => v?.trim()))) && (
+                    {effectiveTier !== 'free' && (result.result?.position_advice || (resultPositionParams && Object.values(resultPositionParams).some((v) => v?.trim()))) && (
                       <>
                         <div className="result-section result-section-animated">
                           {result.result?.position_advice && (

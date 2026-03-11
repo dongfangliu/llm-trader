@@ -1,18 +1,17 @@
-# start.ps1 - Local development startup script (Windows Terminal)
+# start.ps1 - Local development startup script
 #
 # Usage:
-#   .\start.ps1              # Start all services in new Windows Terminal tabs
-#   .\start.ps1 -Stop        # Stop all services
-#   .\start.ps1 -Service <x> # Start a single service in current terminal
+#   .\start.ps1              # docker compose up -d (same as server deployment)
+#   .\start.ps1 -Build       # docker compose up -d --build (after code changes)
+#   .\start.ps1 -Stop        # docker compose down
+#   .\start.ps1 -Service <x> # Start a single service natively (hot-reload dev)
 #
-# Requirements: Python 3.11+, Node.js 18+, Docker Desktop (for Redis + PostgreSQL)
-#
-# Local DB:  postgresql+asyncpg://trader:changeme@localhost:5432/trader
-# To use a different password set $env:POSTGRES_PASSWORD before running.
+# Requirements: Docker Desktop
 
 param(
     [switch]$Stop,
-    [ValidateSet("backend","worker","frontend","redis","postgres","")]
+    [switch]$Build,
+    [ValidateSet("backend","worker","frontend","redis","postgres","data-collector","")]
     [string]$Service = ""
 )
 
@@ -25,16 +24,6 @@ function Write-Ok     { param($msg) Write-Host "  [OK] $msg" -ForegroundColor Gr
 function Write-Warn   { param($msg) Write-Host "  [!]  $msg" -ForegroundColor Yellow }
 function Write-Err    { param($msg) Write-Host "  [X]  $msg" -ForegroundColor Red }
 function Write-Info   { param($msg) Write-Host "  [.]  $msg" -ForegroundColor Gray }
-
-function Test-Port {
-    param([int]$Port)
-    try {
-        $tcp = New-Object System.Net.Sockets.TcpClient
-        $tcp.Connect("127.0.0.1", $Port)
-        $tcp.Close()
-        return $true
-    } catch { return $false }
-}
 
 function Wait-Http {
     param([string]$Url, [int]$Seconds = 30)
@@ -51,34 +40,7 @@ function Wait-Http {
 # ── Stop mode ────────────────────────────────────────────────────────────────
 if ($Stop) {
     Write-Header "Stopping all services..."
-
-    foreach ($port in @(6379, 8000, 3000)) {
-        $pids = (netstat -ano 2>$null | Select-String ":$port\s.*LISTENING") |
-            ForEach-Object { ($_.ToString().Trim() -split '\s+')[-1] } |
-            Where-Object { $_ -match '^\d+$' } | Select-Object -Unique
-        foreach ($p in $pids) {
-            try {
-                $proc = Get-Process -Id $p -ErrorAction SilentlyContinue
-                if ($proc) {
-                    $proc | Stop-Process -Force
-                    Write-Ok "Stopped PID $p (port $port)"
-                }
-            } catch {}
-        }
-    }
-
-    $redisCid = docker ps -q --filter "name=trader-redis-dev" 2>$null
-    if ($redisCid) {
-        docker stop trader-redis-dev | Out-Null
-        Write-Ok "Stopped Redis container"
-    }
-
-    $pgCid = docker ps -q --filter "name=trader-pg-dev" 2>$null
-    if ($pgCid) {
-        docker stop trader-pg-dev | Out-Null
-        Write-Ok "Stopped PostgreSQL container"
-    }
-
+    docker compose down
     Write-Ok "Done"
     exit 0
 }
@@ -126,64 +88,43 @@ if ($Service -ne "") {
             Set-Location "$ScriptDir\frontend"
             npm run dev
         }
+        "data-collector" {
+            Write-Header "Starting data-collector"
+            Set-Location "$ScriptDir\data-collector"
+            python -m src.main
+        }
     }
     exit 0
 }
 
-# ── Full startup (Windows Terminal multi-tab) ─────────────────────────────────
+# ── Full startup (docker compose) ─────────────────────────────────────────────
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "   AI Stock Analyzer -- Local Dev     " -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 
-# Check Windows Terminal
-$wtExe = Get-Command wt -ErrorAction SilentlyContinue
-if (-not $wtExe) {
-    Write-Warn "Windows Terminal (wt.exe) not found"
-    Write-Info "Run services manually:"
-    Write-Info "  .\start.ps1 -Service postgres"
-    Write-Info "  .\start.ps1 -Service redis"
-    Write-Info "  .\start.ps1 -Service backend"
-    Write-Info "  .\start.ps1 -Service worker"
-    Write-Info "  .\start.ps1 -Service frontend"
-    exit 1
-}
-
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Err "Docker Desktop not found. Redis and PostgreSQL require Docker."
+    Write-Err "Docker Desktop not found."
     exit 1
 }
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Err "Python not found"
-    exit 1
+$upArgs = if ($Build) {
+    Write-Info "Build mode: rebuilding images..."
+    "--env-file .env --env-file backend/.env up -d --build"
+} else {
+    "--env-file .env --env-file backend/.env up -d"
 }
 
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Write-Err "Node.js / npm not found"
-    exit 1
-}
+Write-Header "Starting all services via docker compose..."
+Invoke-Expression "docker compose $upArgs"
 
-Write-Header "All dependencies found, starting services..."
-
-$selfPath = $MyInvocation.MyCommand.Definition
-
-# Build each tab command as a separate array entry for Start-Process
-# wt syntax: wt [options] <command> [args] [; new-tab args...]
-# Using -ArgumentList with array avoids shell-escaping issues
-$tab1 = "new-tab --title Postgres -- powershell -NoExit -ExecutionPolicy Bypass -File `"$selfPath`" -Service postgres"
-$tab2 = "; new-tab --title Redis    -- powershell -NoExit -ExecutionPolicy Bypass -File `"$selfPath`" -Service redis"
-$tab3 = "; new-tab --title Backend  -- powershell -NoExit -ExecutionPolicy Bypass -File `"$selfPath`" -Service backend"
-$tab4 = "; new-tab --title Worker   -- powershell -NoExit -ExecutionPolicy Bypass -File `"$selfPath`" -Service worker"
-$tab5 = "; new-tab --title Frontend -- powershell -NoExit -ExecutionPolicy Bypass -File `"$selfPath`" -Service frontend"
-
-$wtArgs = "-w 0 $tab1 $tab2 $tab3 $tab4 $tab5"
-Start-Process -FilePath "wt" -ArgumentList $wtArgs
-
-Write-Info "Waiting for backend to start (up to 60s)..."
+Write-Info "Waiting for backend (up to 60s)..."
 $backendReady = Wait-Http -Url "http://127.0.0.1:8000/api/health" -Seconds 60
 
 Write-Host ""
+docker compose ps
+Write-Host ""
+
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "   Service URLs                       " -ForegroundColor Cyan
 Write-Host "--------------------------------------" -ForegroundColor Cyan
@@ -191,13 +132,13 @@ Write-Host "  Frontend   http://localhost:3000      " -ForegroundColor Green
 Write-Host "  Backend    http://localhost:8000      " -ForegroundColor Green
 Write-Host "  API Docs   http://localhost:8000/docs " -ForegroundColor Green
 Write-Host "  Redis      localhost:6379             " -ForegroundColor Green
-Write-Host "  PostgreSQL localhost:5432 (trader/changeme)" -ForegroundColor Green
+Write-Host "  PostgreSQL localhost:5432             " -ForegroundColor Green
 Write-Host "--------------------------------------" -ForegroundColor Cyan
-Write-Host "  Stop:  .\start.ps1 -Stop             " -ForegroundColor Gray
+Write-Host "  Stop:   .\start.ps1 -Stop            " -ForegroundColor Gray
+Write-Host "  Rebuild: .\start.ps1 -Build          " -ForegroundColor Gray
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Info "Check each Windows Terminal tab for service logs"
 
 if (-not $backendReady) {
-    Write-Warn "Backend did not become ready within 60s -- check the Backend tab for errors"
+    Write-Warn "Backend did not become ready within 60s -- run: docker compose logs backend"
 }
