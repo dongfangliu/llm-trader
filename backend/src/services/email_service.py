@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+from urllib.parse import urlparse
 import resend
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,10 @@ async def send_verification_email(
         return True
 
     resend.api_key = resend_api_key
+    # Derive email_from from APP_BASE_URL if not explicitly set
+    if not email_from and app_base_url:
+        domain = urlparse(app_base_url).netloc
+        email_from = f"noreply@{domain}" if domain else ""
     # Use app_name as display name; extract bare email address from email_from
     email_match = re.search(r'<([^>]+)>', email_from)
     email_addr = email_match.group(1) if email_match else (email_from or "onboarding@resend.dev")
