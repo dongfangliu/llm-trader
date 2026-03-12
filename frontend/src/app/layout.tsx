@@ -1,6 +1,8 @@
 import '@/styles/globals.css';
 import type { Metadata, Viewport } from 'next';
 
+export const dynamic = 'force-dynamic';
+
 const DEFAULT_APP_NAME = 'AI股票分析';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -8,7 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   try {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
     const res = await fetch(`${backendUrl}/api/config`, {
-      next: { revalidate: 60 },
+      cache: 'no-store',
     });
     if (res.ok) {
       const data = await res.json();
