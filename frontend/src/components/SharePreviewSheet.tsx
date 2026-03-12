@@ -76,10 +76,25 @@ export default function SharePreviewSheet({
     }, 360);
   };
 
-  const handleDownload = (isArchive = false) => {
+  const handleDownload = async (isArchive = false) => {
     const b = isArchive ? archiveBlob : blob;
     const fn = isArchive ? (archiveFilename || filename) : filename;
     if (!b) return;
+
+    // On mobile, prefer native share sheet (save to album / share to apps)
+    if (navigator.share && navigator.canShare) {
+      const file = new File([b], fn, { type: b.type });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] });
+          return;
+        } catch {
+          // User cancelled or share failed — fall through to download
+        }
+      }
+    }
+
+    // Desktop fallback: direct download
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
     a.download = fn;
@@ -204,18 +219,18 @@ export default function SharePreviewSheet({
               保存到相册
             </button>
             <div className="sps2-platform-scroll">
-              <button className="sps2-platform-pill" onClick={() => handleDownload(false)}>
+              <div className="sps2-platform-pill">
                 <span className="sps2-pill-icon">📷</span>
                 <span className="sps2-pill-text">小红书发笔记</span>
-              </button>
-              <button className="sps2-platform-pill" onClick={() => handleDownload(false)}>
+              </div>
+              <div className="sps2-platform-pill">
                 <span className="sps2-pill-icon">💬</span>
                 <span className="sps2-pill-text">发给朋友</span>
-              </button>
-              <button className="sps2-platform-pill" onClick={() => handleDownload(false)}>
+              </div>
+              <div className="sps2-platform-pill">
                 <span className="sps2-pill-icon">🌐</span>
                 <span className="sps2-pill-text">朋友圈</span>
-              </button>
+              </div>
             </div>
           </>
         )}
