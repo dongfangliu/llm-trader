@@ -67,9 +67,9 @@ const HOT_STOCKS = [
   { code: '00700', name: '腾讯', market: 'hk' },
   { code: 'AAPL', name: '苹果', market: 'us' },
   { code: '600036', name: '招商银行', market: 'a' },
-  { code: '3690', name: '美团', market: 'hk' },
+  { code: '03690', name: '美团', market: 'hk' },
   { code: 'BABA', name: '阿里巴巴', market: 'us' },
-  { code: '1810', name: '小米', market: 'hk' },
+  { code: '01810', name: '小米', market: 'hk' },
   { code: 'NVDA', name: '英伟达', market: 'us' },
   { code: 'MA', name: '甲醇', market: 'futures' },
   { code: 'SA', name: '纯碱', market: 'futures' },
@@ -108,6 +108,13 @@ function validateSymbol(sym: string, mkt: string): string | null {
   const rule = SYMBOL_PATTERNS[mkt];
   if (rule && !rule.re.test(s)) return rule.hint;
   return null;
+}
+
+/** Strip characters that have no place in a stock/futures symbol code. */
+function sanitizeSymbol(raw: string): string {
+  // Allow: letters, digits, dots (US ETFs like BRK.B), hyphens (some HK codes)
+  // Discard: everything else (HTML tags, scripts, etc.)
+  return raw.replace(/[^A-Za-z0-9.\-]/g, '').slice(0, 20);
 }
 
 function validatePositiveInt(val: string, label: string): string | null {
@@ -207,6 +214,7 @@ export default function HomePage() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [limits, setLimits] = useState<any>(null);
   const [marketData, setMarketData] = useState<any>(null);
+  const [marketDataLoading, setMarketDataLoading] = useState(false);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
   const [deviceId, setDeviceId] = useState('');
   const [holdingQuantity, setHoldingQuantity] = useState('');
@@ -593,9 +601,14 @@ export default function HomePage() {
 
   useEffect(() => {
     if (symbol && market) {
+      setMarketData(null);
+      setMarketDataLoading(true);
       getMarketData(market, symbol, period, 30)
-        .then(setMarketData)
-        .catch(() => setMarketData(null));
+        .then((data) => { setMarketData(data); setMarketDataLoading(false); })
+        .catch(() => { setMarketData(null); setMarketDataLoading(false); });
+    } else {
+      setMarketData(null);
+      setMarketDataLoading(false);
     }
   }, [symbol, market, period]);
 
@@ -629,6 +642,10 @@ export default function HomePage() {
     // ── Client-side validation ──────────────────────────────────────
     const symErr = validateSymbol(symbol, market);
     if (symErr) { setError(symErr); return; }
+    if (!marketDataLoading && !marketData) {
+      setError('🔍 未找到该代码的行情数据，请确认代码正确');
+      return;
+    }
 
     const isPremium = effectiveTier === 'premium';
     if (isPremium || effectiveTier === 'basic') {
@@ -1208,10 +1225,16 @@ export default function HomePage() {
                       className="input"
                       placeholder={market === 'a' ? '如: 600519' : market === 'hk' ? '如: 00700' : market === 'us' ? '如: AAPL' : '如: MA'}
                       value={symbol}
-                      onChange={(e) => setSymbol(e.target.value)}
+                      onChange={(e) => setSymbol(sanitizeSymbol(e.target.value))}
                     />
                     {symbolWarning && symbol.trim() && (
                       <p style={{ fontSize: '0.8rem', color: '#b45309', marginTop: '0.4rem' }}>⚠️ {symbolWarning}</p>
+                    )}
+                    {marketDataLoading && symbol.trim() && !symbolWarning && (
+                      <p style={{ fontSize: '0.8rem', color: '#8e8e93', marginTop: '0.4rem' }}>正在查询行情数据…</p>
+                    )}
+                    {!marketDataLoading && !marketData && symbol.trim() && !symbolWarning && (
+                      <p style={{ fontSize: '0.8rem', color: '#ff3b30', marginTop: '0.4rem' }}>⚠️ 未找到该代码的行情数据，请确认代码正确</p>
                     )}
                     {marketData && !symbolWarning && (
                       <p style={{ fontSize: '0.875rem', color: 'var(--success)', marginTop: '0.5rem' }}>✓ 找到 {marketData.count} 条数据</p>
@@ -1290,9 +1313,9 @@ export default function HomePage() {
                     {(effectiveTier === 'basic' || effectiveTier === 'premium') && premiumInputsOpen && (
                       <div style={{ marginTop: '0.85rem' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-                          <div className="form-group"><label className="label">持有数量(股)</label><input className="input" value={holdingQuantity} onChange={(e) => setHoldingQuantity(e.target.value)} /></div>
-                          <div className="form-group"><label className="label">成本价</label><input className="input" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} /></div>
-                          <div className="form-group"><label className="label">最大持仓(股)</label><input className="input" value={maxPosition} onChange={(e) => setMaxPosition(e.target.value)} /></div>
+                          <div className="form-group"><label className="label">持有数量(股)</label><input className="input" inputMode="numeric" value={holdingQuantity} onChange={(e) => setHoldingQuantity(e.target.value.replace(/\D/g, '').slice(0, 10))} /></div>
+                          <div className="form-group"><label className="label">成本价</label><input className="input" inputMode="decimal" value={costPrice} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ''); const parts = v.split('.'); setCostPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : v.slice(0, 15)); }} /></div>
+                          <div className="form-group"><label className="label">最大持仓(股)</label><input className="input" inputMode="numeric" value={maxPosition} onChange={(e) => setMaxPosition(e.target.value.replace(/\D/g, '').slice(0, 10))} /></div>
                         </div>
                         <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '0.25rem' }}>3项都不填=默认空仓；若填写则3项必须全部填写。</p>
                       </div>
@@ -1579,7 +1602,7 @@ export default function HomePage() {
                             type="text"
                             placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
                             value={symbol}
-                            onChange={(e) => setSymbol(e.target.value)}
+                            onChange={(e) => setSymbol(sanitizeSymbol(e.target.value))}
                             style={{
                               width: '100%', height: '50px',
                               background: '#f2f2f7', border: 'none', outline: 'none',
@@ -1591,6 +1614,12 @@ export default function HomePage() {
                         </div>
                         {symbolWarning && symbol.trim() && (
                           <p style={{ fontSize: '13px', color: '#ff9500', marginTop: '8px', marginLeft: '4px' }}>⚠️ {symbolWarning}</p>
+                        )}
+                        {marketDataLoading && symbol.trim() && !symbolWarning && (
+                          <p style={{ fontSize: '13px', color: '#8e8e93', marginTop: '8px', marginLeft: '4px' }}>正在查询行情数据…</p>
+                        )}
+                        {!marketDataLoading && !marketData && symbol.trim() && !symbolWarning && (
+                          <p style={{ fontSize: '13px', color: '#ff3b30', marginTop: '8px', marginLeft: '4px' }}>⚠️ 未找到该代码的行情数据，请确认代码正确</p>
                         )}
                         {marketData && !symbolWarning && symbol.trim() && (
                           <p style={{ fontSize: '13px', color: '#34c759', marginTop: '8px', marginLeft: '4px' }}>✓ 找到 {marketData.count} 条数据</p>

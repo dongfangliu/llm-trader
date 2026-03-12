@@ -1,19 +1,13 @@
 """Symbol display-name lookup with static in-memory mapping and on-demand refresh.
 
-Names are loaded once at startup for all markets (A股/港股/美股/期货) and held in
-memory for the lifetime of the process.  An admin endpoint and a daily background
-task keep the mappings fresh without blocking any incoming request.
+Names are refreshed manually via the admin panel (/api/admin/refresh-names).
+Supported markets: A股 (akshare), 港股 (akshare East Money), 期货 (static).
+US stock names are not fetched.
 
 Persistence layer
 -----------------
-Names are also written to (and read from) the ``symbol_names`` DB table so that
-they survive server restarts.  The lookup order is:
-
-  1. In-memory cache (instant)
-  2. DB fallback (if memory miss, e.g. server just restarted)
-  3. Per-symbol AKShare/yfinance fetch for US stocks (existing behaviour)
-
-Any successfully resolved name is written back to both memory and DB.
+Names are written to / read from the ``symbol_names`` DB table so that they
+survive server restarts.  Lookup order: in-memory cache → DB.
 """
 
 import asyncio
@@ -27,10 +21,6 @@ try:
 except ImportError:
     ak = None  # type: ignore
 
-try:
-    import yfinance as yf
-except ImportError:
-    yf = None  # type: ignore
 
 # ── Static futures mapping (code → Chinese name) ─────────────────────────────
 _FUTURES_NAMES: Dict[str, str] = {
@@ -131,8 +121,8 @@ async def _db_lookup(symbol: str, market: str) -> str:
 async def get_symbol_name(symbol: str, market: str) -> str:
     """Return display name for *symbol*; empty string on any failure.
 
-    Lookup order: in-memory cache → DB → per-symbol AKShare/yfinance (US only).
-    Any resolved name is written back to memory and DB for future calls.
+    Lookup order: in-memory cache → DB.
+    US stocks always return ''.
     """
     try:
         if market == "futures":
@@ -158,17 +148,7 @@ async def get_symbol_name(symbol: str, market: str) -> str:
             return name
 
         elif market == "us":
-            sym = symbol.upper()
-            name = _names["us"].get(sym, "")
-            if not name:
-                name = await _db_lookup(sym, market)
-                if not name:
-                    # Per-symbol yfinance fallback for symbols not in the bulk list
-                    name = await _fetch_us_name_yf(sym)
-                    if name:
-                        asyncio.create_task(save_symbol_name(sym, market, name))
-                _names["us"][sym] = name
-            return name
+            return ""
 
     except Exception as e:
         logger.debug("Name lookup failed for {}/{}: {}", symbol, market, e)
@@ -176,58 +156,22 @@ async def get_symbol_name(symbol: str, market: str) -> str:
 
 
 async def preload_names() -> None:
-    """Load all market mappings at startup, then refresh every 24 h (runs forever).
-
-    Call this once as a background asyncio task; it never raises.
-    Skips initial bulk fetch if DB data was refreshed within the last 24h to prevent
-    AKShare thundering-herd on frequent backend restarts.
-    """
-    from sqlalchemy import select as _select, func as _func
-
-    # Check if DB already has fresh name data (< 24h old)
-    _should_preload = True
-    try:
-        from src.database.db import async_session, SymbolName
-        from datetime import datetime as _dt
-
-        async with async_session() as _db:
-            row = await _db.execute(_select(_func.max(SymbolName.updated_at)))
-            last_update = row.scalar()
-        if last_update and (_dt.utcnow() - last_update).total_seconds() < 86400:
-            logger.info(
-                "name_service: preload skipped — last refresh {:.1f}h ago",
-                (_dt.utcnow() - last_update).total_seconds() / 3600,
-            )
-            _should_preload = False
-    except Exception as e:
-        logger.warning("name_service: TTL check failed, will preload anyway: {}", e)
-
-    if _should_preload:
-        # Initial load — run markets sequentially to avoid thundering-herd on startup
-        for market in ("a", "hk", "us"):
-            try:
-                await _refresh_market(market)
-            except Exception as e:
-                logger.warning("Initial name load failed for {}: {}", market, e)
-
-    # Daily refresh loop
-    while True:
-        await asyncio.sleep(_DAILY_INTERVAL)
-        for market in ("a", "hk", "us"):
-            try:
-                await _refresh_market(market)
-            except Exception as e:
-                logger.warning("Daily name refresh failed for {}: {}", market, e)
+    """No-op: auto-preload is disabled. Use admin panel to refresh manually."""
+    pass
 
 
 async def refresh_names(market: Optional[str] = None) -> Dict[str, int]:
-    """Refresh name mappings on demand.  Pass *market* = 'a'/'hk'/'us' or None for all.
+    """Refresh name mappings on demand.  Pass *market* = 'a'/'hk' or None for both.
 
     Returns a dict of {market: count} with the number of entries loaded.
+    US names are not fetched; futures names are static.
     """
-    markets = [market] if market else ["a", "hk", "us"]
+    markets = [market] if market else ["a", "hk"]
     results: Dict[str, int] = {}
     for m in markets:
+        if m == "us":
+            results[m] = 0
+            continue
         results[m] = await _refresh_market(m)
     return results
 
@@ -247,8 +191,6 @@ async def _refresh_market(market: str) -> int:
                 data = await _fetch_a_names()
             elif market == "hk":
                 data = await _fetch_hk_names()
-            elif market == "us":
-                data = await _fetch_us_names()
             else:
                 return 0
 
@@ -333,60 +275,145 @@ async def _fetch_a_names() -> Dict[str, str]:
 
 
 async def _fetch_hk_names() -> Dict[str, str]:
-    if ak is None:
-        return {}
-    loop = asyncio.get_event_loop()
-    df = await asyncio.wait_for(
-        loop.run_in_executor(None, ak.stock_hk_spot),
-        timeout=20,
-    )
-    code_col = next((c for c in df.columns if "代码" in c or c.lower() in ("code", "symbol")), None)
-    name_col = next((c for c in df.columns if "名称" in c or "name" in c.lower()), None)
-    if code_col and name_col:
-        return {str(code).zfill(5): str(name) for code, name in zip(df[code_col], df[name_col])}
-    return {}
+    """Fetch HK stock names.
 
-
-async def _fetch_us_names() -> Dict[str, str]:
-    """Bulk US name fetch via akshare (EastMoney US spot list).
-
-    Falls back to an empty dict on failure; per-symbol yfinance lookups will
-    still fill gaps lazily via ``get_symbol_name``.
+    Source priority (stops at first success):
+    1. HKEX official listed-securities Excel — hosted in Hong Kong, always reachable from HK servers
+    2. East Money (stock_hk_spot_em) — reachable from mainland / international servers
+    3. Sina Finance (stock_hk_spot) — last-resort mainland fallback
     """
-    if ak is None:
-        return {}
     loop = asyncio.get_event_loop()
+
+    # ── 1. HKEX codes + Tencent Chinese names ─────────────────────────────────
+    result = await asyncio.wait_for(
+        loop.run_in_executor(None, _fetch_hk_names_hkex),
+        timeout=120,
+    )
+    if result:
+        logger.info("HK names fetched via HKEX+Tencent: {} entries", len(result))
+        return result
+
+    if ak is None:
+        _last_error["hk"] = "akshare not installed and HKEX fetch failed"
+        return {}
+
+    def _extract(df) -> Dict[str, str]:
+        code_col = next((c for c in df.columns if "代码" in c or c.lower() in ("code", "symbol")), None)
+        name_col = next((c for c in df.columns if "名称" in c or "name" in c.lower()), None)
+        if code_col and name_col:
+            return {str(code).zfill(5): str(name) for code, name in zip(df[code_col], df[name_col])}
+        return {}
+
+    # ── 2. East Money ─────────────────────────────────────────────────────────
     try:
         df = await asyncio.wait_for(
-            loop.run_in_executor(None, ak.stock_us_spot_em),
+            loop.run_in_executor(None, ak.stock_hk_spot_em),
             timeout=40,
         )
-        code_col = next(
-            (c for c in df.columns if "代码" in c or c.lower() in ("code", "symbol", "ticker")),
-            None,
-        )
-        name_col = next(
-            (c for c in df.columns if "名称" in c or c.lower() in ("name", "shortname")),
-            None,
-        )
-        if code_col and name_col:
-            return {str(code).upper(): str(name) for code, name in zip(df[code_col], df[name_col])}
+        result = _extract(df)
+        if result:
+            logger.info("HK names fetched via East Money: {} entries", len(result))
+            return result
     except Exception as e:
-        logger.warning("US bulk name fetch via akshare failed: {}", e)
+        logger.warning("HK name fetch via East Money failed: {}", e)
+
+    # ── 3. Sina Finance ───────────────────────────────────────────────────────
+    try:
+        df = await asyncio.wait_for(
+            loop.run_in_executor(None, ak.stock_hk_spot),
+            timeout=30,
+        )
+        result = _extract(df)
+        if result:
+            logger.info("HK names fetched via Sina (fallback): {} entries", len(result))
+            return result
+    except Exception as e:
+        logger.warning("HK name fetch via Sina failed: {}", e)
+        _last_error["hk"] = str(e)
+
     return {}
 
 
-async def _fetch_us_name_yf(symbol: str) -> str:
-    """Per-symbol fallback: fetch US stock name from Yahoo Finance."""
-    if yf is None:
-        return ""
-    loop = asyncio.get_event_loop()
-    try:
-        def _get() -> str:
-            t = yf.Ticker(symbol)
-            info = t.info
-            return info.get("longName") or info.get("shortName") or ""
+def _fetch_hk_names_hkex() -> Dict[str, str]:
+    """Get HK stock codes from HKEX Excel, then fetch Chinese names from Tencent API.
 
-        return await asyncio.wait_for(loop.run_in_executor(None, _get), timeout=10) or ""
-    except Exception:
-        return ""
+    Step 1: Download HKEX listed-securities Excel to get all equity stock codes.
+    Step 2: Batch query Tencent Finance API (qt.gtimg.cn) for Chinese names.
+    Returns {} on any failure so the caller can try the next source.
+    """
+    try:
+        import io
+        import requests
+        import pandas as pd
+
+        # ── Step 1: Get stock codes from HKEX Excel ───────────────────────────
+        url = "https://www.hkex.com.hk/eng/services/trading/securities/securitieslists/ListOfSecurities.xlsx"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; stock-name-fetcher/1.0)",
+            "Referer": "https://www.hkex.com.hk/",
+        }
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+
+        df = pd.read_excel(io.BytesIO(resp.content), header=2)
+
+        code_col = next(
+            (c for c in df.columns if str(c).strip() in ("Stock Code", "Code") or "Stock Code" in str(c)),
+            None,
+        )
+        cat_col = next(
+            (c for c in df.columns if str(c).strip() == "Category"),
+            None,
+        )
+        if code_col is None:
+            logger.warning("HKEX Excel: could not identify code column. Columns: {}", list(df.columns))
+            return {}
+
+        # Filter to equity securities only (skip bonds, ETFs, warrants, etc.)
+        codes: list = []
+        for i, row in df.iterrows():
+            try:
+                code_str = str(int(float(str(row[code_col])))).zfill(5)
+                category = str(row[cat_col]).strip() if cat_col else ""
+                if code_str and category.lower() in ("equity", ""):
+                    codes.append(code_str)
+            except (ValueError, TypeError):
+                continue
+
+        if not codes:
+            logger.warning("HKEX Excel: no equity codes extracted")
+            return {}
+
+        logger.info("HKEX Excel: {} equity codes found, fetching Chinese names via Tencent...", len(codes))
+
+        # ── Step 2: Batch fetch Chinese names from Tencent API ────────────────
+        result: Dict[str, str] = {}
+        _BATCH = 50  # Tencent handles ~50 symbols per request comfortably
+        for i in range(0, len(codes), _BATCH):
+            batch = codes[i: i + _BATCH]
+            query = ",".join(f"r_hk{c}" for c in batch)
+            try:
+                r = requests.get(
+                    f"http://qt.gtimg.cn/q={query}",
+                    timeout=15,
+                )
+                text = r.content.decode("gbk", errors="replace")
+                for line in text.strip().split("\n"):
+                    parts = line.split("~")
+                    if len(parts) > 2:
+                        name = parts[1].strip()
+                        # Extract code from line like: v_r_hk00700="100~腾讯控股~..."
+                        raw_key = line.split("=")[0].strip().strip('"')
+                        if "hk" in raw_key:
+                            code_from_line = raw_key.split("hk")[-1].zfill(5)
+                            if name and name not in ("nan", "NaN", ""):
+                                result[code_from_line] = name
+            except Exception as e:
+                logger.debug("Tencent batch failed for chunk {}: {}", i, e)
+                continue
+
+        return result
+
+    except Exception as e:
+        logger.warning("HKEX+Tencent fetch failed: {}", e)
+        return {}

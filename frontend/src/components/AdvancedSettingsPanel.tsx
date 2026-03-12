@@ -116,15 +116,15 @@ export default function AdvancedSettingsPanel({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="label" style={{ fontSize: '0.75rem' }}>持有数量(股)</label>
-              <input className="input" value={holdingQuantity} onChange={e => setHoldingQuantity(e.target.value)} inputMode="numeric" placeholder="如 1000" />
+              <input className="input" value={holdingQuantity} onChange={e => setHoldingQuantity(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="如 1000" />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="label" style={{ fontSize: '0.75rem' }}>成本价</label>
-              <input className="input" value={costPrice} onChange={e => setCostPrice(e.target.value)} inputMode="decimal" placeholder="如 15.50" />
+              <input className="input" value={costPrice} onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); const parts = v.split('.'); setCostPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : v.slice(0, 15)); }} inputMode="decimal" placeholder="如 15.50" />
             </div>
             <div className="form-group" style={{ marginBottom: 0, gridColumn: '1/-1' }}>
               <label className="label" style={{ fontSize: '0.75rem' }}>最大持仓(股) — 不超过此仓位</label>
-              <input className="input" value={maxPosition} onChange={e => setMaxPosition(e.target.value)} inputMode="numeric" placeholder="如 5000" />
+              <input className="input" value={maxPosition} onChange={e => setMaxPosition(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" placeholder="如 5000" />
             </div>
             <p style={{ gridColumn: '1/-1', fontSize: '0.7rem', color: '#8e8e93', margin: 0 }}>
               不填=按空仓分析；若填写则 3 项需全部填写。
@@ -248,15 +248,15 @@ export default function AdvancedSettingsPanel({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="label" style={{ fontSize: '0.75rem' }}>持有数量(股)</label>
-                  <input className="input" value={holdingQuantity} onChange={e => setHoldingQuantity(e.target.value)} inputMode="numeric" />
+                  <input className="input" value={holdingQuantity} onChange={e => setHoldingQuantity(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="label" style={{ fontSize: '0.75rem' }}>成本价</label>
-                  <input className="input" value={costPrice} onChange={e => setCostPrice(e.target.value)} inputMode="decimal" />
+                  <input className="input" value={costPrice} onChange={e => { const v = e.target.value.replace(/[^\d.]/g, ''); const parts = v.split('.'); setCostPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : v.slice(0, 15)); }} inputMode="decimal" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0, gridColumn: '1/-1' }}>
                   <label className="label" style={{ fontSize: '0.75rem' }}>最大持仓(股)</label>
-                  <input className="input" value={maxPosition} onChange={e => setMaxPosition(e.target.value)} inputMode="numeric" />
+                  <input className="input" value={maxPosition} onChange={e => setMaxPosition(e.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" />
                 </div>
                 <p style={{ gridColumn: '1/-1', fontSize: '0.7rem', color: 'var(--muted)', margin: 0 }}>
                   不填=按空仓分析；若填写则 3 项需全部填写。

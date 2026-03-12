@@ -97,8 +97,7 @@ async def lifespan(app: FastAPI):
     async with async_session() as db:
         await _seed_settings_from_json(db)
         await _apply_db_overrides(db)
-    # Preload stock name mappings in background — non-blocking, refreshes daily
-    asyncio.create_task(preload_names())
+    # Stock name mappings are refreshed manually via admin panel (/api/admin/refresh-names)
     # Start embedded data collector when explicitly enabled (dev convenience).
     # In production Docker, run the data-collector as a separate container instead.
     if os.getenv("ENABLE_COLLECTOR", "").lower() in ("1", "true", "yes"):
