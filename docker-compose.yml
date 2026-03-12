@@ -2,11 +2,12 @@
 # Production deployment: 阿里云 / 宝塔 Linux
 #
 # 复制 .env.example 为 .env，填写以下必填变量后执行 docker compose up -d：
-#   SECRET_KEY        → python -c "import secrets; print(secrets.token_hex(32))"
-#   ADMIN_TOKEN       → python -c "import secrets; print(secrets.token_hex(24))"
+#   SECRET_KEY        → python3 -c "import secrets; print(secrets.token_hex(32))"
+#   ADMIN_TOKEN       → python3 -c "import secrets; print(secrets.token_hex(24))"
 #   LLM_API_KEY       → DeepSeek / OpenAI API key
 #   POSTGRES_PASSWORD → 数据库密码
 #
+# LLM provider/model、爱发电套餐、定价等配置在 backend/initial_settings.json（首次启动写入DB）。
 # 无需配置 NEXT_PUBLIC_API_URL —— 前端通过 Next.js rewrites 在服务端代理 /api/* 到 backend 容器
 
 version: '3.8'
@@ -59,32 +60,15 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trader}
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=${SECRET_KEY}
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
-      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1500}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
-      - AFDIAN_WEBHOOK_TOKEN=${AFDIAN_WEBHOOK_TOKEN:-}
       - ADMIN_TOKEN=${ADMIN_TOKEN}
-      - AFDIAN_BASIC_PLAN_ID=${AFDIAN_BASIC_PLAN_ID:-}
-      - AFDIAN_PREMIUM_PLAN_ID=${AFDIAN_PREMIUM_PLAN_ID:-}
-      - AFDIAN_BASIC_LINK=${AFDIAN_BASIC_LINK:-}
-      - AFDIAN_PREMIUM_LINK=${AFDIAN_PREMIUM_LINK:-}
-      - AFDIAN_USER_ID=${AFDIAN_USER_ID:-}
-      - AFDIAN_API_TOKEN=${AFDIAN_API_TOKEN:-}
-      - APP_NAME=${APP_NAME:-}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - EMAIL_FROM=${EMAIL_FROM:-}
-      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
-      - PRICING_PERIOD=${PRICING_PERIOD:-月}
-      - PRICING_GUEST_DAILY=${PRICING_GUEST_DAILY:-1}
-      - PRICING_FREE_DAILY=${PRICING_FREE_DAILY:-3}
-      - PRICING_BASIC_PRICE=${PRICING_BASIC_PRICE:-19.9}
-      - PRICING_BASIC_DAILY=${PRICING_BASIC_DAILY:-5}
-      - PRICING_PREMIUM_PRICE=${PRICING_PREMIUM_PRICE:-49}
-      - PRICING_PREMIUM_DAILY=${PRICING_PREMIUM_DAILY:-15}
+      - AFDIAN_USER_ID=${AFDIAN_USER_ID:-}
+      - AFDIAN_API_TOKEN=${AFDIAN_API_TOKEN:-}
+      - AFDIAN_WEBHOOK_TOKEN=${AFDIAN_WEBHOOK_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -159,12 +143,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-trader}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-trader}
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=${SECRET_KEY}
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.deepseek.com/v1}
-      - LLM_MODEL=${LLM_MODEL:-deepseek-chat}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1500}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
     depends_on:
       redis:
         condition: service_healthy

@@ -2,33 +2,33 @@
   "llm": {
     "provider": "openai",
     "api_key": "",
-    "base_url": "",
-    "model": "gpt-4o",
-    "max_tokens": 2000,
+    "base_url": "https://api.deepseek.com/v1",
+    "model": "deepseek-chat",
+    "max_tokens": 1500,
     "temperature": 0.7
   },
   "afdian": {
     "user_id": "",
     "api_token": "",
     "webhook_token": "",
-    "basic_plan_id": "",
-    "premium_plan_id": "",
-    "basic_link": "",
-    "premium_link": ""
+    "basic_plan_id": "715c9072163a11f1ace952540025c377",
+    "premium_plan_id": "822e25fa163a11f1ab0f52540025c377",
+    "basic_link": "https://www.ifdian.net/order/create?plan_id=715c9072163a11f1ace952540025c377&product_type=0&remark=&affiliate_code=",
+    "premium_link": "https://www.ifdian.net/order/create?plan_id=822e25fa163a11f1ab0f52540025c377&product_type=0&remark=&affiliate_code="
   },
   "email": {
     "resend_api_key": "",
     "app_base_url": ""
   },
   "app": {
-    "name": "AI 分析"
+    "name": "K线AI小助手"
   },
   "pricing": {
     "period": "月",
-    "guest_daily": 3,
-    "free_daily": 5,
-    "basic": { "price": "19.9", "daily": 20 },
-    "premium": { "price": "49", "daily": 50 },
+    "guest_daily": 1,
+    "free_daily": 3,
+    "basic": { "price": "19.9", "daily": 5 },
+    "premium": { "price": "49", "daily": 15 },
     "features": []
   }
 }

@@ -59,45 +59,30 @@ cd frontend
 npm install
 ```
 
-### 3. 配置后端环境变量
+### 3. 配置环境变量
 
 复制模板，按需编辑：
 
 ```powershell
-copy backend\.env.example backend\.env
+copy .env.example .env
 ```
 
-**必填项：**
+**必填项（最少只需改这三项）：**
 
 ```env
-# LLM 配置（DeepSeek 或 OpenAI）
+# LLM API 密钥（DeepSeek 或 OpenAI）
 LLM_API_KEY=sk-xxxx
-LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=deepseek-chat
 
-# 管理员 token（可随意设置，本地开发用）
+# 管理员 token（本地开发随意设置即可）
 ADMIN_TOKEN=local-admin-token
 
-# Redis（本地 Docker 启动的 Redis，默认即可）
-REDIS_URL=redis://localhost:6379
-
-# 数据库（SQLite，本地默认，无需修改）
-DATABASE_URL=sqlite+aiosqlite:///./data/trader.db
+# 安全密钥（本地开发随意设置即可）
+SECRET_KEY=local-dev-secret-key
 ```
 
-**可选项（不填则关闭对应功能）：**
-
-```env
-# 邮件验证（Resend.com）
-RESEND_API_KEY=re_xxxx
-EMAIL_FROM=noreply@yourdomain.com
-APP_BASE_URL=http://localhost:3000
-
-# 爱发电付费（不接入则跳过）
-AFDIAN_WEBHOOK_TOKEN=
-AFDIAN_USER_ID=
-AFDIAN_API_TOKEN=
-```
+**说明：**
+- `DATABASE_URL` 和 `REDIS_URL` 由 `start.ps1` 自动注入，无需手动填写
+- 其余可选项（邮件、爱发电）留空则对应功能禁用
 
 ### 4. 初始化数据库
 
@@ -149,4 +134,4 @@ pip install -r requirements.txt
 
 ### 前端无法连接后端
 
-确认 `backend\.env` 中 `REDIS_URL=redis://localhost:6379`，且 Backend 和 Worker 标签均无报错。
+确认 Backend 和 Worker 标签均无报错，Redis 容器正在运行。

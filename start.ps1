@@ -37,6 +37,24 @@ function Wait-Http {
     return $false
 }
 
+# Load variables from root .env into the current shell environment.
+# Existing environment variables are NOT overwritten (allows shell-level overrides).
+function Import-DotEnv {
+    param([string]$Path = ".env")
+    if (-not (Test-Path $Path)) { return }
+    Get-Content $Path | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -eq "" -or $line.StartsWith("#")) { return }
+        $idx = $line.IndexOf('=')
+        if ($idx -lt 1) { return }
+        $key = $line.Substring(0, $idx).Trim()
+        $val = $line.Substring($idx + 1).Trim()
+        if (-not [Environment]::GetEnvironmentVariable($key)) {
+            Set-Item -Path "Env:$key" -Value $val
+        }
+    }
+}
+
 # ── Stop mode ────────────────────────────────────────────────────────────────
 if ($Stop) {
     Write-Header "Stopping all services..."
@@ -47,13 +65,17 @@ if ($Stop) {
 
 # ── Single service mode ───────────────────────────────────────────────────────
 if ($Service -ne "") {
+    # Load all config from root .env first, then override connection URLs
+    # so that the backend/worker reach local Docker containers (not container hostnames).
+    Import-DotEnv
+
     $pgPass = if ($env:POSTGRES_PASSWORD) { $env:POSTGRES_PASSWORD } else { "changeme" }
 
-    $env:PYTHONPATH    = "src"
-    $env:PYTHONUTF8    = "1"
-    $env:BACKEND_URL   = "http://localhost:8000"
-    $env:REDIS_URL     = "redis://localhost:6379"
-    $env:DATABASE_URL  = "postgresql+asyncpg://trader:$pgPass@localhost:5432/trader"
+    $env:PYTHONPATH   = "src"
+    $env:PYTHONUTF8   = "1"
+    $env:BACKEND_URL  = "http://localhost:8000"
+    $env:REDIS_URL    = "redis://localhost:6379"
+    $env:DATABASE_URL = "postgresql+asyncpg://trader:$pgPass@localhost:5432/trader"
 
     switch ($Service) {
         "postgres" {
@@ -90,8 +112,8 @@ if ($Service -ne "") {
         }
         "data-collector" {
             Write-Header "Starting data-collector"
-            Set-Location "$ScriptDir\data-collector"
-            python -m src.main
+            Set-Location "$ScriptDir\backend"
+            python -m src.services.data.data_collector
         }
     }
     exit 0
@@ -110,9 +132,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 
 $upArgs = if ($Build) {
     Write-Info "Build mode: rebuilding images..."
-    "--env-file .env --env-file backend/.env up -d --build"
+    "--env-file .env up -d --build"
 } else {
-    "--env-file .env --env-file backend/.env up -d"
+    "--env-file .env up -d"
 }
 
 Write-Header "Starting all services via docker compose..."

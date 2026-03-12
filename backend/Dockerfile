@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Copy source code and runtime config
 COPY src/ ./src/
+COPY initial_settings.json .
 
 # Create data and logs directories
 RUN mkdir -p /app/data /app/logs

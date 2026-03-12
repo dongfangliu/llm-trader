@@ -119,33 +119,22 @@ Compress-Archive -Path . -DestinationPath trader.zip -Force
 
 ```bash
 cd /opt/trader
-cp backend/.env.example backend/.env
-vim backend/.env
+cp .env.example .env
+vim .env
 ```
 
-**必填配置：**
+**必填配置（只需改这四项）：**
 
 ```env
-# 数据库（Docker 内网服务名）
-DATABASE_URL=postgresql+asyncpg://trader:你的数据库密码@postgres:5432/trader
-
-# Redis（Docker 内网）
-REDIS_URL=redis://redis:6379
-
 # 安全密钥（运行下方命令生成）
 SECRET_KEY=在这里填入生成的密钥
 ADMIN_TOKEN=在这里填入管理员token
 
-# LLM 配置
+# LLM API 密钥（DeepSeek / OpenAI 兼容）
 LLM_API_KEY=sk-xxxx
-LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=deepseek-chat
 
-# 跨域（填你的域名，无末尾斜杠）
-ALLOWED_ORIGINS=https://yourdomain.com
-
-# 应用地址（用于邮件验证链接）
-APP_BASE_URL=https://yourdomain.com
+# 数据库密码
+POSTGRES_PASSWORD=请改为强密码
 ```
 
 **生成密钥（在服务器执行）：**
@@ -155,19 +144,27 @@ python3 -c "import secrets; print(secrets.token_hex(32))"  # SECRET_KEY
 python3 -c "import secrets; print(secrets.token_hex(24))"  # ADMIN_TOKEN
 ```
 
-**设置 docker-compose 环境变量：**
+**其他按需修改（有合理默认值）：**
 
-在 `/opt/trader/` 创建 `.env` 文件（供 docker-compose 读取）：
+```env
+# 跨域（填你的域名，无末尾斜杠）
+ALLOWED_ORIGINS=https://yourdomain.com
 
-```bash
-cat > /opt/trader/.env << 'EOF'
-POSTGRES_USER=trader
-POSTGRES_PASSWORD=你的数据库密码
-POSTGRES_DB=trader
-BACKEND_PORT=8000
-FRONTEND_PORT=3000
-EOF
+# 前端应用地址（用于邮件验证链接）
+APP_BASE_URL=https://yourdomain.com
+
+# 邮件发送（可选，留空则验证链接打印到日志）
+RESEND_API_KEY=re_xxxx
+EMAIL_FROM=noreply@yourdomain.com
+
+# 爱发电 API 凭证（可选，套餐 ID/链接在 initial_settings.json 配置）
+AFDIAN_USER_ID=
+AFDIAN_API_TOKEN=
 ```
+
+> **关于 LLM provider/model、爱发电套餐 ID、定价等：**
+> 这些在 `backend/initial_settings.json` 中配置，首次启动时自动写入数据库。
+> 之后可通过管理后台（`/api/admin/settings`）修改，无需重启服务。
 
 ---
 
@@ -253,7 +250,7 @@ Cloudflare → **SSL/TLS → Overview** → 选择 **Full**（不要选 Flexible
 ### 4. 更新环境变量
 
 ```bash
-vim /opt/trader/backend/.env
+vim /opt/trader/.env
 ```
 
 ```env

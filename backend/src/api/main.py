@@ -244,7 +244,7 @@ ALLOWED_MARKETS = {
 }
 
 # ===================== Runtime Settings Cache =====================
-# Source of truth: backend/.env file. Populated at startup, updated live by admin.
+# Base values loaded from .env at startup; DB (admin panel / initial_settings.json seed) takes priority for non-empty fields.
 
 _SETTINGS_ENV_MAP = {
     "llm": {
@@ -390,7 +390,11 @@ async def _seed_settings_from_json(db: AsyncSession):
 
 
 async def _apply_db_overrides(db: AsyncSession):
-    """Load admin-saved settings from DB and overlay on top of env-var defaults."""
+    """Load admin-saved settings from DB and overlay on top of env-var defaults.
+
+    Empty strings in the DB are skipped so that .env values act as a fallback:
+    if the admin panel has never set a field, the .env value remains in effect.
+    """
     for section in ("llm", "afdian", "email", "app", "pricing"):
         row = await db.get(SystemSetting, section)
         if not row:
@@ -403,13 +407,14 @@ async def _apply_db_overrides(db: AsyncSession):
             cache_p = _settings_cache["pricing"]
             for k, v in data.items():
                 if k == "features":
-                    cache_p["features"] = v
+                    cache_p["features"] = v  # empty list is a valid state
                 elif k in ("basic", "premium"):
-                    cache_p[k].update(v)
+                    cache_p[k].update({ik: iv for ik, iv in v.items() if iv != ""})
                 else:
-                    cache_p[k] = v
+                    if v != "":
+                        cache_p[k] = v
         elif section in _settings_cache:
-            _settings_cache[section].update(data)
+            _settings_cache[section].update({k: v for k, v in data.items() if v != ""})
     _apply_quota_settings()
 
 
