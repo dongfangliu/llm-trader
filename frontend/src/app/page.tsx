@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore, useAnalysisStore } from '@/lib/store';
 import {
@@ -281,6 +281,12 @@ export default function HomePage() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [historySheetOpen, setHistorySheetOpen] = useState(false);
 
+  // Desktop UI state
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [dtUserMenuOpen, setDtUserMenuOpen] = useState(false);
+  const dtUserBtnRef = useRef<HTMLButtonElement>(null);
+  const dtPopoverRef = useRef<HTMLDivElement>(null);
+
   // Narrative loading text
   const NARRATIVE_TEXTS = [
     '正在读取市场数据...',
@@ -487,6 +493,27 @@ export default function HomePage() {
     return picked;
   };
 
+  // Desktop media query
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    setIsDesktop(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // Close desktop user popover on outside click
+  useEffect(() => {
+    if (!dtUserMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dtPopoverRef.current && !dtPopoverRef.current.contains(e.target as Node)) {
+        setDtUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [dtUserMenuOpen]);
+
   // Check auth on mount + fetch app name
   useEffect(() => {
     // Set deviceId immediately (sync localStorage) so the page renders right away
@@ -599,19 +626,6 @@ export default function HomePage() {
     setShowHotRecommendations(false);
   }, [market]);
 
-  useEffect(() => {
-    if (symbol && market) {
-      setMarketData(null);
-      setMarketDataLoading(true);
-      getMarketData(market, symbol, period, 30)
-        .then((data) => { setMarketData(data); setMarketDataLoading(false); })
-        .catch(() => { setMarketData(null); setMarketDataLoading(false); });
-    } else {
-      setMarketData(null);
-      setMarketDataLoading(false);
-    }
-  }, [symbol, market, period]);
-
   // Real-time symbol format warning
   useEffect(() => {
     if (!symbol.trim()) { setSymbolWarning(null); return; }
@@ -642,7 +656,21 @@ export default function HomePage() {
     // ── Client-side validation ──────────────────────────────────────
     const symErr = validateSymbol(symbol, market);
     if (symErr) { setError(symErr); return; }
-    if (!marketDataLoading && !marketData) {
+
+    // Verify stock exists before proceeding
+    setMarketDataLoading(true);
+    setMarketData(null);
+    let fetchedMarketData = null;
+    try {
+      fetchedMarketData = await getMarketData(market, symbol.trim().toUpperCase(), period, 30);
+      setMarketData(fetchedMarketData);
+    } catch {
+      setMarketDataLoading(false);
+      setError('🔍 未找到该代码的行情数据，请确认代码正确');
+      return;
+    }
+    setMarketDataLoading(false);
+    if (!fetchedMarketData || !fetchedMarketData.count) {
       setError('🔍 未找到该代码的行情数据，请确认代码正确');
       return;
     }
@@ -920,7 +948,7 @@ export default function HomePage() {
     : fourStepTabs;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isDesktop ? ' desktop-layout' : ''}`}>
       <Toast toast={toast} />
       <ErrorReportDialog error={errorReport} onClose={() => setErrorReport(null)} />
       {/* Registered user daily quota exhausted */}
@@ -1118,19 +1146,21 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* ═══ User Menu Sheet (mobile) ═══ */}
-      <UserMenuSheet
-        isOpen={userMenuOpen}
-        onClose={() => setUserMenuOpen(false)}
-        user={user}
-        tier={tier}
-        onAccount={() => router.push('/account')}
-        onUpgrade={() => router.push('/upgrade')}
-        onLogout={handleLogout}
-        onLogin={() => router.push('/login')}
-        onSavedRecords={() => { setUserMenuOpen(false); setSavedRecordsOpen(true); }}
-        onRegister={() => router.push('/register')}
-      />
+      {/* ═══ User Menu Sheet (mobile only) ═══ */}
+      {!isDesktop && (
+        <UserMenuSheet
+          isOpen={userMenuOpen}
+          onClose={() => setUserMenuOpen(false)}
+          user={user}
+          tier={tier}
+          onAccount={() => router.push('/account')}
+          onUpgrade={() => router.push('/upgrade')}
+          onLogout={handleLogout}
+          onLogin={() => router.push('/login')}
+          onSavedRecords={() => { setUserMenuOpen(false); setSavedRecordsOpen(true); }}
+          onRegister={() => router.push('/register')}
+        />
+      )}
 
       <main className="container app-main">
         <div
@@ -1229,15 +1259,6 @@ export default function HomePage() {
                     />
                     {symbolWarning && symbol.trim() && (
                       <p style={{ fontSize: '0.8rem', color: '#b45309', marginTop: '0.4rem' }}>⚠️ {symbolWarning}</p>
-                    )}
-                    {marketDataLoading && symbol.trim() && !symbolWarning && (
-                      <p style={{ fontSize: '0.8rem', color: '#8e8e93', marginTop: '0.4rem' }}>正在查询行情数据…</p>
-                    )}
-                    {!marketDataLoading && !marketData && symbol.trim() && !symbolWarning && (
-                      <p style={{ fontSize: '0.8rem', color: '#ff3b30', marginTop: '0.4rem' }}>⚠️ 未找到该代码的行情数据，请确认代码正确</p>
-                    )}
-                    {marketData && !symbolWarning && (
-                      <p style={{ fontSize: '0.875rem', color: 'var(--success)', marginTop: '0.5rem' }}>✓ 找到 {marketData.count} 条数据</p>
                     )}
                     {showHotRecommendations && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginTop: '0.6rem', padding: '0.5rem', border: '1px dashed var(--border)', borderRadius: '0.5rem', background: '#f8fafc' }}>
@@ -1614,15 +1635,6 @@ export default function HomePage() {
                         </div>
                         {symbolWarning && symbol.trim() && (
                           <p style={{ fontSize: '13px', color: '#ff9500', marginTop: '8px', marginLeft: '4px' }}>⚠️ {symbolWarning}</p>
-                        )}
-                        {marketDataLoading && symbol.trim() && !symbolWarning && (
-                          <p style={{ fontSize: '13px', color: '#8e8e93', marginTop: '8px', marginLeft: '4px' }}>正在查询行情数据…</p>
-                        )}
-                        {!marketDataLoading && !marketData && symbol.trim() && !symbolWarning && (
-                          <p style={{ fontSize: '13px', color: '#ff3b30', marginTop: '8px', marginLeft: '4px' }}>⚠️ 未找到该代码的行情数据，请确认代码正确</p>
-                        )}
-                        {marketData && !symbolWarning && symbol.trim() && (
-                          <p style={{ fontSize: '13px', color: '#34c759', marginTop: '8px', marginLeft: '4px' }}>✓ 找到 {marketData.count} 条数据</p>
                         )}
                       </div>
 
@@ -2018,31 +2030,33 @@ export default function HomePage() {
               {result ? (
                 <div>
                   {/* Mobile: ResultSheet overlay — onClose dismisses sheet, gallery stays visible */}
-                  <ResultSheet
-                    isOpen={resultSheetOpen}
-                    onClose={() => setResultSheetOpen(false)}
-                    result={result}
-                    tier={resultDisplayTier}
-                    period={period}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    allTabs={allTabs}
-                    multiPeriodResults={multiPeriodResults}
-                    onShare={() => handleShareViralCard()}
-                    onSave={handleBookmark}
-                    onSavedListOpen={() => setSavedRecordsOpen(true)}
-                    shareLoading={shareLoading}
-                    saveLongLoading={saveLongLoading}
-                    onUpgrade={() => router.push('/upgrade')}
-                    historyItems={history}
-                    onHistorySelect={(id) => {
-                      const item = history.find(h => h.id === id);
-                      if (item) handleOpenHistoryDetail(item);
-                    }}
-                    selectedHistoryId={selectedHistoryId ?? undefined}
-                    onOpenHistorySheet={() => setHistorySheetOpen(true)}
-                    isSaved={isSavedRecord(selectedHistoryId ?? `${result?.data?.symbol ?? ''}_${analyzeStartedAt ?? ''}`)}
-                  />
+                  {!isDesktop && (
+                    <ResultSheet
+                      isOpen={resultSheetOpen}
+                      onClose={() => setResultSheetOpen(false)}
+                      result={result}
+                      tier={resultDisplayTier}
+                      period={period}
+                      activeTab={activeTab}
+                      onTabChange={setActiveTab}
+                      allTabs={allTabs}
+                      multiPeriodResults={multiPeriodResults}
+                      onShare={() => handleShareViralCard()}
+                      onSave={handleBookmark}
+                      onSavedListOpen={() => setSavedRecordsOpen(true)}
+                      shareLoading={shareLoading}
+                      saveLongLoading={saveLongLoading}
+                      onUpgrade={() => router.push('/upgrade')}
+                      historyItems={history}
+                      onHistorySelect={(id) => {
+                        const item = history.find(h => h.id === id);
+                        if (item) handleOpenHistoryDetail(item);
+                      }}
+                      selectedHistoryId={selectedHistoryId ?? undefined}
+                      onOpenHistorySheet={() => setHistorySheetOpen(true)}
+                      isSaved={isSavedRecord(selectedHistoryId ?? `${result?.data?.symbol ?? ''}_${analyzeStartedAt ?? ''}`)}
+                    />
+                  )}
                   {/* Mobile: re-open button when sheet is dismissed */}
                   {!resultSheetOpen && (
                     <div className="mobile-only" style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: 16, right: 16, zIndex: 50 }}>
@@ -2504,16 +2518,18 @@ export default function HomePage() {
         onAccount={() => setUserMenuOpen(true)}
       />
 
-      {/* ═══ HISTORY SHEET (mobile) ═══ */}
-      <HistorySheet
-        isOpen={historySheetOpen}
-        onClose={() => setHistorySheetOpen(false)}
-        history={history}
-        selectedHistoryId={selectedHistoryId}
-        tier={tier}
-        onOpenDetail={(h) => { handleOpenHistoryDetail(h); }}
-        onShare={(h, longImage) => generateShareCard(undefined, h.detail as typeof result, h.analyzedAt, longImage)}
-      />
+      {/* ═══ HISTORY SHEET (mobile only) ═══ */}
+      {!isDesktop && (
+        <HistorySheet
+          isOpen={historySheetOpen}
+          onClose={() => setHistorySheetOpen(false)}
+          history={history}
+          selectedHistoryId={selectedHistoryId}
+          tier={tier}
+          onOpenDetail={(h) => { handleOpenHistoryDetail(h); }}
+          onShare={(h, longImage) => generateShareCard(undefined, h.detail as typeof result, h.analyzedAt, longImage)}
+        />
+      )}
 
       {/* ═══ SHARE PREVIEW SHEET ═══ */}
       <SharePreviewSheet
@@ -2556,6 +2572,417 @@ export default function HomePage() {
           });
         }}
       />
+
+      {/* ═══════════════════════════════════════════════════════════
+          DESKTOP THREE-ZONE SHELL (≥1024px)
+          ═══════════════════════════════════════════════════════════ */}
+      {isDesktop && (
+        <>
+          {/* ── Desktop Header (48px) ── */}
+          <header className="dt-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <rect x="2" y="9" width="5" height="7" rx="1.5" fill="#dc2626" />
+                <line x1="4.5" y1="6" x2="4.5" y2="9" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+                <line x1="4.5" y1="16" x2="4.5" y2="19" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+                <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759" />
+                <line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" strokeWidth="1.5" strokeLinecap="round"/>
+                <line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" strokeWidth="1.5" strokeLinecap="round"/>
+                <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626" />
+                <line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+                <line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px', color: '#000' }}>{appName}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{
+                fontSize: 12, fontWeight: 500,
+                color: effectiveTier === 'premium' ? '#7c3aed' : effectiveTier === 'basic' ? '#007aff' : '#8e8e93',
+              }}>
+                {(isRegisteredProTrial || isGuestTrial) ? '专业版体验' : tierLabel}
+              </span>
+              <span style={{ fontSize: 12, color: '#8e8e93' }}>
+                {limits?.remaining ?? '-'} / {limits?.daily_limit ?? '-'} 次
+              </span>
+              {user ? (
+                <button
+                  ref={dtUserBtnRef}
+                  onClick={(e) => { e.stopPropagation(); setDtUserMenuOpen(v => !v); }}
+                  aria-label="用户菜单"
+                  style={{ width: 30, height: 30, borderRadius: '50%', background: '#e9e9eb', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3c3c43" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </button>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => router.push('/login')} style={{ fontSize: 14, fontWeight: 400, color: '#007aff', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px' }}>登录</button>
+                  <button onClick={() => router.push('/register')} style={{ fontSize: 13, fontWeight: 600, color: 'white', background: '#007aff', border: 'none', borderRadius: 8, padding: '5px 12px', cursor: 'pointer' }}>注册</button>
+                </div>
+              )}
+            </div>
+          </header>
+
+          {/* ── User popover ── */}
+          {dtUserMenuOpen && user && (
+            <div className="dt-user-popover" ref={dtPopoverRef}>
+              <div className="dt-popover-row" onClick={() => { router.push('/account'); setDtUserMenuOpen(false); }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                账号设置
+              </div>
+              {effectiveTier !== 'premium' && (
+                <div className="dt-popover-row" onClick={() => { router.push('/upgrade'); setDtUserMenuOpen(false); }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                  升级套餐
+                </div>
+              )}
+              <div className="dt-popover-row" onClick={() => { setSavedRecordsOpen(true); setDtUserMenuOpen(false); }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                收藏记录
+              </div>
+              <div style={{ borderTop: '0.5px solid rgba(60,60,67,0.1)' }} />
+              <div className="dt-popover-row" onClick={() => { handleLogout(); setDtUserMenuOpen(false); }} style={{ color: '#ff3b30' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                退出登录
+              </div>
+            </div>
+          )}
+
+          {/* ── Three-column content ── */}
+          <div className="dt-content">
+
+            {/* ── Sidebar (ChatGPT style) ── */}
+            <nav className="dt-sidebar">
+              {/* Top nav */}
+              <div style={{ flexShrink: 0, padding: '8px 0 4px' }}>
+                <button
+                  className={`dt-nav-item${activePanel === 'analyze' || activePanel === 'loading' ? ' active' : ''}`}
+                  onClick={() => setActivePanel('analyze')}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  新建分析
+                </button>
+                {effectiveTier !== 'premium' && (
+                  <button className="dt-nav-item" onClick={() => router.push('/upgrade')}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+                    </svg>
+                    升级套餐
+                  </button>
+                )}
+              </div>
+
+              {/* History list */}
+              <div className="dt-hist-list">
+                {history.length > 0 ? (
+                  <>
+                    <div className="dt-hist-list-label">历史记录</div>
+                    {history.slice(0, 50).map((h) => {
+                      const ad = getActionDisplay(h.action);
+                      const isSelected = h.id === selectedHistoryId;
+                      const timeStr = h.analyzedAt
+                        ? new Date(h.analyzedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        : '';
+                      return (
+                        <button
+                          key={h.id}
+                          className={`dt-hist-item${isSelected ? ' active' : ''}`}
+                          onClick={() => handleOpenHistoryDetail(h)}
+                        >
+                          <div className="dt-hist-item-name">{h.name || h.symbol}</div>
+                          <div className="dt-hist-item-row">
+                            <span className="dt-hist-item-signal" style={{ color: ad.color }}>{ad.text}</span>
+                            <span className="dt-hist-item-time">{timeStr}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <div style={{ padding: '20px 10px', fontSize: 12, color: '#aeaeb2', textAlign: 'center', lineHeight: 1.6 }}>
+                    暂无历史记录<br/>分析后将在此显示
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom: quota + 我的 */}
+              <div className="dt-sidebar-bottom">
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>今日剩余</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: '#1c1c1e', letterSpacing: '-1px', lineHeight: 1 }}>
+                    {limits?.remaining ?? '-'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#aeaeb2', marginTop: 2 }}>/ {limits?.daily_limit ?? '-'} 次</div>
+                </div>
+                <button
+                  className="dt-my-btn"
+                  onClick={(e) => { e.stopPropagation(); user ? setDtUserMenuOpen(v => !v) : router.push('/login'); }}
+                  aria-label="我的"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3c3c43" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </button>
+              </div>
+            </nav>
+
+            {/* ── Form Panel (400px, or full-width in analyze mode) ── */}
+            <div className={`dt-form-panel${activePanel === 'analyze' ? ' dt-form-panel-wide' : activePanel === 'result' ? ' dt-form-panel-hidden' : ''}`}>
+            <div className={activePanel === 'analyze' ? 'dt-form-inner' : ''}>
+              {/* Title + market */}
+              <div style={{ padding: '24px 20px 16px' }}>
+                <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px', color: '#1c1c1e', margin: '0 0 16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  今天分析哪只？
+                  {(isRegisteredProTrial || isGuestTrial) && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', borderRadius: 20, padding: '3px 10px', letterSpacing: '0.2px' }}>专业版体验中</span>
+                  )}
+                </h2>
+                <MarketSegmented value={market} onChange={setMarket} tier={effectiveTier} onLockedClick={() => router.push('/upgrade')} />
+              </div>
+
+              {/* Symbol input */}
+              <div style={{ padding: '0 20px 14px' }}>
+                <div style={{ position: 'relative' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aeaeb2" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
+                    value={symbol}
+                    onChange={e => setSymbol(sanitizeSymbol(e.target.value))}
+                    style={{ width: '100%', height: 44, background: '#f2f2f7', border: 'none', outline: 'none', borderRadius: 11, padding: '0 16px 0 38px', fontSize: 15, color: '#1c1c1e' }}
+                  />
+                </div>
+                {symbolWarning && symbol.trim() && (
+                  <p style={{ fontSize: 12, color: '#ff9500', marginTop: 6, marginLeft: 2 }}>⚠️ {symbolWarning}</p>
+                )}
+              </div>
+
+              {/* Hot stocks strip */}
+              <div style={{ padding: '0 20px 14px' }}>
+                <HotStocksStrip stocks={hotRecommendations} onSelect={handleHotStockClick} onRefresh={handleRefreshHotRecommendations} />
+              </div>
+
+              {/* Hairline divider */}
+              <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)', margin: '0 20px' }} />
+
+              {/* Advanced settings */}
+              <div style={{ padding: '4px 20px' }}>
+                <AdvancedSettingsPanel
+                  period={period} setPeriod={setPeriod}
+                  multiPeriodEnabled={multiPeriodEnabled}
+                  setMultiPeriodEnabled={(v) => { setMultiPeriodEnabled(v); if (!v) setAuxiliaryPeriods([]); }}
+                  auxiliaryPeriods={auxiliaryPeriods} toggleAuxPeriod={toggleAuxPeriod}
+                  holdingQuantity={holdingQuantity} setHoldingQuantity={setHoldingQuantity}
+                  costPrice={costPrice} setCostPrice={setCostPrice}
+                  maxPosition={maxPosition} setMaxPosition={setMaxPosition}
+                  premiumInputsOpen={premiumInputsOpen} setPremiumInputsOpen={setPremiumInputsOpen}
+                  tier={effectiveTier} onUpgrade={() => router.push('/upgrade')}
+                />
+              </div>
+
+              {/* Upgrade teaser */}
+              {effectiveTier !== 'premium' && (
+                <>
+                  <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.1)', margin: '0 20px' }} />
+                  <div style={{ padding: '0 20px' }}>
+                    <UpgradeTeaser tier={tier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                  </div>
+                </>
+              )}
+
+              {/* Spacer */}
+              <div style={{ flex: 1 }} />
+
+              {/* Analyze button */}
+              <div style={{ padding: '16px 20px 24px', borderTop: '0.5px solid rgba(60,60,67,0.1)', flexShrink: 0 }}>
+                {error && <div style={{ color: '#ff3b30', fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>{error}</div>}
+                <button
+                  onClick={handleAnalyze}
+                  disabled={!symbol.trim() || isAnalyzing}
+                  style={{
+                    width: '100%', height: 50, borderRadius: 14,
+                    background: !symbol.trim() || isAnalyzing ? 'rgba(0,122,255,0.07)' : '#007aff',
+                    color: !symbol.trim() || isAnalyzing ? 'rgba(0,122,255,0.38)' : 'white',
+                    border: !symbol.trim() || isAnalyzing ? '1px solid rgba(0,122,255,0.15)' : 'none',
+                    fontSize: 17, fontWeight: 600,
+                    cursor: !symbol.trim() || isAnalyzing ? 'not-allowed' : 'pointer',
+                    transition: 'background 0.15s, color 0.15s',
+                  }}
+                >
+                  {effectiveTier === 'premium' && premiumPendingCount > 0 ? `开始分析（进行中 ${premiumPendingCount}）` : '开始分析'}
+                </button>
+              </div>
+            </div>{/* end dt-form-inner */}
+            </div>{/* end dt-form-panel */}
+
+            {/* ── Result Panel (flex:1) ── */}
+            <div className={`dt-result-panel${activePanel === 'analyze' ? ' dt-result-panel-hidden' : ''}`} style={activePanel === 'result' ? { background: 'white' } : undefined}>
+              {activePanel === 'loading' ? (
+                /* Loading state */
+                <div className="dt-loading-zone">
+                  <div style={{ position: 'absolute', width: 360, height: 360, background: 'radial-gradient(circle at center, rgba(0,122,255,0.07) 0%, transparent 70%)', borderRadius: '50%', animation: 'loading-breathe 3.5s ease-in-out infinite', pointerEvents: 'none', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                  {analyzeTimedOut ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, maxWidth: 300, position: 'relative', zIndex: 1 }}>
+                      <div style={{ fontSize: 48 }}>⏰</div>
+                      <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1c1c1e', margin: 0 }}>分析时间较长</h2>
+                      <p style={{ fontSize: 15, color: '#8e8e93', lineHeight: 1.75, margin: 0, textAlign: 'center' }}>AI 服务响应超过 3 分钟<br/>可等待继续，或返回重试</p>
+                      <button onClick={handleBackToAnalyze} style={{ padding: '12px 40px', borderRadius: 14, background: '#f2f2f7', border: 'none', fontSize: 15, fontWeight: 600, color: '#1c1c1e', cursor: 'pointer' }}>返回重试</button>
+                    </div>
+                  ) : (
+                    <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                      <div style={{ fontSize: 60, fontWeight: 900, letterSpacing: '-3px', color: '#1c1c1e', lineHeight: 1, marginBottom: 10, animation: 'loading-symbol-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
+                        {analyzingSymbol}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: '#aeaeb2', letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 48, animation: 'loading-subtitle-in 0.6s 0.15s ease-out both' }}>
+                        深度研判中
+                      </div>
+                      <p key={narrativeIdx} style={{ fontSize: 14, fontWeight: 500, color: '#3c3c43', margin: '0 0 28px', animation: 'narrative-fade 0.35s ease-out', minHeight: '1.7em' }}>
+                        {NARRATIVE_TEXTS[narrativeIdx]}
+                      </p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#007aff', opacity: 0.4, animation: `loading-dot 1.4s ${i * 0.22}s ease-in-out infinite` }} />
+                        ))}
+                      </div>
+                      {effectiveTier === 'premium' && (
+                        <button onClick={() => setActivePanel('analyze')} style={{ background: 'none', border: 'none', fontSize: 13, fontWeight: 500, color: '#aeaeb2', cursor: 'pointer', marginTop: 48, padding: '4px 0' }}>
+                          继续下一个分析 →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : activePanel === 'result' && result ? (
+                /* Result state */
+                <>
+                  {/* Scrollable result content */}
+                  <div className="dt-result-scroll">
+                    <div className="dt-result-content dt-result-scroll-wide">
+                      {/* Title row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.4px', color: '#1c1c1e', margin: '0 0 3px' }}>
+                            {result.data?.name
+                              ? <>{result.data.name} <span style={{ fontSize: 14, fontWeight: 400, color: '#8e8e93' }}>({result.data.symbol})</span></>
+                              : result.data?.symbol}
+                          </h2>
+                          <div style={{ fontSize: 12, color: '#8e8e93' }}>
+                            {MARKET_LABELS[result.data?.market] || result.data?.market?.toUpperCase()}
+                            {analyzeStartedAt && <span> · {new Date(analyzeStartedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                          <button
+                            onClick={handleBookmark}
+                            title={isSavedRecord(selectedHistoryId ?? '') ? '取消收藏' : '收藏'}
+                            style={{ height: 34, padding: '0 12px', fontSize: 14, background: isSavedRecord(selectedHistoryId ?? '') ? '#fef9c3' : '#f2f2f7', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#1c1c1e', fontWeight: 500 }}
+                          >
+                            {isSavedRecord(selectedHistoryId ?? '') ? '★' : '☆'}
+                          </button>
+                          {effectiveTier !== 'free' && (
+                            <button onClick={() => generateShareCard(undefined, undefined, undefined, true)} disabled={saveLongLoading} style={{ height: 34, padding: '0 14px', fontSize: 13, background: saveLongLoading ? '#86efac' : 'linear-gradient(135deg,#15803d,#22c55e)', border: 'none', borderRadius: 8, cursor: saveLongLoading ? 'default' : 'pointer', color: 'white', fontWeight: 600, whiteSpace: 'nowrap' }}>{saveLongLoading ? '生成中…' : '💾 保存'}</button>
+                          )}
+                          <button onClick={() => generateShareCard()} disabled={shareLoading} style={{ height: 34, padding: '0 14px', fontSize: 13, background: shareLoading ? '#fca5a5' : 'linear-gradient(135deg,#dc2626,#ef4444)', border: 'none', borderRadius: 8, cursor: shareLoading ? 'default' : 'pointer', color: 'white', fontWeight: 600, whiteSpace: 'nowrap' }}>{shareLoading ? '生成中…' : '📤 分享'}</button>
+                        </div>
+                      </div>
+
+                      {/* Share confirmation inline */}
+                      {shareConfirmOpen && (
+                        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 10, fontSize: 13, color: '#92400e' }}>
+                          <p style={{ fontWeight: 600, marginBottom: 8 }}>分享卡片包含持仓参数？</p>
+                          <p style={{ marginBottom: 10, color: '#78350f' }}>您已填写了持仓参数，是否在分享卡片中包含这些信息？</p>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => generateShareCard(true, undefined, undefined, sharePendingLongImage)} style={{ padding: '5px 12px', fontSize: 12, background: '#f59e0b', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>包含持仓参数</button>
+                            <button onClick={() => generateShareCard(false, undefined, undefined, sharePendingLongImage)} style={{ padding: '5px 12px', fontSize: 12, background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}>不包含</button>
+                            <button onClick={() => setShareConfirmOpen(false)} style={{ padding: '5px 12px', fontSize: 12, background: 'transparent', color: '#94a3b8', border: '1px solid #e2e8f0', borderRadius: 6, cursor: 'pointer' }}>取消</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SignalHero */}
+                      <SignalHero result={result} tier={resultDisplayTier} period={period} />
+
+                      {/* Deep analysis tabs */}
+                      {effectiveTier !== 'free' && result.result && (
+                        <div style={{ marginTop: 20 }}>
+                          <ResultTabs tabs={allTabs} activeTab={activeTab} onTabChange={setActiveTab}>
+                            {allTabs[activeTab]?.key === '__multiperiod__' ? (
+                              <MultiPeriodCards results={multiPeriodResults} />
+                            ) : (
+                              <p className="result-tab-text">{(result.result as any)?.[allTabs[activeTab]?.key] || '暂无数据'}</p>
+                            )}
+                          </ResultTabs>
+                        </div>
+                      )}
+
+                      {/* Risk factors */}
+                      {effectiveTier !== 'free' && result.result?.risk_factors?.length > 0 && (
+                        <div style={{ marginTop: 20 }}>
+                          <div className="result-section-title">风险因素</div>
+                          <div className="risk-chips-wrap">
+                            {result.result.risk_factors.map((f: string, i: number) => (
+                              <span key={i} className="risk-chip"><span className="risk-chip-dot" />{f}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Technical indicators */}
+                      {effectiveTier !== 'free' && result.result?.indicators && (
+                        <div style={{ marginTop: 20 }}>
+                          <div className="result-section-title">技术指标</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {Object.entries(result.result.indicators).map(([k, v]) => (
+                              <span key={k} style={{ fontSize: 12, padding: '4px 10px', background: 'white', borderRadius: 6, color: '#3c3c43', border: '1px solid rgba(60,60,67,0.1)' }}>{k}: {typeof v === 'number' ? (v as number).toFixed(2) : String(v)}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Position advice */}
+                      {effectiveTier !== 'free' && result.result?.position_advice && (
+                        <div style={{ marginTop: 20 }}>
+                          <div className="result-section-title">持仓建议</div>
+                          <p style={{ fontSize: 14, color: '#3c3c43', lineHeight: 1.7, margin: 0 }}>
+                            {result.result.position_advice.reason}
+                            {typeof result.result.position_advice.suggested_quantity === 'number' ? `（建议数量: ${result.result.position_advice.suggested_quantity}）` : ''}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Upgrade nudge */}
+                      {effectiveTier !== 'premium' && (
+                        <div style={{ marginTop: 20 }}>
+                          <UpgradeNudge tier={effectiveTier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                        </div>
+                      )}
+
+                      <div style={{ height: 40 }} />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Empty state */
+                <div className="dt-empty-state">
+                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ opacity: 0.18, marginBottom: 16 }}>
+                    <path d="M7 40L18 24L26 32L36 16L49 21" stroke="#1c1c1e" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="49" cy="21" r="3.5" fill="#1c1c1e"/>
+                  </svg>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1c1c1e', marginBottom: 8 }}>尚无分析结果</div>
+                  <div style={{ fontSize: 14, color: '#8e8e93', lineHeight: 1.6 }}>输入股票代码，AI 将生成买卖建议和深度研判</div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </>
+      )}
+
     </div>
   );
 }
