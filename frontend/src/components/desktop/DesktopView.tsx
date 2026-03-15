@@ -147,55 +147,6 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
 
   return (
     <>
-      {/* ── Desktop Header (48px, frosted glass) ── */}
-      <header className="dt-header">
-        {/* Left: Logo + App name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <rect x="2" y="9" width="5" height="7" rx="1.5" fill="#dc2626" />
-            <line x1="4.5" y1="6" x2="4.5" y2="9" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1="4.5" y1="16" x2="4.5" y2="19" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759" />
-            <line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626" />
-            <line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.2px', color: '#000' }}>{appName}</span>
-        </div>
-
-        {/* Right: tier info + user */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{
-            fontSize: 12, fontWeight: 500,
-            color: effectiveTier === 'premium' ? '#7c3aed' : effectiveTier === 'basic' ? '#007aff' : '#8e8e93',
-          }}>
-            {(isRegisteredProTrial || isGuestTrial) ? '专业版体验' : tierLabel}
-          </span>
-          <span style={{ fontSize: 12, color: '#8e8e93' }}>
-            {limits?.remaining ?? '-'} / {limits?.daily_limit ?? '-'} 次
-          </span>
-          {user ? (
-            <button
-              ref={dtUserBtnRef}
-              onClick={(e) => { e.stopPropagation(); setDtUserMenuOpen(v => !v); }}
-              aria-label="用户菜单"
-              style={{ width: 30, height: 30, borderRadius: '50%', background: '#e9e9eb', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3c3c43" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-              </svg>
-            </button>
-          ) : (
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => onNavigate('/login')} style={{ fontSize: 14, fontWeight: 400, color: '#007aff', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px' }}>登录</button>
-              <button onClick={() => onNavigate('/register')} style={{ fontSize: 13, fontWeight: 600, color: 'white', background: '#007aff', border: 'none', borderRadius: 8, padding: '5px 12px', cursor: 'pointer' }}>注册</button>
-            </div>
-          )}
-        </div>
-      </header>
-
       {/* ── User popover ── */}
       {dtUserMenuOpen && user && (
         <div className="dt-user-popover" ref={dtPopoverRef}>
@@ -237,6 +188,10 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
           onOpenHistory={onOpenHistoryDetail}
           onUpgrade={() => onNavigate('/upgrade')}
           onUserMenuOpen={() => { user ? setDtUserMenuOpen(v => !v) : onNavigate('/login'); }}
+          appName={appName}
+          tierLabel={tierLabel}
+          isRegisteredProTrial={isRegisteredProTrial}
+          isGuestTrial={isGuestTrial}
         />
 
         {/* ── Workspace ── */}

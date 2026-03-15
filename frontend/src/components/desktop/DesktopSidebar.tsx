@@ -23,23 +23,57 @@ interface DesktopSidebarProps {
   onOpenHistory: (item: any) => void;
   onUpgrade: () => void;
   onUserMenuOpen: () => void;
+  appName: string;
+  tierLabel: string;
+  isRegisteredProTrial: boolean;
+  isGuestTrial: boolean;
 }
 
 function getActionDisplay(action: string | undefined) {
   if (!action) return { text: '观望', color: '#f59e0b' };
   const a = action.toLowerCase();
-  if (a === 'buy' || a === '买入') return { text: '买入', color: '#ef4444' };
-  if (a === 'sell' || a === '卖出') return { text: '卖出', color: '#22c55e' };
+  if (a === 'buy' || a === '看涨') return { text: '看涨', color: '#ef4444' };
+  if (a === 'sell' || a === '看跌') return { text: '看跌', color: '#22c55e' };
   return { text: '观望', color: '#f59e0b' };
 }
 
 const DesktopSidebar: FC<DesktopSidebarProps> = ({
   activePanel, history, analyzingItems, selectedHistoryId,
   limits, effectiveTier, user,
-  onNewAnalysis, onOpenHistory, onUpgrade, onUserMenuOpen
+  onNewAnalysis, onOpenHistory, onUpgrade, onUserMenuOpen,
+  appName, tierLabel, isRegisteredProTrial, isGuestTrial
 }) => {
   return (
     <nav className="dt-sidebar">
+      {/* ── Brand area ── */}
+      <div className="dt-sidebar-brand">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
+            <rect x="2" y="9" width="5" height="7" rx="1.5" fill="#dc2626" />
+            <line x1="4.5" y1="6" x2="4.5" y2="9" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+            <line x1="4.5" y1="16" x2="4.5" y2="19" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+            <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759" />
+            <line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" strokeWidth="1.5" strokeLinecap="round"/>
+            <line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" strokeWidth="1.5" strokeLinecap="round"/>
+            <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626" />
+            <line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+            <line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-0.2px', color: '#1c1c1e' }}>{appName}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 500,
+            color: effectiveTier === 'premium' ? '#7c3aed' : effectiveTier === 'basic' ? '#007aff' : '#8e8e93',
+          }}>
+            {(isRegisteredProTrial || isGuestTrial) ? '专业版体验' : tierLabel}
+          </span>
+          <span style={{ fontSize: 11, color: '#aeaeb2' }}>
+            {limits?.remaining ?? '-'} / {limits?.daily_limit ?? '-'} 次
+          </span>
+        </div>
+      </div>
+
       {/* Top nav */}
       <div style={{ flexShrink: 0, padding: '8px 0 4px' }}>
         {/* New analysis button */}
