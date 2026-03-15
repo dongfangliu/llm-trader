@@ -160,6 +160,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     username: Optional[str] = None
+    invite_code: Optional[str] = None
 
 
 class AnalyzeRequest(BaseModel):
@@ -720,6 +721,28 @@ async def _save_analysis_history(
 # ===================== Auth Routes =====================
 
 
+async def _apply_invite_code(db: AsyncSession, user: "User", code: str) -> bool:
+    """Apply an invite code: reward both inviter and invitee +10 bonus_quota.
+    Returns True if applied successfully, False if inviter not found.
+    """
+    from sqlalchemy import update as _upd
+    result = await db.execute(select(User).where(User.invite_code == code))
+    inviter = result.scalars().first()
+    if not inviter:
+        return False
+    await db.execute(
+        _upd(User).where(User.id == inviter.id).values(bonus_quota=User.bonus_quota + 10)
+    )
+    await db.execute(
+        _upd(User).where(User.id == user.id).values(
+            bonus_quota=User.bonus_quota + 10,
+            used_invite_code=code,
+        )
+    )
+    logger.info("invite_applied inviter=%s invitee=%s code=%s", inviter.id, user.id, code)
+    return True
+
+
 @app.post("/api/auth/register")
 @limiter.limit("2/day")
 async def register(
@@ -734,6 +757,12 @@ async def register(
     if len(req.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
+    # Check if invite code is required by system setting
+    app_cfg = _settings_cache.get("app", {})
+    if app_cfg.get("require_invite_code", False):
+        if not req.invite_code or not req.invite_code.strip():
+            raise HTTPException(status_code=400, detail="注册需要邀请码")
+
     existing = await user_service.get_user_by_email(db, email)
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -743,6 +772,14 @@ async def register(
     except Exception as e:
         logger.exception("register_user failed for %s: %s", email, e)
         raise HTTPException(status_code=500, detail="注册失败，数据库写入出错，请稍后重试")
+
+    # Handle invite code if provided
+    if req.invite_code:
+        code = req.invite_code.strip().upper()
+        if code and code != (user.invite_code or "").upper():
+            if not user.used_invite_code:
+                await _apply_invite_code(db, user, code)
+                await db.commit()
 
     resend_key = _email("resend_api_key")
     if resend_key:
@@ -909,25 +946,12 @@ async def use_invite_code(
     if current_user.used_invite_code:
         raise HTTPException(status_code=400, detail="您已使用过邀请码，每个账号只能兑换一次")
 
-    # Find inviter
-    result = await db.execute(select(User).where(User.invite_code == code))
-    inviter = result.scalars().first()
-    if not inviter:
+    # Find inviter and apply rewards
+    applied = await _apply_invite_code(db, current_user, code)
+    if not applied:
         raise HTTPException(status_code=404, detail="邀请码无效，请检查后重试")
-
-    # Reward both parties and mark invitee as having used a code
-    from sqlalchemy import update as _upd
-    await db.execute(
-        _upd(User).where(User.id == inviter.id).values(bonus_quota=User.bonus_quota + 10)
-    )
-    await db.execute(
-        _upd(User).where(User.id == current_user.id).values(
-            bonus_quota=User.bonus_quota + 10,
-            used_invite_code=code,
-        )
-    )
     await db.commit()
-    logger.info("invite_used inviter=%s invitee=%s code=%s", inviter.id, current_user.id, code)
+    logger.info("invite_used inviter=? invitee=%s code=%s", current_user.id, code)
     return {"success": True, "message": "邀请码使用成功！您和邀请人各获得 +10 次分析次数", "bonus_added": 10}
 
 
@@ -2517,6 +2541,7 @@ async def get_config():
         "trial_ended_perks": app_cfg.get("trial_ended_perks", []),
         "trial_ended_register_button": app_cfg.get("trial_ended_register_button", "免费注册，继续使用"),
         "trial_ended_upgrade_hint": app_cfg.get("trial_ended_upgrade_hint", "标准版 ¥19.9/月 · 专业版 ¥49/月"),
+        "require_invite_code": bool(app_cfg.get("require_invite_code", False)),
     }
 
 
