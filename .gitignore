@@ -69,3 +69,6 @@ web_v2/frontend/dist/
 
 # Claude
 .claude/
+
+# Git worktrees
+.worktrees/
