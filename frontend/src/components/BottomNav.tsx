@@ -9,6 +9,8 @@ interface BottomNavProps {
   tier: string;
   onUpgrade: () => void;
   onAccount: () => void;
+  newResultsCount?: number;
+  analyzingCount?: number;
 }
 
 const IconSearch = ({ active }: { active: boolean }) => (
@@ -28,14 +30,6 @@ const IconChart = ({ active }: { active: boolean }) => (
   </svg>
 );
 
-const IconUpgrade = ({ active }: { active: boolean }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth={active ? '2.2' : '1.7'} strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="17 11 12 6 7 11" />
-    <line x1="12" y1="6" x2="12" y2="18" />
-  </svg>
-);
-
 const IconPerson = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth={active ? '2.2' : '1.7'} strokeLinecap="round" strokeLinejoin="round">
@@ -47,13 +41,16 @@ const IconPerson = ({ active }: { active: boolean }) => (
 export default function BottomNav({
   activePanel,
   setActivePanel,
-  historyCount,
   tier,
-  onUpgrade,
   onAccount,
+  newResultsCount = 0,
+  analyzingCount = 0,
 }: BottomNavProps) {
   const isAnalyze = activePanel === 'analyze';
   const isResult = activePanel === 'result';
+
+  const showNewBadge = newResultsCount > 0 && !isResult;
+  const showAnalyzingDot = analyzingCount > 0 && !showNewBadge && !isResult;
 
   return (
     <nav className="bottom-nav" aria-label="底部导航">
@@ -67,7 +64,7 @@ export default function BottomNav({
         <span>分析</span>
       </button>
 
-      {/* 结果 — always tappable; empty state handles no-history gracefully */}
+      {/* 结果 */}
       <button
         className={`bottom-nav-item${isResult ? ' active' : ''}`}
         onClick={() => setActivePanel('result')}
@@ -76,8 +73,20 @@ export default function BottomNav({
       >
         <span className="bottom-nav-icon" style={{ position: 'relative', display: 'inline-flex' }}>
           <IconChart active={isResult} />
-          {historyCount > 0 && !isResult && (
-            <span className="bottom-nav-badge">{historyCount > 9 ? '9+' : historyCount}</span>
+          {showNewBadge && (
+            <span className="bottom-nav-badge bottom-nav-badge-pulse">
+              {newResultsCount > 9 ? '9+' : newResultsCount}
+            </span>
+          )}
+          {showAnalyzingDot && (
+            <span style={{
+              position: 'absolute', top: -3, right: -5,
+              width: 8, height: 8,
+              background: '#007aff',
+              borderRadius: '50%',
+              border: '1.5px solid rgba(249,249,249,0.94)',
+              animation: 'badge-breathe 1.8s ease-in-out infinite',
+            }} />
           )}
         </span>
         <span>结果</span>

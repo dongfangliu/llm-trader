@@ -284,6 +284,8 @@ export default function HomePage() {
   // Desktop UI state
   const [isDesktop, setIsDesktop] = useState(false);
   const [dtUserMenuOpen, setDtUserMenuOpen] = useState(false);
+  const [analyzingItems, setAnalyzingItems] = useState<{tempId: string; symbol: string}[]>([]);
+  const [unreadResults, setUnreadResults] = useState(0);
   const dtUserBtnRef = useRef<HTMLButtonElement>(null);
   const dtPopoverRef = useRef<HTMLDivElement>(null);
 
@@ -691,12 +693,23 @@ export default function HomePage() {
       }
     }
 
-    setAnalyzingSymbol(symbol.trim().toUpperCase());
-    setActivePanel('loading');
+    const analyzingSymbolVal = symbol.trim().toUpperCase();
+    setAnalyzingSymbol(analyzingSymbolVal);
+    if (isDesktop) {
+      setActivePanel('result');
+    } else {
+      setActivePanel('loading');
+    }
     setError(null);
     setAnalyzeTimedOut(false);
     setMultiPeriodResults([]);
     setResultDisplayTier(tier);
+
+    // For desktop premium: add placeholder entry to sidebar
+    const tempId = `pending_${Date.now()}_${analyzingSymbolVal}`;
+    if (isDesktop && isPremium) {
+      setAnalyzingItems((prev) => [...prev, { tempId, symbol: analyzingSymbolVal }]);
+    }
 
     // ── Frontend 3-minute soft timeout ──────────────────────────────
     const timeoutHandle = setTimeout(() => {
@@ -705,6 +718,9 @@ export default function HomePage() {
 
     if (isPremium) {
       setPremiumPendingCount((n) => n + 1);
+      if (!isDesktop) {
+        showToast(`${analyzingSymbolVal} 已加入分析队列`, 'info');
+      }
     } else {
       setIsAnalyzing(true);
     }
@@ -726,7 +742,7 @@ export default function HomePage() {
           ? { holdingQuantity, costPrice, maxPosition }
           : null;
         setResult(taskData.result);
-        const displayTier = (queuedUsage as any).display_tier ?? tier;
+        const displayTier = (queuedUsage as any).display_tier ?? effectiveTier;
         setResultDisplayTier(displayTier);
         // Use queued usage immediately for responsive UI, then re-fetch from server to ensure accuracy
         setLimits(queuedUsage);
@@ -765,8 +781,18 @@ export default function HomePage() {
         };
         setHistory((prev) => [item, ...prev.filter((h) => h.id !== item.id)].slice(0, 30));
         setSelectedHistoryId(item.id);
-        setActivePanel('result');
-        setResultSheetOpen(true);
+        // Remove from analyzing items (desktop sidebar placeholder)
+        if (isDesktop && isPremium) {
+          setAnalyzingItems((prev) => prev.filter((a) => a.tempId !== tempId));
+          setUnreadResults((n) => n + 1);
+          showToast(`${item.symbol} 分析完成`, 'ok');
+        } else {
+          setActivePanel('result');
+          setResultSheetOpen(true);
+          if (!isDesktop) {
+            setUnreadResults((n) => n + 1);
+          }
+        }
         setActiveTab(0);
       };
 
@@ -859,6 +885,7 @@ export default function HomePage() {
       clearTimeout(timeoutHandle);
       if (isPremium) {
         setPremiumPendingCount((n) => Math.max(0, n - 1));
+        setAnalyzingItems((prev) => prev.filter((a) => a.tempId !== tempId));
       } else {
         setIsAnalyzing(false);
       }
@@ -2348,10 +2375,10 @@ export default function HomePage() {
 
                     {/* ── Upgrade banners / nudge ── */}
                     {/* Mobile: UpgradeNudge */}
-                    {effectiveTier !== 'premium' && (
+                    {resultDisplayTier !== 'premium' && (
                       <>
                         <div className="result-section mobile-only result-section-animated" style={{ padding: 0 }}>
-                          <UpgradeNudge tier={effectiveTier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                          <UpgradeNudge tier={resultDisplayTier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
                         </div>
                         <div className="result-section-gap mobile-only" />
                       </>
@@ -2509,13 +2536,18 @@ export default function HomePage() {
       {/* ═══ BOTTOM NAV (mobile only) ═══ */}
       <BottomNav
         activePanel={activePanel}
-        setActivePanel={setActivePanel}
+        setActivePanel={(p) => {
+          if (p === 'result') setUnreadResults(0);
+          setActivePanel(p);
+        }}
         hasResult={!!result}
         hasHistory={history.length > 0}
         historyCount={history.length}
         tier={tier}
         onUpgrade={() => router.push('/upgrade')}
         onAccount={() => setUserMenuOpen(true)}
+        newResultsCount={unreadResults}
+        analyzingCount={premiumPendingCount}
       />
 
       {/* ═══ HISTORY SHEET (mobile only) ═══ */}
@@ -2538,6 +2570,7 @@ export default function HomePage() {
         filename={sharePreviewFilename}
         onClose={() => setSharePreviewOpen(false)}
         actionColor={sharePreviewActionColor}
+        isDesktop={isDesktop}
         stockMeta={sharePreviewStockMeta ?? undefined}
         archiveBlob={sharePreviewArchiveBlob}
         archiveFilename={sharePreviewArchiveFilename}
@@ -2677,6 +2710,20 @@ export default function HomePage() {
 
               {/* History list */}
               <div className="dt-hist-list">
+                {/* Analyzing placeholder items */}
+                {analyzingItems.length > 0 && (
+                  <>
+                    {analyzingItems.map((a) => (
+                      <div key={a.tempId} className="dt-hist-item dt-hist-item-analyzing">
+                        <div className="dt-hist-item-name">{a.symbol}</div>
+                        <div className="dt-hist-item-row">
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#007aff' }}>研判中</span>
+                          <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2.5px solid rgba(0,122,255,0.2)', borderTopColor: '#007aff', animation: 'rs-spin 0.8s linear infinite', boxShadow: '0 0 6px rgba(0,122,255,0.25)' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
                 {history.length > 0 ? (
                   <>
                     <div className="dt-hist-list-label">历史记录</div>
@@ -2884,7 +2931,7 @@ export default function HomePage() {
                           >
                             {isSavedRecord(selectedHistoryId ?? '') ? '★' : '☆'}
                           </button>
-                          {effectiveTier !== 'free' && (
+                          {resultDisplayTier !== 'free' && (
                             <button onClick={() => generateShareCard(undefined, undefined, undefined, true)} disabled={saveLongLoading} style={{ height: 34, padding: '0 14px', fontSize: 13, background: saveLongLoading ? '#86efac' : 'linear-gradient(135deg,#15803d,#22c55e)', border: 'none', borderRadius: 8, cursor: saveLongLoading ? 'default' : 'pointer', color: 'white', fontWeight: 600, whiteSpace: 'nowrap' }}>{saveLongLoading ? '生成中…' : '💾 保存'}</button>
                           )}
                           <button onClick={() => generateShareCard()} disabled={shareLoading} style={{ height: 34, padding: '0 14px', fontSize: 13, background: shareLoading ? '#fca5a5' : 'linear-gradient(135deg,#dc2626,#ef4444)', border: 'none', borderRadius: 8, cursor: shareLoading ? 'default' : 'pointer', color: 'white', fontWeight: 600, whiteSpace: 'nowrap' }}>{shareLoading ? '生成中…' : '📤 分享'}</button>
@@ -2908,7 +2955,7 @@ export default function HomePage() {
                       <SignalHero result={result} tier={resultDisplayTier} period={period} />
 
                       {/* Deep analysis tabs */}
-                      {effectiveTier !== 'free' && result.result && (
+                      {resultDisplayTier !== 'free' && result.result && (
                         <div style={{ marginTop: 20 }}>
                           <ResultTabs tabs={allTabs} activeTab={activeTab} onTabChange={setActiveTab}>
                             {allTabs[activeTab]?.key === '__multiperiod__' ? (
@@ -2921,7 +2968,7 @@ export default function HomePage() {
                       )}
 
                       {/* Risk factors */}
-                      {effectiveTier !== 'free' && result.result?.risk_factors?.length > 0 && (
+                      {resultDisplayTier !== 'free' && result.result?.risk_factors?.length > 0 && (
                         <div style={{ marginTop: 20 }}>
                           <div className="result-section-title">风险因素</div>
                           <div className="risk-chips-wrap">
@@ -2933,7 +2980,7 @@ export default function HomePage() {
                       )}
 
                       {/* Technical indicators */}
-                      {effectiveTier !== 'free' && result.result?.indicators && (
+                      {resultDisplayTier !== 'free' && result.result?.indicators && (
                         <div style={{ marginTop: 20 }}>
                           <div className="result-section-title">技术指标</div>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -2945,7 +2992,7 @@ export default function HomePage() {
                       )}
 
                       {/* Position advice */}
-                      {effectiveTier !== 'free' && result.result?.position_advice && (
+                      {resultDisplayTier !== 'free' && result.result?.position_advice && (
                         <div style={{ marginTop: 20 }}>
                           <div className="result-section-title">持仓建议</div>
                           <p style={{ fontSize: 14, color: '#3c3c43', lineHeight: 1.7, margin: 0 }}>
@@ -2956,9 +3003,9 @@ export default function HomePage() {
                       )}
 
                       {/* Upgrade nudge */}
-                      {effectiveTier !== 'premium' && (
+                      {resultDisplayTier !== 'premium' && (
                         <div style={{ marginTop: 20 }}>
-                          <UpgradeNudge tier={effectiveTier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
+                          <UpgradeNudge tier={resultDisplayTier} pricing={pricing} onUpgrade={() => router.push('/upgrade')} />
                         </div>
                       )}
 
@@ -2967,14 +3014,26 @@ export default function HomePage() {
                   </div>
                 </>
               ) : (
-                /* Empty state */
+                /* Empty state — shows spinner when analysis is in progress */
                 <div className="dt-empty-state">
-                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ opacity: 0.18, marginBottom: 16 }}>
-                    <path d="M7 40L18 24L26 32L36 16L49 21" stroke="#1c1c1e" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <circle cx="49" cy="21" r="3.5" fill="#1c1c1e"/>
-                  </svg>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1c1c1e', marginBottom: 8 }}>尚无分析结果</div>
-                  <div style={{ fontSize: 14, color: '#8e8e93', lineHeight: 1.6 }}>输入股票代码，AI 将生成买卖建议和深度研判</div>
+                  {(isAnalyzing || premiumPendingCount > 0) ? (
+                    <>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid rgba(0,122,255,0.15)', borderTopColor: '#007aff', animation: 'rs-spin 0.8s linear infinite', marginBottom: 16 }} />
+                      <div style={{ fontSize: 16, fontWeight: 600, color: '#1c1c1e', marginBottom: 6 }}>分析进行中，请稍候…</div>
+                      {premiumPendingCount > 1 && (
+                        <div style={{ fontSize: 13, color: '#8e8e93' }}>队列中共 {premiumPendingCount} 个任务</div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ opacity: 0.18, marginBottom: 16 }}>
+                        <path d="M7 40L18 24L26 32L36 16L49 21" stroke="#1c1c1e" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <circle cx="49" cy="21" r="3.5" fill="#1c1c1e"/>
+                      </svg>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#1c1c1e', marginBottom: 8 }}>尚无分析结果</div>
+                      <div style={{ fontSize: 14, color: '#8e8e93', lineHeight: 1.6 }}>输入股票代码，AI 将生成买卖建议和深度研判</div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

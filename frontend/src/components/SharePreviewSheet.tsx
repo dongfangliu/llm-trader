@@ -13,6 +13,7 @@ interface SharePreviewSheetProps {
   archiveFilename?: string;
   analyzedAt?: string | null;
   onRequestArchive?: () => Promise<void>;
+  isDesktop?: boolean;
 }
 
 export default function SharePreviewSheet({
@@ -26,6 +27,7 @@ export default function SharePreviewSheet({
   archiveFilename,
   analyzedAt,
   onRequestArchive,
+  isDesktop = false,
 }: SharePreviewSheetProps) {
   const [closing, setClosing] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export default function SharePreviewSheet({
     if (!b) return;
 
     // On mobile, prefer native share sheet (save to album / share to apps)
-    if (navigator.share && navigator.canShare) {
+    if (!isDesktop && navigator.share && navigator.canShare) {
       const file = new File([b], fn, { type: b.type });
       if (navigator.canShare({ files: [file] })) {
         try {
@@ -127,6 +129,145 @@ export default function SharePreviewSheet({
       })
     : '';
 
+  // ── Desktop layout ──────────────────────────────────────────────
+  if (isDesktop) {
+    return (
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 1100,
+          background: 'rgba(0,0,0,0.52)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          opacity: closing ? 0 : 1,
+          transition: closing ? 'opacity 0.22s ease' : 'opacity 0.18s ease',
+        }}
+        onClick={dismiss}
+      >
+        <div
+          className="sps2-dt-dialog"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            transform: closing ? 'scale(0.95) translateY(8px)' : 'scale(1) translateY(0)',
+            opacity: closing ? 0 : 1,
+            transition: closing
+              ? 'transform 0.22s ease, opacity 0.2s ease'
+              : 'transform 0.26s cubic-bezier(0.34,1.2,0.64,1), opacity 0.2s ease',
+          }}
+        >
+          {/* Title bar */}
+          <div className="sps2-dt-header">
+            <span className="sps2-dt-header-title">分享研判卡片</span>
+            <button className="sps2-dt-close-btn" onClick={dismiss} aria-label="关闭">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <line x1="1" y1="1" x2="13" y2="13"/>
+                <line x1="13" y1="1" x2="1" y2="13"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Segmented tabs — only when archive mode available */}
+          {hasArchiveMode && (
+            <div className="sps2-dt-tabs">
+              <button
+                className={`sps2-dt-tab${mode === 'social' ? ' sps2-dt-tab-active' : ''}`}
+                onClick={() => switchMode('social')}
+              >
+                分享卡片
+              </button>
+              <button
+                className={`sps2-dt-tab${mode === 'archive' ? ' sps2-dt-tab-active' : ''}`}
+                onClick={() => switchMode('archive')}
+              >
+                存证档案
+              </button>
+            </div>
+          )}
+
+          {/* Card preview */}
+          <div className="sps2-dt-preview">
+            {activeImageUrl ? (
+              <img
+                src={activeImageUrl}
+                alt="分析卡片预览"
+                className={`sps2-dt-preview-img${cardEntered ? ' sps2-dt-preview-img-in' : ''}`}
+                draggable={false}
+              />
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid rgba(60,60,67,0.12)', borderTopColor: '#007aff', animation: 'rs-spin 0.7s linear infinite' }} />
+              </div>
+            )}
+          </div>
+
+          {/* Meta row */}
+          {stockMeta && mode === 'social' && (
+            <div className="sps2-dt-meta">
+              <span style={{ fontWeight: 600, color: '#1c1c1e' }}>{stockMeta.name}</span>
+              <span style={{ color: '#aeaeb2', margin: '0 4px' }}>·</span>
+              <span style={{ fontWeight: 600, color: actionColor }}>{actionLabel}</span>
+              {stockMeta.confidence != null && (
+                <>
+                  <span style={{ color: '#aeaeb2', margin: '0 4px' }}>·</span>
+                  <span style={{ color: '#8e8e93' }}>置信度 {stockMeta.confidence}%</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Archive meta row */}
+          {mode === 'archive' && dateStr && (
+            <div className="sps2-dt-meta">
+              <span style={{ color: '#8e8e93' }}>研判时间</span>
+              <span style={{ color: '#aeaeb2', margin: '0 4px' }}>·</span>
+              <span style={{ fontWeight: 600, color: '#1c1c1e' }}>{dateStr}</span>
+            </div>
+          )}
+
+          {/* Actions */}
+          {mode === 'social' ? (
+            <div className="sps2-dt-actions">
+              <button
+                className="sps2-dt-save-btn"
+                onClick={() => handleDownload(false)}
+              >
+                📥 保存图片
+              </button>
+              <div className="sps2-dt-platform-grid">
+                <button className="sps2-dt-platform-btn" onClick={() => handleDownload(false)}>
+                  <span style={{ fontSize: 18 }}>📷</span>
+                  <span>小红书</span>
+                </button>
+                <button className="sps2-dt-platform-btn" onClick={() => handleDownload(false)}>
+                  <span style={{ fontSize: 18 }}>💬</span>
+                  <span>微信</span>
+                </button>
+                <button className="sps2-dt-platform-btn" onClick={() => handleDownload(false)}>
+                  <span style={{ fontSize: 18 }}>🌐</span>
+                  <span>朋友圈</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '0 20px 4px' }}>
+              <button
+                className="sps2-dt-save-btn"
+                style={{ width: '100%' }}
+                onClick={() => handleDownload(true)}
+              >
+                📥 保存存证图
+              </button>
+            </div>
+          )}
+
+          {/* Compliance */}
+          <div className="sps2-dt-compliance">仅供参考，不构成投资建议</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Mobile layout (unchanged) ────────────────────────────────────
   return (
     <div
       className="sps2-root"
