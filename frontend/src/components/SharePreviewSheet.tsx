@@ -119,8 +119,8 @@ export default function SharePreviewSheet({
   const hasArchiveMode = !!archiveBlob || !!onRequestArchive;
 
   const actionLabel =
-    stockMeta?.action === 'buy' ? '买入' :
-    stockMeta?.action === 'sell' ? '卖出' : '观望';
+    stockMeta?.action === 'buy' ? '看涨' :
+    stockMeta?.action === 'sell' ? '看跌' : '观望';
 
   const dateStr = analyzedAt
     ? new Date(analyzedAt).toLocaleString('zh-CN', {

@@ -32,8 +32,8 @@ interface HistorySheetProps {
 }
 
 const HS_ACTION: Record<string, { label: string; color: string }> = {
-  buy:  { label: '买入', color: '#ef4444' },
-  sell: { label: '卖出', color: '#22c55e' },
+  buy:  { label: '看涨', color: '#ef4444' },
+  sell: { label: '看跌', color: '#22c55e' },
   hold: { label: '观望', color: '#f59e0b' },
 };
 

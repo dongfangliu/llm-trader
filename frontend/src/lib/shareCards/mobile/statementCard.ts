@@ -27,7 +27,7 @@ export async function generateStatementCardBlob(p: PredictionCardParams): Promis
   const bgBot  = isBuy ? '#991B1B' : isSell ? '#14532D' : '#334155';
   const accent     = bgTop;
   const accentDark = bgBot;
-  const actionCN   = isBuy ? '买入' : isSell ? '卖出' : '观望';
+  const actionCN   = isBuy ? '看涨' : isSell ? '看跌' : '观望';
 
   const impliedReturn: number | null =
     targetPrice != null && latestPrice != null && latestPrice > 0

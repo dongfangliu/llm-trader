@@ -25,7 +25,7 @@ const PERIOD_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  buy: '买入', sell: '卖出', hold: '观望',
+  buy: '看涨', sell: '看跌', hold: '观望',
 };
 
 const OQ_COLORS: Record<string, string> = {

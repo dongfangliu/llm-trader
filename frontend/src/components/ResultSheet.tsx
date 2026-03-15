@@ -212,7 +212,7 @@ const ACTION: Record<string, {
   dark?: boolean;
 }> = {
   buy: {
-    text: '买入', color: '#dc2626', dimColor: 'rgba(220,38,38,0.55)',
+    text: '看涨', color: '#dc2626', dimColor: 'rgba(220,38,38,0.55)',
     bg: 'linear-gradient(155deg,#fff1f2,#fde8e8)',
     // R6: deep cinematic red — dark hero
     heroBg: 'linear-gradient(160deg, #5a0a0a 0%, #991b1b 52%, #ef4444 100%)',
@@ -222,7 +222,7 @@ const ACTION: Record<string, {
     dark: true,
   },
   sell: {
-    text: '卖出', color: '#16a34a', dimColor: 'rgba(22,163,74,0.55)',
+    text: '看跌', color: '#16a34a', dimColor: 'rgba(22,163,74,0.55)',
     bg: 'linear-gradient(155deg,#f0fdf4,#d9f5e3)',
     // R6: deep forest green — dark hero
     heroBg: 'linear-gradient(160deg, #052e16 0%, #065f46 52%, #059669 100%)',

@@ -22,7 +22,7 @@ export async function generateDesktopStatementCardBlob(p: PredictionCardParams):
   const bgTop    = isBuy ? '#EF4444' : isSell ? '#16A34A' : '#64748B';
   const bgBot    = isBuy ? '#991B1B' : isSell ? '#14532D' : '#334155';
   const accent   = bgTop;
-  const actionCN = isBuy ? '买入' : isSell ? '卖出' : '观望';
+  const actionCN = isBuy ? '看涨' : isSell ? '看跌' : '观望';
 
   const impliedReturn: number | null =
     targetPrice != null && latestPrice != null && latestPrice > 0

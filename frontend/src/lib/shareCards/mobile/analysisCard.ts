@@ -26,7 +26,7 @@ export async function generateShareCardBlob(p: ShareCardParams): Promise<{ blob:
 
   const action = result?.result?.action;
   const isBuy = action === 'buy', isSell = action === 'sell';
-  const actionLabel = isBuy ? '\u4e70\u5165' : isSell ? '\u5356\u51fa' : '\u89c2\u671b';
+  const actionLabel = isBuy ? '看涨' : isSell ? '看跌' : '观望';
 
   // Chinese convention: buy = red, sell = green
   const heroTop  = isBuy ? '#3b0a0a' : isSell ? '#052e16' : '#0c1929';

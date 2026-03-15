@@ -23,7 +23,7 @@ interface MultiPeriodCardsProps {
   results: PeriodResult[];
 }
 
-const ACTION_LABELS: Record<string, string> = { buy: '买入', sell: '卖出', hold: '观望' };
+const ACTION_LABELS: Record<string, string> = { buy: '看涨', sell: '看跌', hold: '观望' };
 const ACTION_COLORS: Record<string, string> = { buy: '#ff3b30', sell: '#34c759', hold: '#8e8e93' };
 const BAR_COLORS: Record<string, string> = {
   buy: '#ff3b30', sell: '#34c759', hold: '#c7c7cc',

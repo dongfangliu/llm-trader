@@ -12,7 +12,7 @@ export async function generateDesktopAnalysisCardBlob(p: ShareCardParams): Promi
 
   const action = result?.result?.action;
   const isBuy = action === 'buy', isSell = action === 'sell';
-  const actionLabel = isBuy ? '买入' : isSell ? '卖出' : '观望';
+  const actionLabel = isBuy ? '看涨' : isSell ? '看跌' : '观望';
 
   // Chinese convention: buy = red, sell = green, hold = blue
   const panelTop = isBuy ? '#3b0a0a' : isSell ? '#052e16' : '#0c1929';
