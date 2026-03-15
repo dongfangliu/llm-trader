@@ -11,6 +11,7 @@ import MultiPeriodCards from '@/components/MultiPeriodCards';
 import UpgradeNudge from '@/components/UpgradeNudge';
 import DesktopSidebar from './DesktopSidebar';
 import DesktopShareModal from './DesktopShareModal';
+import SymbolAutocomplete from '@/components/SymbolAutocomplete';
 
 const MARKET_LABELS: Record<string, string> = { a: 'A股', hk: '港股', us: '美股', futures: '期货' };
 
@@ -221,13 +222,12 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aeaeb2" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
-                  <input
-                    type="text"
-                    placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
+                  <SymbolAutocomplete
                     value={symbol}
-                    onChange={e => setSymbol(sanitizeSymbol(e.target.value))}
-                    onKeyDown={e => e.key === 'Enter' && symbol.trim() && onAnalyze()}
-                    style={{ width: '100%', height: 48, background: '#ffffff', border: '1px solid rgba(60,60,67,0.15)', outline: 'none', borderRadius: 12, padding: '0 16px 0 38px', fontSize: 15, color: '#1c1c1e', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', transition: 'border-color 0.15s' }}
+                    onChange={(v) => setSymbol(sanitizeSymbol(v))}
+                    market={market}
+                    onSelect={(entry) => setSymbol(entry.symbol)}
+                    placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
                   />
                   {symbolWarning && symbol.trim() && (
                     <p style={{ fontSize: 12, color: '#ff9500', marginTop: 6, marginLeft: 2 }}>⚠️ {symbolWarning}</p>

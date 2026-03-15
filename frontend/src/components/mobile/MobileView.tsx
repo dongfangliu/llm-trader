@@ -14,6 +14,7 @@ import UpgradeNudge from '@/components/UpgradeNudge';
 import HistorySheet from '@/components/HistorySheet';
 import BottomSheet from '@/components/BottomSheet';
 import ResultSheet from '@/components/ResultSheet';
+import SymbolAutocomplete from '@/components/SymbolAutocomplete';
 
 const MARKET_LABELS: Record<string, string> = { a: 'A股', hk: '港股', us: '美股', futures: '期货' };
 
@@ -629,18 +630,12 @@ const MobileView: FC<MobileViewProps> = (props) => {
                           >
                             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                           </svg>
-                          <input
-                            type="text"
-                            placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
+                          <SymbolAutocomplete
                             value={symbol}
-                            onChange={(e) => setSymbol(sanitizeSymbol(e.target.value))}
-                            style={{
-                              width: '100%', height: '50px',
-                              background: '#f2f2f7', border: 'none', outline: 'none',
-                              borderRadius: '13px', padding: '0 16px 0 42px',
-                              fontSize: '16px', color: '#1c1c1e',
-                              WebkitAppearance: 'none',
-                            }}
+                            onChange={(v) => setSymbol(sanitizeSymbol(v))}
+                            market={market}
+                            onSelect={(entry) => setSymbol(entry.symbol)}
+                            placeholder={market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'}
                           />
                         </div>
                         {symbolWarning && symbol.trim() && (
