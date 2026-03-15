@@ -70,7 +70,7 @@ export default function GuestTrialEndedScreen({
         position: 'fixed', inset: 0, zIndex: 9999,
         background: '#f2f2f7',
         display: 'flex', flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: 'center', justifyContent: 'center',
         padding: '0 0 40px',
         overflowY: 'auto',
       }}>

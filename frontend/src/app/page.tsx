@@ -48,6 +48,7 @@ import { ErrorReportDialog, isSystemError } from '@/components/ErrorReportDialog
 import SharePreviewSheet from '@/components/SharePreviewSheet';
 import SavedRecordsSheet from '@/components/SavedRecordsSheet';
 import ProTrialWelcomeModal from '@/components/ProTrialWelcomeModal';
+import GuestTrialEndedScreen from '@/components/GuestTrialEndedScreen';
 import DesktopView from '@/components/desktop/DesktopView';
 import MobileView from '@/components/mobile/MobileView';
 
@@ -147,8 +148,8 @@ function getErrorMessage(err: any, currentTier?: string): string {
 function getActionDisplay(action: string | undefined) {
   if (!action) return { text: '观望', color: '#f59e0b' };
   const a = action.toLowerCase();
-  if (a === 'buy' || a === '买入') return { text: '买入', color: '#ef4444' };
-  if (a === 'sell' || a === '卖出') return { text: '卖出', color: '#22c55e' };
+  if (a === 'buy' || a === '看涨') return { text: '看涨', color: '#ef4444' };
+  if (a === 'sell' || a === '看跌') return { text: '看跌', color: '#22c55e' };
   return { text: '观望', color: '#f59e0b' };
 }
 
@@ -1036,6 +1037,14 @@ export default function HomePage() {
         perksLabel={appConfig?.trial_modal_perks_label}
         perks={appConfig?.trial_modal_perks}
         buttonText={appConfig?.trial_modal_button}
+      />
+      {/* Guest trial ended - shows on both desktop and mobile */}
+      <GuestTrialEndedScreen
+        open={!user && guestTrialUsed && !deviceBanned}
+        banned={deviceBanned}
+        appName={appName}
+        onRegister={() => router.push('/register')}
+        onClose={() => router.push('/')}
       />
 
       {/* ═══ MOBILE VIEW (hidden on desktop) ═══ */}

@@ -330,16 +330,6 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
                 {/* Back button + title row */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
                   <div>
-                    {/* Back to new analysis */}
-                    <button
-                      onClick={() => setActivePanel('analyze')}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 8px', color: '#007aff', fontSize: 13, fontWeight: 500 }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="15 18 9 12 15 6"/>
-                      </svg>
-                      新建分析
-                    </button>
                     <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.4px', color: '#1c1c1e', margin: '0 0 3px' }}>
                       {result.data?.name
                         ? <>{result.data.name} <span style={{ fontSize: 14, fontWeight: 400, color: '#8e8e93' }}>({result.data.symbol})</span></>
