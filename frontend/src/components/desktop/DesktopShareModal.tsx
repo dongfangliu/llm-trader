@@ -4,8 +4,6 @@ import { useEffect, useState, useRef } from 'react';
 
 interface DesktopShareModalProps {
   isOpen: boolean;
-  socialBlob: Blob | null;
-  socialFilename: string;
   archiveBlob: Blob | null;
   archiveFilename: string;
   actionColor: string;
@@ -16,8 +14,6 @@ interface DesktopShareModalProps {
 
 export default function DesktopShareModal({
   isOpen,
-  socialBlob,
-  socialFilename,
   archiveBlob,
   archiveFilename,
   actionColor,
@@ -25,30 +21,17 @@ export default function DesktopShareModal({
   onClose,
   onRequestArchive,
 }: DesktopShareModalProps) {
-  const [mode, setMode] = useState<'social' | 'archive'>('social');
   const [archiveLoading, setArchiveLoading] = useState(false);
-  const [socialUrl, setSocialUrl] = useState<string | null>(null);
   const [archiveUrl, setArchiveUrl] = useState<string | null>(null);
-  const prevSocialBlob = useRef<Blob | null>(null);
   const prevArchiveBlob = useRef<Blob | null>(null);
 
-  // Reset mode to social when modal opens
+  // When modal opens, request archive immediately
   useEffect(() => {
-    if (isOpen) setMode('social');
+    if (isOpen && !archiveBlob) {
+      setArchiveLoading(true);
+      onRequestArchive().finally(() => setArchiveLoading(false));
+    }
   }, [isOpen]);
-
-  // Manage object URLs for social blob
-  useEffect(() => {
-    if (socialBlob && socialBlob !== prevSocialBlob.current) {
-      if (socialUrl) URL.revokeObjectURL(socialUrl);
-      setSocialUrl(URL.createObjectURL(socialBlob));
-      prevSocialBlob.current = socialBlob;
-    }
-    if (!socialBlob && socialUrl) {
-      URL.revokeObjectURL(socialUrl);
-      setSocialUrl(null);
-    }
-  }, [socialBlob]);
 
   // Manage object URLs for archive blob
   useEffect(() => {
@@ -63,10 +46,9 @@ export default function DesktopShareModal({
     }
   }, [archiveBlob]);
 
-  // Cleanup URLs on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (socialUrl) URL.revokeObjectURL(socialUrl);
       if (archiveUrl) URL.revokeObjectURL(archiveUrl);
     };
   }, []);
@@ -79,32 +61,17 @@ export default function DesktopShareModal({
     return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  const handleSwitchToArchive = async () => {
-    setMode('archive');
-    if (!archiveBlob) {
-      setArchiveLoading(true);
-      try {
-        await onRequestArchive();
-      } finally {
-        setArchiveLoading(false);
-      }
-    }
-  };
-
   const handleDownload = () => {
-    const url = mode === 'social' ? socialUrl : archiveUrl;
-    const filename = mode === 'social' ? socialFilename : archiveFilename;
-    if (!url) return;
+    if (!archiveUrl) return;
     const a = document.createElement('a');
-    a.href = url;
-    a.download = filename || 'share.png';
+    a.href = archiveUrl;
+    a.download = archiveFilename || 'share.png';
     a.click();
   };
 
   if (!isOpen) return null;
 
-  const currentUrl = mode === 'social' ? socialUrl : archiveUrl;
-  const isLoading = mode === 'social' ? !socialUrl : (archiveLoading || !archiveUrl);
+  const isLoading = archiveLoading || !archiveUrl;
 
   return (
     <div className="dt-share-modal-backdrop" onClick={onClose}>
@@ -128,28 +95,10 @@ export default function DesktopShareModal({
         </div>
 
         {/* Divider */}
-        <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.12)', margin: '0 0 0 0' }} />
-
-        {/* Segment Control */}
-        <div style={{ padding: '12px 20px 0' }}>
-          <div className="dt-share-modal-seg">
-            <button
-              className={`dt-share-modal-seg-btn${mode === 'social' ? ' active' : ''}`}
-              onClick={() => setMode('social')}
-            >
-              社交分享
-            </button>
-            <button
-              className={`dt-share-modal-seg-btn${mode === 'archive' ? ' active' : ''}`}
-              onClick={handleSwitchToArchive}
-            >
-              存证预测
-            </button>
-          </div>
-        </div>
+        <div style={{ height: '0.5px', background: 'rgba(60,60,67,0.12)' }} />
 
         {/* Preview area */}
-        <div className="dt-share-modal-preview" style={{ margin: '12px 20px 0' }}>
+        <div className="dt-share-modal-preview">
           {isLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
               <div style={{
@@ -159,8 +108,8 @@ export default function DesktopShareModal({
               }} />
               <span style={{ fontSize: 13, color: '#8e8e93' }}>生成中…</span>
             </div>
-          ) : currentUrl ? (
-            <img src={currentUrl} alt="分享预览" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          ) : archiveUrl ? (
+            <img src={archiveUrl} alt="分享预览" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           ) : (
             <span style={{ fontSize: 13, color: '#8e8e93' }}>暂无预览</span>
           )}
@@ -171,8 +120,8 @@ export default function DesktopShareModal({
           <button
             className="dt-share-modal-download"
             onClick={handleDownload}
-            disabled={isLoading || !currentUrl}
-            style={isLoading || !currentUrl ? {} : { background: actionColor }}
+            disabled={isLoading || !archiveUrl}
+            style={isLoading || !archiveUrl ? {} : { background: actionColor }}
           >
             下载此图
           </button>

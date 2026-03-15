@@ -475,8 +475,6 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
 
       <DesktopShareModal
         isOpen={sharePreviewOpen}
-        socialBlob={sharePreviewBlob}
-        socialFilename={sharePreviewFilename}
         archiveBlob={sharePreviewArchiveBlob}
         archiveFilename={sharePreviewArchiveFilename}
         actionColor={sharePreviewActionColor}
