@@ -12,7 +12,7 @@ from typing import Optional, List, Dict
 import re
 
 import httpx
-from fastapi import FastAPI, HTTPException, Depends, Header, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -2518,6 +2518,31 @@ async def get_config():
         "trial_ended_register_button": app_cfg.get("trial_ended_register_button", "免费注册，继续使用"),
         "trial_ended_upgrade_hint": app_cfg.get("trial_ended_upgrade_hint", "标准版 ¥19.9/月 · 专业版 ¥49/月"),
     }
+
+
+@app.get("/api/symbols")
+@limiter.limit("10/minute")
+async def get_symbols(
+    request: Request,
+    market: str = Query(..., description="Market: a, hk, us, futures"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint: return symbol names for a given market. No auth required.
+    US stocks return empty list (users type codes directly).
+    """
+    if market == "us":
+        return {"items": [], "count": 0}
+    if market not in ("a", "hk", "futures"):
+        raise HTTPException(status_code=400, detail="market must be one of: a, hk, us, futures")
+    stmt = (
+        select(SymbolName)
+        .where(SymbolName.market == market)
+        .limit(10000)
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    items = [{"symbol": r.symbol, "market": r.market, "name": r.name} for r in rows]
+    return {"items": items, "count": len(items)}
 
 
 @app.get("/api/pricing")
