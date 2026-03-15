@@ -1689,10 +1689,51 @@ async def get_analysis_history(
                 "period": row.period,
                 "analysis_date": row.analysis_date.isoformat() if row.analysis_date else None,
                 "analyzed_at": row.analyzed_at.isoformat() if row.analyzed_at else None,
+                "is_favorited": row.is_favorited or False,
                 "detail": detail,
             }
         )
     return {"items": items}
+
+
+@app.post("/api/analyze/history/{history_id}/favorite")
+async def favorite_history(
+    history_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a history record as favorited."""
+    result = await db.execute(
+        select(AnalysisHistory)
+        .where(AnalysisHistory.id == history_id)
+        .where(AnalysisHistory.user_id == current_user.id)
+    )
+    item = result.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    item.is_favorited = True
+    await db.commit()
+    return {"success": True}
+
+
+@app.delete("/api/analyze/history/{history_id}/favorite")
+async def unfavorite_history(
+    history_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a history record from favorites."""
+    result = await db.execute(
+        select(AnalysisHistory)
+        .where(AnalysisHistory.id == history_id)
+        .where(AnalysisHistory.user_id == current_user.id)
+    )
+    item = result.scalars().first()
+    if not item:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    item.is_favorited = False
+    await db.commit()
+    return {"success": True}
 
 
 # ===================== Market Data Routes =====================

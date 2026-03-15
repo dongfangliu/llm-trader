@@ -166,6 +166,7 @@ class AnalysisHistory(Base):
     analysis_date = Column(Date, nullable=False, index=True)
     analyzed_at = Column(DateTime, default=datetime.utcnow, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_favorited = Column(Boolean, default=False)
 
 
 class Subscription(Base):
@@ -318,3 +319,10 @@ async def _migrate_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_device_id VARCHAR(255)",
         ]:
             await conn.execute(text(col_sql))
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT FALSE"
+            ))
+    except Exception:
+        pass
