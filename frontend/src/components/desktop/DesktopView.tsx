@@ -192,6 +192,8 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
           tierLabel={tierLabel}
           isRegisteredProTrial={isRegisteredProTrial}
           isGuestTrial={isGuestTrial}
+          favorites={savedRecords.map((r: any) => r.id || r)}
+          onToggleFavorite={() => {}}
         />
 
         {/* ── Workspace ── */}

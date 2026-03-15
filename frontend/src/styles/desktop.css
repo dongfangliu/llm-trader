@@ -57,6 +57,22 @@
     font-size: 11px; font-weight: 500; color: #aeaeb2; letter-spacing: 0.5px;
     text-transform: uppercase; padding: 8px 10px 4px;
   }
+  /* Accordion */
+  .dt-accordion-header {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 6px 10px; background: none; border: none;
+    cursor: pointer; font-size: 11px; font-weight: 600; color: #8e8e93;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    transition: color 0.15s;
+  }
+  .dt-accordion-header:hover { color: #3c3c43; }
+  .dt-accordion-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+  }
+  .dt-accordion-chevron.open {
+    transform: rotate(180deg);
+  }
   .dt-hist-item {
     width: 100%; background: none; border: none; cursor: pointer; padding: 8px 10px;
     border-radius: 6px; margin-bottom: 2px; text-align: left; transition: background 0.15s ease;

@@ -1,6 +1,6 @@
 'use client';
 
-import { type FC } from 'react';
+import { type FC, useState } from 'react';
 
 interface DesktopSidebarProps {
   activePanel: 'analyze' | 'loading' | 'result';
@@ -23,6 +23,8 @@ interface DesktopSidebarProps {
   onOpenHistory: (item: any) => void;
   onUpgrade: () => void;
   onUserMenuOpen: () => void;
+  favorites: string[];
+  onToggleFavorite: (id: string) => void;
   appName: string;
   tierLabel: string;
   isRegisteredProTrial: boolean;
@@ -41,8 +43,12 @@ const DesktopSidebar: FC<DesktopSidebarProps> = ({
   activePanel, history, analyzingItems, selectedHistoryId,
   limits, effectiveTier, user,
   onNewAnalysis, onOpenHistory, onUpgrade, onUserMenuOpen,
+  favorites, onToggleFavorite,
   appName, tierLabel, isRegisteredProTrial, isGuestTrial
 }) => {
+  const [allOpen, setAllOpen] = useState(true);
+  const [favOpen, setFavOpen] = useState(false);
+
   return (
     <nav className="dt-sidebar">
       {/* ── Brand area ── */}
@@ -101,11 +107,25 @@ const DesktopSidebar: FC<DesktopSidebarProps> = ({
         )}
       </div>
 
-      {/* History list */}
+      {/* ── History accordion ── */}
       <div className="dt-hist-list">
-        {/* Analyzing placeholders */}
-        {analyzingItems.length > 0 && (
+        {/* "所有分析" accordion */}
+        <button
+          className="dt-accordion-header"
+          onClick={() => setAllOpen(v => !v)}
+        >
+          <span>所有分析</span>
+          <svg
+            className={`dt-accordion-chevron${allOpen ? ' open' : ''}`}
+            width="12" height="12" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        {allOpen && (
           <>
+            {/* Analyzing placeholders */}
             {analyzingItems.map((a) => (
               <div key={a.tempId} className="dt-hist-item dt-hist-item-analyzing">
                 <div className="dt-hist-item-name">{a.symbol}</div>
@@ -119,38 +139,86 @@ const DesktopSidebar: FC<DesktopSidebarProps> = ({
                 </div>
               </div>
             ))}
+            {/* History items */}
+            {history.length > 0 ? (
+              history.slice(0, 50).map((h) => {
+                const ad = getActionDisplay(h.action);
+                const isSelected = h.id === selectedHistoryId;
+                const timeStr = h.analyzedAt
+                  ? new Date(h.analyzedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                  : '';
+                return (
+                  <button
+                    key={h.id}
+                    className={`dt-hist-item${isSelected ? ' active' : ''}`}
+                    onClick={() => onOpenHistory(h)}
+                  >
+                    <div className="dt-hist-item-name">{h.name || h.symbol}</div>
+                    <div className="dt-hist-item-row">
+                      <span className="dt-hist-item-signal" style={{ color: ad.color }}>{ad.text}</span>
+                      <span className="dt-hist-item-time">{timeStr}</span>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              analyzingItems.length === 0 && (
+                <div style={{ padding: '12px 10px', fontSize: 12, color: '#aeaeb2', textAlign: 'center', lineHeight: 1.6 }}>
+                  暂无历史记录<br/>分析后将在此显示
+                </div>
+              )
+            )}
           </>
         )}
 
-        {/* History items */}
-        {history.length > 0 ? (
+        {/* "收藏" accordion — only shown for logged-in users */}
+        {user && (
           <>
-            <div className="dt-hist-list-label">历史记录</div>
-            {history.slice(0, 50).map((h) => {
-              const ad = getActionDisplay(h.action);
-              const isSelected = h.id === selectedHistoryId;
-              const timeStr = h.analyzedAt
-                ? new Date(h.analyzedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-                : '';
-              return (
-                <button
-                  key={h.id}
-                  className={`dt-hist-item${isSelected ? ' active' : ''}`}
-                  onClick={() => onOpenHistory(h)}
-                >
-                  <div className="dt-hist-item-name">{h.name || h.symbol}</div>
-                  <div className="dt-hist-item-row">
-                    <span className="dt-hist-item-signal" style={{ color: ad.color }}>{ad.text}</span>
-                    <span className="dt-hist-item-time">{timeStr}</span>
+            <button
+              className="dt-accordion-header"
+              onClick={() => setFavOpen(v => !v)}
+              style={{ marginTop: 4 }}
+            >
+              <span>收藏</span>
+              <svg
+                className={`dt-accordion-chevron${favOpen ? ' open' : ''}`}
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {favOpen && (
+              <>
+                {favorites.length > 0 ? (
+                  history.filter(h => favorites.includes(h.id)).map((h) => {
+                    const ad = getActionDisplay(h.action);
+                    const isSelected = h.id === selectedHistoryId;
+                    const timeStr = h.analyzedAt
+                      ? new Date(h.analyzedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                      : '';
+                    return (
+                      <button
+                        key={h.id}
+                        className={`dt-hist-item${isSelected ? ' active' : ''}`}
+                        onClick={() => onOpenHistory(h)}
+                      >
+                        <div className="dt-hist-item-name">{h.name || h.symbol}</div>
+                        <div className="dt-hist-item-row">
+                          <span className="dt-hist-item-signal" style={{ color: ad.color }}>{ad.text}</span>
+                          <span className="dt-hist-item-time">{timeStr}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: '12px 10px', fontSize: 12, color: '#aeaeb2', textAlign: 'center', lineHeight: 1.6 }}>
+                    暂无收藏
                   </div>
-                </button>
-              );
-            })}
+                )}
+              </>
+            )}
           </>
-        ) : (
-          <div style={{ padding: '20px 10px', fontSize: 12, color: '#aeaeb2', textAlign: 'center', lineHeight: 1.6 }}>
-            暂无历史记录<br/>分析后将在此显示
-          </div>
         )}
       </div>
 
