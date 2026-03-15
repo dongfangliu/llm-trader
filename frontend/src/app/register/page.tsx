@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
-import { resendVerification } from '@/lib/api';
+import { resendVerification, getAppConfig, AppConfig } from '@/lib/api';
 
 /* ─── Eye toggle icon ─── */
 function EyeIcon({ visible }: { visible: boolean }) {
@@ -96,10 +96,22 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [localError, setLocalError] = useState('');
   const [resendStatus, setResendStatus] = useState('');
   const [registered, setRegistered] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inv = params.get('invite');
+    if (inv) setInviteCode(inv);
+  }, []);
+
+  useEffect(() => {
+    getAppConfig().then(setAppConfig).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -112,8 +124,9 @@ export default function RegisterPage() {
     setLocalError('');
     if (password !== confirmPassword) { setLocalError('两次密码输入不一致'); return; }
     if (password.length < 6) { setLocalError('密码至少 6 位'); return; }
+    if (appConfig?.require_invite_code && !inviteCode.trim()) { setLocalError('请输入邀请码'); return; }
     try {
-      await register({ email, password });
+      await register({ email, password, invite_code: inviteCode.trim() || undefined });
       setRegistered(true);
     } catch {
       // Error handled in store
@@ -234,7 +247,33 @@ export default function RegisterPage() {
               value={password} onChange={setPassword} autoComplete="new-password" />
             <FormRow label="确认密码" type="password" placeholder="再次输入"
               value={confirmPassword} onChange={setConfirmPassword}
-              autoComplete="new-password" isLast />
+              autoComplete="new-password" />
+            <div style={{
+              display: 'flex', alignItems: 'center', minHeight: 44,
+              padding: '0 16px',
+            }}>
+              <label style={{
+                fontSize: 15, color: '#000', fontWeight: 400,
+                width: 80, flexShrink: 0,
+              }}>
+                邀请码{appConfig?.require_invite_code
+                  ? <span style={{ color: '#ff3b30' }}> *</span>
+                  : <span style={{ fontSize: 11, color: '#aeaeb2' }}> （可选）</span>
+                }
+              </label>
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                placeholder={appConfig?.require_invite_code ? '请输入邀请码' : '邀请码（可选）'}
+                autoComplete="off"
+                style={{
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 15, color: '#000', padding: '10px 0',
+                  letterSpacing: '0.5px',
+                }}
+              />
+            </div>
           </div>
 
           {displayError && (

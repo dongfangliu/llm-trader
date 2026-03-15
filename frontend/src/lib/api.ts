@@ -48,6 +48,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   username?: string;
+  invite_code?: string;
 }
 
 export interface User {
@@ -195,6 +196,7 @@ export interface AnalysisHistoryItem {
   analysis_date: string;
   analyzed_at: string;
   detail: AnalyzeResponse;
+  is_favorited?: boolean;
 }
 
 export const getAnalysisHistory = async (limit: number = 30, deviceId?: string) => {
@@ -202,6 +204,14 @@ export const getAnalysisHistory = async (limit: number = 30, deviceId?: string) 
     params: { limit, device_id: deviceId },
   });
   return response.data as { items: AnalysisHistoryItem[] };
+};
+
+export const favoriteHistory = async (id: string): Promise<void> => {
+  await api.post(`/api/analyze/history/${id}/favorite`);
+};
+
+export const unfavoriteHistory = async (id: string): Promise<void> => {
+  await api.delete(`/api/analyze/history/${id}/favorite`);
 };
 
 export const getUsage = async (deviceId: string) => {
@@ -429,6 +439,7 @@ export interface SystemSettings {
     trial_ended_perks: TrialPerk[];
     trial_ended_register_button: string;
     trial_ended_upgrade_hint: string;
+    require_invite_code?: boolean;
   };
 }
 
@@ -507,6 +518,7 @@ export interface AppConfig {
   trial_ended_perks: TrialPerk[];
   trial_ended_register_button: string;
   trial_ended_upgrade_hint: string;
+  require_invite_code?: boolean;
 }
 
 export const getAppConfig = async (): Promise<AppConfig> => {

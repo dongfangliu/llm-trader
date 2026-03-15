@@ -482,6 +482,30 @@ export default function AdminSettingsPage() {
               <Input value={a.name} onChange={v => setApp({ name: v })} placeholder="我的AI分析" />
             </Field>
 
+            {/* Require invite code toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '0.5px solid rgba(60,60,67,0.1)', marginBottom: '0.5rem' }}>
+              <div>
+                <div style={{ fontSize: 15, color: 'var(--foreground)', fontWeight: 500 }}>仅邀请注册</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>开启后，注册必须提供有效邀请码</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setApp({ require_invite_code: !a.require_invite_code })}
+                style={{
+                  width: 51, height: 31, borderRadius: 16, border: 'none', cursor: 'pointer',
+                  background: a.require_invite_code ? '#34c759' : '#e9e9eb',
+                  position: 'relative', transition: 'background 0.2s',
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 2, left: a.require_invite_code ? 22 : 2,
+                  width: 27, height: 27, borderRadius: '50%', background: 'white',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+
             <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border)' }} />
             <h3 style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: '1rem' }}>🎁 体验专业版弹窗文案</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

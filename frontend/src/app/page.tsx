@@ -19,6 +19,8 @@ import {
   AnalysisHistoryItem,
   AnalyzeQueuedResponse,
   TaskStatusResponse,
+  favoriteHistory,
+  unfavoriteHistory,
 } from '@/lib/api';
 
 import {
@@ -320,14 +322,42 @@ export default function HomePage() {
   });
   const [savedRecordsOpen, setSavedRecordsOpen] = useState(false);
 
-  const isSavedRecord = (id: string) => savedRecords.some(r => r.id === id);
+  const isSavedRecord = (id: string) => {
+    if (user) {
+      return history.some(h => h.id === id && (h as any).is_favorited);
+    }
+    return savedRecords.some(r => r.id === id);
+  };
 
-  const handleBookmark = () => {
+  const handleBookmark = async () => {
     if (!result) return;
     const r = result.result ?? {};
     const d = result.data ?? {};
     const id = selectedHistoryId ?? `${d.symbol ?? ''}_${analyzeStartedAt ?? Date.now()}`;
 
+    if (user) {
+      // Server-side favorite for logged-in users
+      const item = history.find(h => h.id === id);
+      const wasFavorited = item ? !!(item as any).is_favorited : false;
+      try {
+        if (wasFavorited) {
+          await unfavoriteHistory(id);
+          showToast('已取消收藏');
+        } else {
+          await favoriteHistory(id);
+          showToast(`已收藏  ${d.name || d.symbol}`);
+        }
+        // Update local history state
+        setHistory(prev => prev.map(h =>
+          h.id === id ? { ...h, is_favorited: !wasFavorited } : h
+        ));
+      } catch {
+        showToast('操作失败', 'error');
+      }
+      return;
+    }
+
+    // Guest: use localStorage
     setSavedRecords(prev => {
       const exists = prev.some(rec => rec.id === id);
       let next: SavedRecord[];

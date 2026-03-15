@@ -193,7 +193,10 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
           tierLabel={tierLabel}
           isRegisteredProTrial={isRegisteredProTrial}
           isGuestTrial={isGuestTrial}
-          favorites={savedRecords.map((r: any) => r.id || r)}
+          favorites={user
+            ? history.filter(h => (h as any).is_favorited).map(h => h.id)
+            : savedRecords.map((r: any) => r.id || r)
+          }
           onToggleFavorite={() => {}}
         />
 
