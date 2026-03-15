@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store';
 import { activateAfdianOrder, getPricing, getAppConfig, PricingData, FeatureItem } from '@/lib/api';
+import UpgradeDesktopView from '@/components/desktop/UpgradeDesktopView';
 
 function UpgradePageInner() {
   const router = useRouter();
@@ -167,41 +168,21 @@ function UpgradePageInner() {
         )}
       </div>
 
-      {/* ── DESKTOP: Pricing Cards grid ── */}
-      <div className="desktop-only" style={{ maxWidth: '980px', margin: '0 auto', padding: '2rem 1rem 2rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
-          {/* Free */}
-          <div className="card" style={{ border: tier === 'free' ? '2px solid var(--primary)' : '1px solid var(--border)', position: 'relative' }}>
-            {tier === 'free' && <PillLabel text="当前版本" color="#2563eb" />}
-            <TierHeader name="免费版" emoji="🆓" price="0" period={period} limit={user ? freeLimit : guestLimit} color="#64748b" />
-            <FeatureList items={featuresFor('free')} type="check" />
-            <FeatureList items={missingFor('free')} type="cross" />
-            <div style={{ marginTop: '1.5rem' }}>
-              {user ? (<button className="btn btn-secondary" style={{ width: '100%' }} disabled>{tier === 'free' ? '当前版本' : '已升级'}</button>) : (<a href="/register" className="btn btn-secondary" style={{ width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none' }}>免费注册</a>)}
-            </div>
-          </div>
-          {/* Basic — recommended */}
-          <div className="card" style={{ border: '2px solid #007aff', position: 'relative', transform: 'translateY(-0.5rem)', boxShadow: '0 8px 30px rgba(0,122,255,0.15)' }}>
-            <PillLabel text={tier === 'basic' ? '当前版本' : '推荐'} color="#007aff" />
-            <TierHeader name="标准版" emoji="📊" price={basicPrice} period={period} limit={basicLimit} color="#007aff" />
-            <FeatureList items={featuresFor('basic')} type="check" />
-            <FeatureList items={missingFor('basic')} type="cross" />
-            <div style={{ marginTop: '1.5rem' }}>
-              {user ? (<button className={tier === 'basic' ? 'btn btn-secondary' : 'btn btn-primary'} style={{ width: '100%', background: tier === 'basic' ? undefined : '#007aff', borderColor: tier === 'basic' ? undefined : '#007aff' }} onClick={() => handleUpgrade('basic')} disabled={tier === 'basic' || tier === 'premium'}>{tier === 'basic' ? '当前版本' : tier === 'premium' ? '已是更高等级' : '前往爱发电订阅 →'}</button>) : (<a href="/register" className="btn btn-primary" style={{ width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none', background: '#007aff' }}>注册后订阅</a>)}
-            </div>
-          </div>
-          {/* Premium */}
-          <div className="card" style={{ border: tier === 'premium' ? '2px solid #7c3aed' : '1px solid #ddd6fe', position: 'relative', background: 'linear-gradient(160deg, #faf5ff 0%, #ffffff 100%)' }}>
-            {tier === 'premium' && <PillLabel text="当前版本" color="#7c3aed" />}
-            {(!tier || tier === 'free' || tier === 'basic') && <PillLabel text="✨ 最高权益" color="#7c3aed" />}
-            <TierHeader name="专业版" emoji="👑" price={premiumPrice} period={period} limit={premiumLimit} color="#7c3aed" />
-            <FeatureList items={featuresFor('premium')} type="check" />
-            <FeatureList items={missingFor('premium')} type="cross" />
-            <div style={{ marginTop: '1.5rem' }}>
-              {user ? (<button className="btn" style={{ width: '100%', background: tier === 'premium' ? '#f3f4f6' : 'linear-gradient(135deg, #7c3aed, #4f46e5)', color: tier === 'premium' ? 'var(--muted)' : 'white', border: 'none' }} onClick={() => handleUpgrade('premium')} disabled={tier === 'premium'}>{tier === 'premium' ? '当前版本' : '前往爱发电订阅 →'}</button>) : (<a href="/register" className="btn" style={{ width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', color: 'white' }}>注册后订阅</a>)}
-            </div>
-          </div>
-        </div>
+      {/* ── DESKTOP: Full upgrade view ── */}
+      <div className="desktop-only">
+        <UpgradeDesktopView
+          tier={tier}
+          user={user}
+          pricing={pricing}
+          onUpgrade={handleUpgrade}
+          orderNo={orderNo}
+          setOrderNo={setOrderNo}
+          activating={activating}
+          activateResult={activateResult}
+          activateError={activateError}
+          onActivate={handleActivate}
+          onGoHome={() => router.push('/')}
+        />
       </div>
 
       {/* ── MOBILE: Scroll-snap pricing cards ── */}
@@ -314,13 +295,14 @@ function UpgradePageInner() {
         </div>
       </div>
 
+      {/* ── Mobile: payment note + how to subscribe + activation ── */}
       {/* Payment note */}
-      <div style={{ padding: '12px 16px 0', textAlign: 'center' }}>
+      <div className="mobile-only" style={{ padding: '12px 16px 0', textAlign: 'center' }}>
         <p style={{ fontSize: '12px', color: '#aeaeb2' }}>支付宝 · 微信支付 · 订阅后填入订单号即时生效</p>
       </div>
 
       {/* ── How to subscribe ── */}
-      <div style={{ padding: '28px 16px 0' }}>
+      <div className="mobile-only" style={{ padding: '28px 16px 0' }}>
         <p style={{ fontSize: '12px', fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px', paddingLeft: '4px' }}>
           如何订阅
         </p>
@@ -358,8 +340,8 @@ function UpgradePageInner() {
         </div>
       </div>
 
-      {/* ── Activation Form ── */}
-      <div style={{ padding: '24px 16px 0' }}>
+      {/* ── Activation Form (mobile) ── */}
+      <div className="mobile-only" style={{ padding: '24px 16px 0' }}>
         <p style={{ fontSize: '12px', fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px', paddingLeft: '4px' }}>
           激活订阅
         </p>
@@ -439,9 +421,9 @@ function UpgradePageInner() {
         )}
       </div>
 
-      {/* Not logged in prompt */}
+      {/* Not logged in prompt (mobile) */}
       {!user && (
-        <div style={{ padding: '20px 16px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="mobile-only" style={{ padding: '20px 16px 0', flexDirection: 'column', gap: 10 }}>
           <a href="/register" style={{
             display: 'block', width: '100%', height: 50, borderRadius: 12,
             background: '#007aff', color: 'white', fontSize: 17, fontWeight: 600,

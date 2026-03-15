@@ -1,13 +1,13 @@
 # Frontend Docker Configuration
-FROM node:18-alpine AS builder
+FROM docker.m.daocloud.io/library/node:18-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (using Taobao mirror for faster downloads in China)
+RUN npm ci --registry=https://registry.npmmirror.com
 
 # Copy source code
 COPY . .
@@ -24,7 +24,7 @@ ENV BACKEND_URL=$BACKEND_URL
 RUN npm run build
 
 # Production runner
-FROM node:18-alpine
+FROM docker.m.daocloud.io/library/node:18-alpine
 
 WORKDIR /app
 

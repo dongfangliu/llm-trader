@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { loadSymbolCache, searchSymbols, type SymbolEntry } from '@/lib/symbolCache';
+import { loadSymbolCache, searchSymbols, getSymbolEntry, type SymbolEntry } from '@/lib/symbolCache';
 
 interface SymbolAutocompleteProps {
   value: string;
@@ -20,10 +20,16 @@ export default function SymbolAutocomplete({
   placeholder,
   disabled,
 }: SymbolAutocompleteProps) {
+  const [inputText, setInputText] = useState('');
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SymbolEntry[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const composingRef = useRef(false);
+  const justEndedCompositionRef = useRef(false);
+  const prevValueRef = useRef(value);
+  const selfChangedRef = useRef(false);
 
   // Preload cache on mount
   useEffect(() => {
@@ -32,15 +38,46 @@ export default function SymbolAutocomplete({
     }
   }, []);
 
-  // Clear suggestions when market changes
+  // Clear when market changes
   useEffect(() => {
     setSuggestions([]);
     setOpen(false);
     setActiveIdx(-1);
+    setInputText('');
+    setSelectedName(null);
   }, [market]);
 
+  // Sync with external value changes (e.g. HotStocks click)
+  useEffect(() => {
+    if (value === prevValueRef.current) return;
+    prevValueRef.current = value;
+    if (composingRef.current) return;
+    if (selfChangedRef.current) {
+      selfChangedRef.current = false;
+      return;
+    }
+    // External set
+    if (value === '') {
+      setInputText('');
+      setSelectedName(null);
+      setSuggestions([]);
+      setOpen(false);
+    } else {
+      setInputText(value);
+      const entry = getSymbolEntry(value, market);
+      setSelectedName(entry?.name ?? null);
+      setSuggestions([]);
+      setOpen(false);
+    }
+  }, [value, market]);
+
   const handleChange = useCallback((v: string) => {
-    onChange(v);
+    setInputText(v);
+    setSelectedName(null); // clear name display once user starts editing
+    if (/^[A-Za-z0-9.\-]*$/.test(v)) {
+      selfChangedRef.current = true;
+      onChange(v);
+    }
     if (market === 'us' || !v.trim()) {
       setSuggestions([]);
       setOpen(false);
@@ -53,6 +90,10 @@ export default function SymbolAutocomplete({
   }, [market, onChange]);
 
   const handleSelect = useCallback((entry: SymbolEntry) => {
+    setInputText(entry.symbol);          // input shows code only
+    setSelectedName(entry.name ?? null); // name shown below
+    prevValueRef.current = entry.symbol;
+    selfChangedRef.current = true;
     onChange(entry.symbol);
     setSuggestions([]);
     setOpen(false);
@@ -92,8 +133,22 @@ export default function SymbolAutocomplete({
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
       <input
         type="text"
-        value={value}
-        onChange={e => handleChange(e.target.value)}
+        value={inputText}
+        onChange={e => {
+          if (composingRef.current) {
+            setInputText(e.target.value);
+            return;
+          }
+          if (justEndedCompositionRef.current) return;
+          handleChange(e.target.value);
+        }}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={e => {
+          composingRef.current = false;
+          justEndedCompositionRef.current = true;
+          handleChange((e.target as HTMLInputElement).value);
+          setTimeout(() => { justEndedCompositionRef.current = false; }, 0);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
@@ -107,6 +162,15 @@ export default function SymbolAutocomplete({
           boxSizing: 'border-box',
         }}
       />
+      {selectedName && (
+        <div style={{
+          fontSize: 12, color: '#8e8e93',
+          marginTop: 5, paddingLeft: 4,
+          lineHeight: 1,
+        }}>
+          {selectedName}
+        </div>
+      )}
       {open && suggestions.length > 0 && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
@@ -114,11 +178,13 @@ export default function SymbolAutocomplete({
           boxShadow: '0 4px 20px rgba(0,0,0,0.14), 0 0 0 0.5px rgba(0,0,0,0.08)',
           zIndex: 1000, overflow: 'hidden',
         }}>
+          <div style={{ maxHeight: 240, overflowY: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
           {suggestions.map((entry, i) => (
             <button
               key={entry.symbol}
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(entry); }}
+              onTouchStart={(e) => { e.preventDefault(); handleSelect(entry); }}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 width: '100%', padding: '9px 14px', background: i === activeIdx ? '#f2f2f7' : 'transparent',
@@ -134,6 +200,7 @@ export default function SymbolAutocomplete({
               </span>
             </button>
           ))}
+          </div>
         </div>
       )}
     </div>

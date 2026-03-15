@@ -57,12 +57,28 @@ export async function loadSymbolCache(): Promise<SymbolEntry[]> {
   }
 }
 
+export function getSymbolEntry(symbol: string, market: string): SymbolEntry | undefined {
+  if (!_memCache) return undefined;
+  return _memCache.find(e => e.symbol === symbol && e.market === market);
+}
+
 export function searchSymbols(query: string, market: string, limit = 8): SymbolEntry[] {
   if (!_memCache || !query.trim()) return [];
   const q = query.trim().toLowerCase();
-  return _memCache
-    .filter(e => e.market === market && (
-      e.symbol.toLowerCase().includes(q) || e.name.toLowerCase().includes(q)
-    ))
-    .slice(0, limit);
+  type R = { entry: SymbolEntry; rank: number };
+  const ranked: R[] = [];
+  for (const e of _memCache) {
+    if (e.market !== market) continue;
+    const sym = e.symbol.toLowerCase();
+    const name = e.name.toLowerCase();
+    let rank = -1;
+    if (sym === q)               rank = 0; // 完全匹配代码
+    else if (sym.startsWith(q))  rank = 1; // 代码前缀
+    else if (name.startsWith(q)) rank = 2; // 名称前缀
+    else if (sym.includes(q))    rank = 3; // 代码包含
+    else if (name.includes(q))   rank = 4; // 名称包含
+    if (rank >= 0) ranked.push({ entry: e, rank });
+  }
+  ranked.sort((a, b) => a.rank - b.rank);
+  return ranked.slice(0, limit).map(r => r.entry);
 }
