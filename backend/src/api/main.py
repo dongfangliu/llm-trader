@@ -762,6 +762,11 @@ async def register(
     if app_cfg.get("require_invite_code", False):
         if not req.invite_code or not req.invite_code.strip():
             raise HTTPException(status_code=400, detail="注册需要邀请码")
+        # Validate code actually exists
+        code_to_check = req.invite_code.strip().upper()
+        code_check_result = await db.execute(select(User).where(User.invite_code == code_to_check))
+        if not code_check_result.scalars().first():
+            raise HTTPException(status_code=400, detail="邀请码无效，请检查后重试")
 
     existing = await user_service.get_user_by_email(db, email)
     if existing:
@@ -951,7 +956,6 @@ async def use_invite_code(
     if not applied:
         raise HTTPException(status_code=404, detail="邀请码无效，请检查后重试")
     await db.commit()
-    logger.info("invite_used inviter=? invitee=%s code=%s", current_user.id, code)
     return {"success": True, "message": "邀请码使用成功！您和邀请人各获得 +10 次分析次数", "bonus_added": 10}
 
 
@@ -1698,7 +1702,7 @@ async def get_analysis_history(
 
 @app.post("/api/analyze/history/{history_id}/favorite")
 async def favorite_history(
-    history_id: str,
+    history_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1718,7 +1722,7 @@ async def favorite_history(
 
 @app.delete("/api/analyze/history/{history_id}/favorite")
 async def unfavorite_history(
-    history_id: str,
+    history_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

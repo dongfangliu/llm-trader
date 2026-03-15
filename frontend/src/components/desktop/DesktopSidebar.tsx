@@ -24,7 +24,6 @@ interface DesktopSidebarProps {
   onUpgrade: () => void;
   onUserMenuOpen: () => void;
   favorites: string[];
-  onToggleFavorite: (id: string) => void;
   appName: string;
   tierLabel: string;
   isRegisteredProTrial: boolean;
@@ -43,7 +42,7 @@ const DesktopSidebar: FC<DesktopSidebarProps> = ({
   activePanel, history, analyzingItems, selectedHistoryId,
   limits, effectiveTier, user,
   onNewAnalysis, onOpenHistory, onUpgrade, onUserMenuOpen,
-  favorites, onToggleFavorite,
+  favorites,
   appName, tierLabel, isRegisteredProTrial, isGuestTrial
 }) => {
   const [allOpen, setAllOpen] = useState(true);

@@ -503,6 +503,7 @@ export default function HomePage() {
     confidence: h.detail?.result?.confidence,
     analyzedAt: h.analyzed_at,
     detail: h.detail,
+    is_favorited: h.is_favorited ?? false,
   });
 
   const getMarketRecommendations = (targetMarket: string, prevSignature = '') => {

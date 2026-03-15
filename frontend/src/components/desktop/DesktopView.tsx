@@ -197,7 +197,6 @@ const DesktopView: FC<DesktopViewProps> = (props) => {
             ? history.filter(h => (h as any).is_favorited).map(h => h.id)
             : savedRecords.map((r: any) => r.id || r)
           }
-          onToggleFavorite={() => {}}
         />
 
         {/* ── Workspace ── */}
