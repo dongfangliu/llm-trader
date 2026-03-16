@@ -1726,11 +1726,7 @@ body {
   background: #f2f2f7;
   border-radius: 20px 20px 0 0;
   display: flex; flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
+  overflow: hidden;
   animation: rsPanelIn 0.45s cubic-bezier(0.32,0.72,0,1) forwards;
   will-change: transform;
   /* V11: stronger top shadow with inner highlight */
@@ -1886,7 +1882,10 @@ body {
 /* ── Scroll body ── */
 .rs-scroll {
   flex: 1;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .rs-panel::-webkit-scrollbar { display: none; }
 

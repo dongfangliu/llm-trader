@@ -7,10 +7,6 @@ import MarketSegmented from '@/components/MarketSegmented';
 import HotStocksStrip from '@/components/HotStocksStrip';
 import AdvancedSettingsPanel from '@/components/AdvancedSettingsPanel';
 import UpgradeTeaser from '@/components/UpgradeTeaser';
-import SignalHero from '@/components/SignalHero';
-import ResultTabs from '@/components/ResultTabs';
-import MultiPeriodCards from '@/components/MultiPeriodCards';
-import UpgradeNudge from '@/components/UpgradeNudge';
 import HistorySheet from '@/components/HistorySheet';
 import BottomSheet from '@/components/BottomSheet';
 import ResultSheet from '@/components/ResultSheet';
@@ -971,6 +967,7 @@ const MobileView: FC<MobileViewProps> = (props) => {
                     onOpenHistorySheet={() => setHistorySheetOpen(true)}
                     isSaved={isSavedRecord(selectedHistoryId ?? `${result?.data?.symbol ?? ''}_${analyzeStartedAt ?? ''}`)}
                   />
+
                   {/* Mobile: re-open button when sheet is dismissed */}
                   {!resultSheetOpen && (
                     <div className="mobile-only" style={{ position: 'fixed', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: 16, right: 16, zIndex: 50 }}>
@@ -1005,145 +1002,6 @@ const MobileView: FC<MobileViewProps> = (props) => {
                     </div>
                   </BottomSheet>
 
-                  {/* ── Signal block (mobile only) ── */}
-                  <div className="result-section result-section-animated mobile-only">
-                    <SignalHero result={result} tier={resultDisplayTier} period={period} />
-                  </div>
-
-                  {/* ── Deep analysis tabs (mobile only) ── */}
-                  {effectiveTier !== 'free' && result.result && (
-                    <div className="result-section result-section-animated mobile-only" style={{ padding: 0 }}>
-                      <ResultTabs
-                        tabs={allTabs}
-                        activeTab={activeTab}
-                        onTabChange={setActiveTab}
-                      >
-                        {allTabs[activeTab]?.key === '__multiperiod__' ? (
-                          <MultiPeriodCards results={multiPeriodResults} />
-                        ) : (
-                          <p className="result-tab-text">
-                            {(result.result as any)?.[allTabs[activeTab]?.key] || '暂无数据'}
-                          </p>
-                        )}
-                      </ResultTabs>
-                    </div>
-                  )}
-
-                  {/* ── Risk factors (mobile only) ── */}
-                  {effectiveTier !== 'free' && result.result?.risk_factors?.length > 0 && (
-                    <div className="result-section result-section-animated mobile-only">
-                      <div className="result-section-title">风险因素</div>
-                      <div className="risk-chips-wrap">
-                        {result.result.risk_factors.map((f: string, i: number) => (
-                          <span key={i} className="risk-chip">
-                            <span className="risk-chip-dot" />
-                            {f}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── Technical indicators (mobile only) ── */}
-                  {effectiveTier !== 'free' && result.result?.indicators && (
-                    <div className="result-section result-section-animated mobile-only">
-                      <div className="result-section-title">技术指标</div>
-                      <div className="indicator-scroll">
-                        {Object.entries(result.result.indicators).map(([k, v]) => (
-                          <div key={k} className="indicator-card">
-                            <div className="indicator-card-name">{k}</div>
-                            <div className="indicator-card-value">
-                              {typeof v === 'number' ? (v as number).toFixed(2) : String(v)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── Position advice (mobile only) ── */}
-                  {effectiveTier !== 'free' && (result.result?.position_advice || (resultPositionParams && Object.values(resultPositionParams).some((v) => v?.trim()))) && (
-                    <div className="result-section result-section-animated mobile-only">
-                      {result.result?.position_advice && (
-                        <div style={{ marginBottom: resultPositionParams && Object.values(resultPositionParams).some((v) => v?.trim()) ? '1rem' : 0 }}>
-                          <div className="result-section-title">持仓建议</div>
-                          <p style={{ fontSize: '0.9rem', color: 'var(--muted)', lineHeight: '1.7', margin: 0 }}>
-                            {result.result.position_advice.reason}
-                            {typeof result.result.position_advice.suggested_quantity === 'number' ? `（建议数量: ${result.result.position_advice.suggested_quantity}）` : ''}
-                          </p>
-                        </div>
-                      )}
-                      {resultPositionParams && Object.values(resultPositionParams).some((v) => v?.trim()) && (
-                        <div style={{ padding: '0.65rem 0.85rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem' }}>
-                          <div style={{ fontSize: '0.8rem', fontWeight: '600', marginBottom: '0.4rem', color: '#92400e' }}>本次分析持仓参数</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                            {resultPositionParams.holdingQuantity && <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: '#fef3c7', borderRadius: '9999px', color: '#78350f' }}>持有 {resultPositionParams.holdingQuantity} 股</span>}
-                            {resultPositionParams.costPrice && <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: '#fef3c7', borderRadius: '9999px', color: '#78350f' }}>成本价 {resultPositionParams.costPrice}</span>}
-                            {resultPositionParams.maxPosition && <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: '#fef3c7', borderRadius: '9999px', color: '#78350f' }}>最大持仓 {resultPositionParams.maxPosition} 股</span>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── Upgrade nudge (mobile only) ── */}
-                  {resultDisplayTier !== 'premium' && (
-                    <div className="result-section mobile-only result-section-animated" style={{ padding: 0 }}>
-                      <UpgradeNudge tier={resultDisplayTier} pricing={pricing} onUpgrade={() => onNavigate('/upgrade')} />
-                    </div>
-                  )}
-
-                  {/* ── Action row (mobile only) ── */}
-                  <div className="result-section result-action-section result-section-animated mobile-only">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {/* Remaining count badge */}
-                      {result.usage?.remaining != null && (
-                        <div style={{ textAlign: 'center' }}>
-                          <span className="result-remaining-badge">
-                            今日剩余<strong>{result.usage.remaining}</strong>次
-                          </span>
-                        </div>
-                      )}
-                      {/* Share row */}
-                      {effectiveTier === 'free' ? (
-                        <button
-                          onClick={() => generateShareCard()}
-                          disabled={shareLoading}
-                          className="result-action-btn primary-share"
-                          style={{ width: '100%' }}
-                        >
-                          {shareLoading ? '生成中…' : '📤 分享研判卡片'}
-                        </button>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button
-                            onClick={() => generateShareCard(undefined, undefined, undefined, true)}
-                            disabled={saveLongLoading}
-                            className="result-action-btn primary-save"
-                            style={{ flex: 1 }}
-                          >
-                            {saveLongLoading ? '生成中…' : '💾 保存'}
-                          </button>
-                          <button
-                            onClick={() => generateShareCard()}
-                            disabled={shareLoading}
-                            className="result-action-btn primary-share"
-                            style={{ flex: 1 }}
-                          >
-                            {shareLoading ? '生成中…' : '📤 分享'}
-                          </button>
-                        </div>
-                      )}
-                      {/* Continue */}
-                      <button
-                        onClick={onBackToAnalyze}
-                        className="result-action-btn ghost-continue"
-                        style={{ width: '100%' }}
-                      >
-                        继续分析
-                      </button>
-                    </div>
-                  </div>
                 </div>
               ) : null}
             </div>

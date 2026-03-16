@@ -620,38 +620,38 @@ export const pollTask = async (taskId: string): Promise<TaskStatusResponse> => {
 };
 
 /**
- * Connect to WebSocket for task result.
+ * Connect via SSE for task result.
  * Calls onMessage when status is done/failed/timeout.
- * Returns a cleanup function to close the socket.
+ * Returns a cleanup function to close the stream.
  */
-export const connectTaskWebSocket = (
+export const connectTaskSSE = (
   taskId: string,
   onMessage: (data: TaskStatusResponse) => void,
-  onError?: (err: Event) => void,
+  onError?: (err: Event | Error) => void,
 ): (() => void) => {
-  // Derive WebSocket base URL from the current page origin
-  const wsProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsHost = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
-  const ws = new WebSocket(`${wsProto}//${wsHost}/ws/task/${taskId}`);
+  const es = new EventSource(`/api/task/${taskId}/stream`);
 
-  ws.onmessage = (event) => {
+  es.addEventListener('done', (e: MessageEvent) => {
     try {
-      const data = JSON.parse(event.data) as TaskStatusResponse;
+      const data = JSON.parse(e.data) as TaskStatusResponse;
       onMessage(data);
-    } catch {
-      // ignore parse errors
+    } catch (err) {
+      onError?.(err as Error);
     }
+    es.close();
+  });
+
+  es.addEventListener('timeout', () => {
+    onError?.(new Event('timeout'));
+    es.close();
+  });
+
+  es.onerror = (e) => {
+    onError?.(e);
+    es.close();
   };
 
-  if (onError) {
-    ws.onerror = onError;
-  }
-
-  return () => {
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-      ws.close();
-    }
-  };
+  return () => es.close();
 };
 
 export default api;

@@ -12,7 +12,8 @@ from typing import Optional, List, Dict
 import re
 
 import httpx
-from fastapi import FastAPI, HTTPException, Depends, Header, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, Query
+from sse_starlette.sse import EventSourceResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -59,13 +60,10 @@ logger = logging.getLogger(__name__)
 
 # Rate limiter — use real client IP behind reverse proxy
 def _get_real_ip(request: Request) -> str:
-    """Extract real client IP from X-Forwarded-For or X-Real-IP headers."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
+    """Use direct TCP connection IP for rate limiting (no trusted proxy).
+    Update this when Nginx/Caddy is added in front."""
+    if request.client:
+        return request.client.host
     return get_remote_address(request)
 
 limiter = Limiter(key_func=_get_real_ip)
@@ -129,6 +127,16 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONR
 
 
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s: %s", request.url, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务器内部错误，请稍后重试"},
+    )
+
 
 # CORS middleware — restrict to configured origins in production
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
@@ -1466,30 +1474,26 @@ async def get_task_status(task_id: str, request: Request):
     return json.loads(raw)
 
 
-@app.websocket("/ws/task/{task_id}")
-async def ws_task_status(websocket: WebSocket, task_id: str):
-    """WebSocket: push task result when ready, then close."""
-    await websocket.accept()
-    try:
-        redis = websocket.app.state.redis
-        # Poll Redis until result is ready (max 5 minutes = 600 × 0.5s)
-        for _ in range(600):
+@app.get("/api/task/{task_id}/stream")
+@limiter.limit("20/minute")
+async def sse_task_stream(request: Request, task_id: str):
+    """SSE: push task result when ready, then close."""
+    async def generate():
+        redis = request.app.state.redis
+        for _ in range(600):  # max 5 minutes
+            if await request.is_disconnected():
+                break
             raw = await redis.get(f"task:{task_id}")
             if raw:
                 data = json.loads(raw)
                 if data.get("status") in ("done", "failed"):
-                    await websocket.send_json(data)
-                    break
+                    yield {"event": "done", "data": json.dumps(data)}
+                    return
+            yield {"event": "ping", "data": ""}
             await asyncio.sleep(0.5)
-        else:
-            await websocket.send_json({"status": "timeout", "task_id": task_id})
-    except WebSocketDisconnect:
-        pass
-    finally:
-        try:
-            await websocket.close()
-        except Exception:
-            pass
+        yield {"event": "timeout", "data": json.dumps({"task_id": task_id})}
+
+    return EventSourceResponse(generate())
 
 
 @app.get("/api/analyze/limits")

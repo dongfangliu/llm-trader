@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore, useAnalysisStore } from '@/lib/store';
 import {
   analyze,
-  connectTaskWebSocket,
+  connectTaskSSE,
   pollTask,
   getUsage,
   getLimits,
@@ -830,11 +830,11 @@ export default function HomePage() {
       setLimits(queued.usage);
       clearTimeout(timeoutHandle);
 
-      // Wait for result via WebSocket (with polling fallback)
+      // Wait for result via SSE (with polling fallback)
       const wsTimeoutHandle = setTimeout(() => setAnalyzeTimedOut(true), 3 * 60 * 1000);
 
       await new Promise<void>((resolve, reject) => {
-        const cleanup = connectTaskWebSocket(
+        const cleanup = connectTaskSSE(
           queued.task_id,
           (data) => {
             clearTimeout(wsTimeoutHandle);
@@ -856,7 +856,7 @@ export default function HomePage() {
             }
           },
           (_err) => {
-            // WebSocket error — fall back to polling
+            // SSE error — fall back to polling
             cleanup();
             const poll = async () => {
               for (let i = 0; i < 60; i++) {

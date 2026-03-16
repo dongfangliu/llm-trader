@@ -74,6 +74,10 @@ engine = create_async_engine(
     settings.database_url,
     echo=False,
     future=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,   # test connection before use, prevents stale-connection 500s
+    pool_recycle=3600,    # recycle after 1h, prevents DB-side timeout disconnects
 )
 
 async_session = async_sessionmaker(
