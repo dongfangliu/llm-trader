@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore, useAnalysisStore } from '@/lib/store';
 import {
@@ -297,11 +297,13 @@ export default function HomePage() {
   const tier = user?.subscription_tier ?? 'free';
   // Tracks whether the trial was consumed this session (avoids an extra getMe() call).
   const [proTrialConsumed, setProTrialConsumed] = useState(false);
+  const [pendingProTrialConsumed, setPendingProTrialConsumed] = useState(false);
   // Free/basic registered users who haven't used their one-time pro trial yet
   // are treated as premium in the UI so they can access all premium features.
   const isRegisteredProTrial = user !== null && (tier === 'free' || tier === 'basic') && !user.has_had_pro_trial && !proTrialConsumed;
   const [resultDisplayTier, setResultDisplayTier] = useState<string>(tier);
   const [guestTrialUsed, setGuestTrialUsed] = useState(false);
+  const [pendingGuestTrialUsed, setPendingGuestTrialUsed] = useState(false);
   const [deviceBanned, setDeviceBanned] = useState(false);
   const [showTrialWelcome, setShowTrialWelcome] = useState(false);
   const [guestChecked, setGuestChecked] = useState(false);
@@ -680,7 +682,34 @@ export default function HomePage() {
     }
   }, [activePanel]);
 
+  // Flush pending trial-consumed state — called when user is done viewing results
+  const flushPendingTrialConsumed = useCallback(() => {
+    if (pendingGuestTrialUsed) {
+      setGuestTrialUsed(true);
+      setPendingGuestTrialUsed(false);
+    }
+    if (pendingProTrialConsumed) {
+      setProTrialConsumed(true);
+      setPendingProTrialConsumed(false);
+    }
+  }, [pendingGuestTrialUsed, pendingProTrialConsumed]);
+
+  // Mobile path: flush when ResultSheet closes
+  const prevResultSheetOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = prevResultSheetOpenRef.current;
+    prevResultSheetOpenRef.current = resultSheetOpen;
+    if (wasOpen && !resultSheetOpen && (pendingGuestTrialUsed || pendingProTrialConsumed)) {
+      flushPendingTrialConsumed();
+    }
+  }, [resultSheetOpen, pendingGuestTrialUsed, pendingProTrialConsumed, flushPendingTrialConsumed]);
+
   const handleAnalyze = async () => {
+    // Desktop fallback: if user tries to analyze again while trial result is pending, flush now
+    if (pendingGuestTrialUsed || pendingProTrialConsumed) {
+      flushPendingTrialConsumed();
+      return; // Trial-ended screen will render on next cycle
+    }
     // ── Guest trial/ban — GuestTrialEndedScreen shows automatically via open prop ──
     if (!user && (guestTrialUsed || deviceBanned)) return;
 
@@ -780,7 +809,7 @@ export default function HomePage() {
           // If this was a trial analysis, mark it consumed locally so the UI
           // immediately returns to the user's actual tier without an extra server round-trip.
           if (isRegisteredProTrial) {
-            setProTrialConsumed(true);
+            setPendingProTrialConsumed(true);  // 延迟到用户看完结果再降级
           }
         } else if (deviceId) {
           getUsage(deviceId).then((usage) => {
@@ -789,7 +818,7 @@ export default function HomePage() {
               daily_limit: usage.daily_limit ?? (usage.subscription === 'premium' ? 15 : usage.subscription === 'basic' ? 5 : 1),
             });
             if ((usage as any).trial_used) {
-              setGuestTrialUsed(true);
+              setPendingGuestTrialUsed(true);   // 不立即触发结束界面，等用户看完结果
               setShowTrialWelcome(false);
             }
           }).catch(() => {});

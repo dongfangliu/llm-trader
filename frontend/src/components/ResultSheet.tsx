@@ -403,36 +403,39 @@ export default function ResultSheet({
 
       <div className="rs-panel" style={{ transform: panelTransform, transition: panelTransition }}>
 
-        {/* ── V1: Full-bleed HERO area ── */}
-        <div className="rs-hero" style={{ background: info.heroBg }}>
-          {/* Radial glow overlay */}
-          <div style={{ position: 'absolute', inset: 0, background: info.glow, pointerEvents: 'none' }} />
-          {/* V11: diagonal shine streak */}
-          <div style={{ position: 'absolute', inset: 0, background: info.shine, pointerEvents: 'none' }} />
+        {/* Close button — fixed to panel top-right, always visible above scroll */}
+        <button onClick={dismiss} aria-label="关闭" style={{
+          position: 'absolute', top: 10, right: 14, zIndex: 10,
+          width: 30, height: 30, borderRadius: '50%',
+          background: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
+          border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.5)',
+          WebkitTapHighlightColor: 'transparent',
+          transition: 'background 0.12s',
+        }}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+        </button>
 
-          {/* Drag handle (V2: tinted) */}
-          <div className="rs-handle-zone"
-            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-            <div className="rs-handle-pill" style={{ background: handleColor }} />
-          </div>
+        {/* ── Scroll body — hero + price + analysis all scroll together ── */}
+        <div className="rs-scroll" style={{ WebkitOverflowScrolling: 'touch' }}>
 
-          {/* Close button — top right of hero */}
-          <button onClick={dismiss} aria-label="关闭" style={{
-            position: 'absolute', top: 10, right: 14,
-            width: 30, height: 30, borderRadius: '50%',
-            background: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-            border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.5)',
-            WebkitTapHighlightColor: 'transparent',
-            transition: 'background 0.12s',
-          }}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          </button>
+          {/* ── V1: Full-bleed HERO area (inside scroll) ── */}
+          <div className="rs-hero" style={{ background: info.heroBg }}>
+            {/* Radial glow overlay */}
+            <div style={{ position: 'absolute', inset: 0, background: info.glow, pointerEvents: 'none' }} />
+            {/* V11: diagonal shine streak */}
+            <div style={{ position: 'absolute', inset: 0, background: info.shine, pointerEvents: 'none' }} />
 
-          {/* Stock identity */}
+            {/* Drag handle (V2: tinted) */}
+            <div className="rs-handle-zone"
+              onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+              <div className="rs-handle-pill" style={{ background: handleColor }} />
+            </div>
+
+            {/* Stock identity */}
           <div className="rs-identity">
             <span className="rs-stock-name" style={isDark ? { color: 'rgba(255,255,255,0.92)' } : undefined}>{result?.data?.name || result?.data?.symbol}</span>
             {result?.data?.name && (
@@ -487,12 +490,7 @@ export default function ResultSheet({
             )}
           </div>
         </div>
-        {/* END hero — V3: price data lives outside the colored stage */}
-
-        {/* ── V2: Tinted scroll body — price + analysis scroll together ── */}
-        <div className="rs-scroll" style={{ background: `linear-gradient(to bottom, ${info.tint} 0%, transparent 120px)`, WebkitOverflowScrolling: 'touch' }}>
-
-          {/* Price strip — now inside scroll */}
+          {/* Price strip */}
           {/* STRIP_LABEL: always dark since bg is white regardless of hero isDark */}
           <div className="rs-price-strip" style={{
             background: '#fff',

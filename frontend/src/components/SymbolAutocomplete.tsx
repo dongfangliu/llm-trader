@@ -126,7 +126,11 @@ export default function SymbolAutocomplete({
       }
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler as EventListener);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler as EventListener);
+    };
   }, []);
 
   return (
@@ -183,8 +187,8 @@ export default function SymbolAutocomplete({
             <button
               key={entry.symbol}
               type="button"
-              onMouseDown={(e) => { e.preventDefault(); handleSelect(entry); }}
-              onTouchStart={(e) => { e.preventDefault(); handleSelect(entry); }}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => handleSelect(entry)}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 width: '100%', padding: '9px 14px', background: i === activeIdx ? '#f2f2f7' : 'transparent',

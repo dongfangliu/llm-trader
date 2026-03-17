@@ -1740,14 +1740,12 @@ body {
   to   { transform: translateY(0) }
 }
 
-/* ── V1: Full-bleed hero ── */
-/* V2: Cinema hero — signal takes 45% of the viewport height */
+/* ── V1: Full-bleed hero (inside scroll) ── */
 .rs-hero {
   position: relative;
-  flex-shrink: 0;
   border-radius: 20px 20px 0 0;
   overflow: hidden;
-  min-height: 40vh;
+  min-height: clamp(220px, 40vh, 360px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1787,7 +1785,7 @@ body {
 }
 /* V2: cinematic signal — massive display type centered in the hero */
 .rs-action-text {
-  font-size: 108px; font-weight: 900; letter-spacing: -4px; line-height: 0.9;
+  font-size: clamp(72px, 25vw, 108px); font-weight: 900; letter-spacing: -4px; line-height: 0.9;
   font-variant-numeric: tabular-nums;
   animation: rsActionIn 0.55s cubic-bezier(0.34,1.56,0.64,1) both;
   text-align: center;
@@ -1816,7 +1814,7 @@ body {
 
 /* V1: bigger price values */
 .rs-price-value {
-  font-size: 26px; font-weight: 700; letter-spacing: -0.8px;
+  font-size: clamp(18px, 5.5vw, 26px); font-weight: 700; letter-spacing: -0.8px;
   font-variant-numeric: tabular-nums; line-height: 1.1;
 }
 
