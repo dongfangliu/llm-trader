@@ -317,6 +317,7 @@ export default function SharePreviewSheet({
         {/* Dot indicators */}
         {hasArchiveMode && (
           <div className="sps2-dot-row">
+            <span className="sps2-swipe-hint">‹</span>
             <div
               className={`sps2-dot${mode === 'social' ? ' sps2-dot-active' : ''}`}
               onClick={() => switchMode('social')}
@@ -325,6 +326,7 @@ export default function SharePreviewSheet({
               className={`sps2-dot${mode === 'archive' ? ' sps2-dot-active' : ''}`}
               onClick={() => switchMode('archive')}
             />
+            <span className="sps2-swipe-hint">›</span>
           </div>
         )}
 
@@ -339,7 +341,7 @@ export default function SharePreviewSheet({
             {stockMeta.confidence != null && (
               <>
                 <span className="sps2-meta-dot">·</span>
-                <span className="sps2-meta-detail" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                <span className="sps2-meta-detail" style={{ color: 'rgba(60,60,67,0.45)' }}>
                   置信度 {stockMeta.confidence}%
                 </span>
               </>

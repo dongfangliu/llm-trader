@@ -353,6 +353,7 @@ def _load_settings_cache():
             ],
             "trial_ended_register_button": "免费注册，继续使用",
             "trial_ended_upgrade_hint": "标准版 ¥19.9/月 · 专业版 ¥49/月",
+            "require_invite_code": False,
         },
         "pricing": {
             "period": settings.pricing_period,
@@ -2402,6 +2403,9 @@ async def admin_update_settings(
             for field_key in _APP_TRIAL_FIELDS:
                 if field_key in data:
                     existing[field_key] = data[field_key]
+            # Save invite code gate (boolean field, not env-backed)
+            if "require_invite_code" in data:
+                existing["require_invite_code"] = bool(data["require_invite_code"])
         else:
             for field_key in _SETTINGS_ENV_MAP.get(section, {}):
                 val = data.get(field_key)
