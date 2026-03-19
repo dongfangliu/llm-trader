@@ -219,7 +219,7 @@ if __name__ == "__main__":
     async def _scheduled_loop() -> None:
         logger.info(f"[collector] 定时采集服务启动，每 {_INTERVAL_HOURS} 小时刷新一次")
         # Initialise DB before first cycle
-        from src.database.db import init_db
+        from src.database.new_db import init_db
         await init_db()
         while True:
             await run_collection_cycle()

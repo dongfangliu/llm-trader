@@ -1,21 +1,9 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  devtools: { enabled: true },
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
   modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt'],
   css: ['~/assets/css/main.css'],
-  // Server-side proxy: browser calls /api/* → Nuxt server forwards to backend container
-  // Same pattern as old Next.js rewrites, works in both dev and Docker prod
-  routeRules: {
-    '/api/**': {
-      proxy: `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/**`
-    }
-  },
-  runtimeConfig: {
-    public: {
-      // Empty string = use relative /api/* path (goes through Nuxt proxy)
-      apiBase: ''
-    }
-  },
+  // API proxy is handled by server/middleware/proxy.ts (runtime, reads BACKEND_URL env var)
   app: {
     head: {
       title: 'AI 股票分析',

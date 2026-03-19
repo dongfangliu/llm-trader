@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue'
-import api, { getApiBase } from '~/lib/api'
+import api from '~/lib/api'
 import { useDevice } from '~/composables/useDevice'
 import { useAuthStore } from '~/stores/auth'
 
@@ -88,10 +88,8 @@ export function useAnalysis() {
 
   async function trySSE(tId: string): Promise<any> {
     return new Promise((resolve, reject) => {
-      const apiBase = getApiBase()
-
-      // Add auth token to SSE URL if available
-      let url = `${apiBase}/api/task/${tId}/stream`
+      // SSE uses relative path — Nuxt proxy forwards to backend
+      let url = `/api/task/${tId}/stream`
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       if (token) {
         url += `?token=${encodeURIComponent(token)}`

@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies (using Taobao mirror for faster downloads in China)
-RUN npm ci --registry=https://registry.npmmirror.com
+RUN npm install --registry=https://registry.npmmirror.com
 
 # Copy source code
 COPY . .
