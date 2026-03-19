@@ -12,7 +12,9 @@ param(
     [switch]$Stop,
     [switch]$Build,
     [ValidateSet("backend","worker","frontend","redis","postgres","")]
-    [string]$Service = ""
+    [string]$Service = "",
+    # Use -V2 to start backend with the new clean-architecture entry-point (main_v2)
+    [switch]$V2
 )
 
 $ErrorActionPreference = "Continue"
@@ -97,7 +99,9 @@ if ($Service -ne "") {
             Write-Header "Starting backend"
             Write-Info "DATABASE_URL = $env:DATABASE_URL"
             Set-Location "$ScriptDir\backend"
-            uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
+            $appModule = if ($V2) { "src.api.main_v2:app" } else { "src.api.main:app" }
+            if ($V2) { Write-Info "Using new clean-architecture entry-point (main_v2)" }
+            uvicorn $appModule --host 127.0.0.1 --port 8000 --reload
         }
         "worker" {
             Write-Header "Starting arq worker"

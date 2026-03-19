@@ -1,0 +1,32 @@
+:root {
+  --ios-blue: #007aff;
+  --ios-green: #34c759;
+  --ios-red: #ff3b30;
+  --ios-orange: #ff9500;
+  --ios-yellow: #ffcc00;
+  --ios-bg: #f2f2f7;
+  --ios-bg2: #e5e5ea;
+  --ios-card: #ffffff;
+  --ios-separator: rgba(60,60,67,0.12);
+  --ios-label: #000000;
+  --ios-label2: rgba(60,60,67,0.6);
+  --ios-secondary: #8e8e93;
+  --ios-tertiary: #aeaeb2;
+  --ios-fill: rgba(120,120,128,0.2);
+  --ios-radius-sm: 10px;
+  --ios-radius-md: 14px;
+  --ios-radius-lg: 20px;
+  --ios-radius-xl: 28px;
+  --ios-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  --ios-shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ios-bg: #1c1c1e;
+    --ios-bg2: #2c2c2e;
+    --ios-card: #2c2c2e;
+    --ios-label: #ffffff;
+    --ios-separator: rgba(84,84,88,0.6);
+  }
+}
