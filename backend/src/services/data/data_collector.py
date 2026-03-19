@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -123,7 +124,8 @@ async def collect_symbol(
             logger.error(f"[collector] {market}:{symbol}:{period} 失败: {exc}")
         return 0
     finally:
-        await asyncio.sleep(request_sleep)
+        jitter = random.uniform(0, request_sleep * 0.5)
+        await asyncio.sleep(request_sleep + jitter)
 
 
 async def run_collection_cycle() -> dict:

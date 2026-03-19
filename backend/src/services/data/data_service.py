@@ -79,22 +79,29 @@ def _is_retriable(exc: Exception) -> bool:
 
 def _try_sources(sources: list, context: str, max_retries: int = 3) -> pd.DataFrame:
     """Try each (name, callable) source in order with exponential backoff retry.
+    Empty responses get one short retry (possible soft rate-limit) before moving on.
     Raises ValueError with all failure details when every source is exhausted.
     """
     errors: list[str] = []
     for name, fn in sources:
-        last_exc = None
         for attempt in range(max_retries):
             try:
                 df = fn()
                 if df is not None and not df.empty:
                     logger.info(f"[{context}] 数据源 '{name}' 成功，共 {len(df)} 行")
                     return df
-                logger.warning(f"[{context}] 数据源 '{name}' 返回空数据，尝试下一个")
-                errors.append(f"{name}: 返回空数据")
-                break
+                # Empty data: may be a soft rate-limit — retry once with backoff
+                if attempt == 0:
+                    delay = 5 + random.uniform(0, 3)
+                    logger.warning(
+                        f"[{context}] 数据源 '{name}' 返回空数据，{delay:.1f}s 后重试"
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.warning(f"[{context}] 数据源 '{name}' 重试后仍为空，尝试下一个")
+                    errors.append(f"{name}: 返回空数据")
+                    break
             except Exception as exc:
-                last_exc = exc
                 if attempt < max_retries - 1 and _is_retriable(exc):
                     delay = (2 ** attempt) * 3 + random.uniform(0, 2)
                     logger.warning(
