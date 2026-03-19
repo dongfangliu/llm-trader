@@ -1,26 +1,15 @@
 import axios from 'axios'
 
-// Create axios instance - baseURL will be set dynamically
+// All API calls use relative /api/* paths — Nuxt server proxies to backend
 const api = axios.create({
+  baseURL: '',
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// We need to set baseURL at runtime since useRuntimeConfig() only works in composables
-export function getApiBase(): string {
-  // In browser, read from window or fallback
-  if (typeof window !== 'undefined') {
-    return (window as any).__NUXT_API_BASE__ || 'http://localhost:8000'
-  }
-  return process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000'
-}
-
 // Add request interceptor
 api.interceptors.request.use((config) => {
-  // Set baseURL dynamically
-  config.baseURL = getApiBase()
-
   // Add auth token
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('token')

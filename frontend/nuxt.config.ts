@@ -3,9 +3,17 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt'],
   css: ['~/assets/css/main.css'],
+  // Server-side proxy: browser calls /api/* → Nuxt server forwards to backend container
+  // Same pattern as old Next.js rewrites, works in both dev and Docker prod
+  routeRules: {
+    '/api/**': {
+      proxy: `${process.env.BACKEND_URL || 'http://localhost:8000'}/api/**`
+    }
+  },
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || 'http://localhost:8000'
+      // Empty string = use relative /api/* path (goes through Nuxt proxy)
+      apiBase: ''
     }
   },
   app: {

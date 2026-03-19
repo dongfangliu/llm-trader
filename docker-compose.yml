@@ -8,7 +8,7 @@
 #   POSTGRES_PASSWORD → 数据库密码
 #
 # LLM provider/model、爱发电套餐、定价等配置在 backend/initial_settings.json（首次启动写入DB）。
-# 无需配置 NEXT_PUBLIC_API_URL —— 前端通过 Next.js rewrites 在服务端代理 /api/* 到 backend 容器
+# 无需单独配置 API 地址 —— 前端构建时通过 build arg NUXT_PUBLIC_API_BASE 注入，指向 backend 容器
 
 version: '3.8'
 
@@ -85,17 +85,16 @@ services:
     networks:
       - trader-network
 
-  # Frontend (Next.js)
+  # Frontend (Nuxt 3)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    environment:
+      # 运行时注入：Nuxt server routeRules 在启动时读取此变量，代理 /api/** → backend
+      - BACKEND_URL=http://backend:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    environment:
-      # 运行时变量：Next.js rewrites 用它代理 /api/* 到 backend
-      # Docker 内部网络直接用服务名访问，无需公网域名
-      - BACKEND_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped
