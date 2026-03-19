@@ -280,7 +280,12 @@ async def collect_symbol(
 
         if last_ts is not None:
             last_date = pd.Timestamp(last_ts)
-            start_date = (last_date + timedelta(days=1)).strftime("%Y%m%d")
+            if period in _MINUTE_PERIODS:
+                # Re-fetch from the last bar's date so today's new bars are picked up.
+                # ON CONFLICT DO NOTHING handles any duplicate bars.
+                start_date = last_date.strftime("%Y%m%d")
+            else:
+                start_date = (last_date + timedelta(days=1)).strftime("%Y%m%d")
         else:
             start_date = (datetime.now() - timedelta(days=_HISTORY_DAYS)).strftime("%Y%m%d")
 

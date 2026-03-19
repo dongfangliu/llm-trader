@@ -22,16 +22,18 @@ const PERIOD_LABEL: Record<string, string> = {
   daily: '日线', '60': '60分', '30': '30分', '15': '15分', '5': '5分', '1': '1分',
 };
 
-function staleness(lastDate: string | null): 'empty' | 'stale' | 'ok' {
+function staleness(lastDate: string | null, period: string): 'empty' | 'stale' | 'ok' {
   if (!lastDate) return 'empty';
   const diff = Date.now() - new Date(lastDate).getTime();
-  // > 3 days → stale for daily; anything > 2h could be stale for minute
-  if (diff > 3 * 86400 * 1000) return 'stale';
-  return 'ok';
+  if (period === 'daily') {
+    return diff > 86400 * 1000 ? 'stale' : 'ok';  // > 1 day
+  }
+  const periodMs = parseInt(period) * 60 * 1000;
+  return diff > periodMs ? 'stale' : 'ok';
 }
 
 function StatusBadge({ s }: { s: MarketDataSymbolStatus }) {
-  const st = staleness(s.last_bar_date);
+  const st = staleness(s.last_bar_date, s.period);
   const cfg: Record<string, { bg: string; color: string; label: string }> = {
     empty:  { bg: '#fee2e2', color: '#991b1b', label: '无数据' },
     stale:  { bg: '#fef3c7', color: '#92400e', label: '数据陈旧' },
@@ -622,7 +624,7 @@ export default function MarketDataPage() {
 
   const totalSymbols = status?.symbols.length ?? 0;
   const emptyCount = status?.symbols.filter(s => s.is_empty).length ?? 0;
-  const staleCount = status?.symbols.filter(s => !s.is_empty && staleness(s.last_bar_date) === 'stale').length ?? 0;
+  const staleCount = status?.symbols.filter(s => !s.is_empty && staleness(s.last_bar_date, s.period) === 'stale').length ?? 0;
   const okCount = totalSymbols - emptyCount - staleCount;
 
   return (

@@ -42,8 +42,7 @@ _MA_WARMUP_DAYS = 90
 # ── DB-first thresholds ────────────────────────────────────────────────────────
 _MIN_BARS_DAILY = 90      # minimum DB rows to consider daily cache usable
 _MIN_BARS_MINUTE = 30     # minimum DB rows to consider intraday cache usable
-_STALENESS_DAILY_DAYS = 3       # days before triggering a background DB refresh
-_STALENESS_MINUTE_HOURS = 2     # hours before triggering a background DB refresh
+_STALENESS_DAILY_DAYS = 1       # days before triggering a synchronous DB refresh
 _WRITE_CHUNK = 500              # max rows per DB INSERT batch
 
 # ── Concurrency guards ─────────────────────────────────────────────────────────
@@ -258,16 +257,34 @@ async def fetch_market_data(
     if len(db_df) >= min_bars:
         last_ts = pd.Timestamp(int(db_df["datetime"].max()))
         now = datetime.utcnow()
+        elapsed = (now - last_ts.to_pydatetime()).total_seconds()
         if period == PERIOD_DAILY:
-            stale = (now - last_ts.to_pydatetime()).days > _STALENESS_DAILY_DAYS
+            stale = elapsed > _STALENESS_DAILY_DAYS * 86400
         else:
-            stale = (now - last_ts.to_pydatetime()).total_seconds() > _STALENESS_MINUTE_HOURS * 3600
+            stale = elapsed > int(period) * 60  # 1× period length
 
         if stale:
-            logger.info(f"[DB陈旧] {market}:{symbol}:{period} 触发后台刷新")
-            asyncio.create_task(
-                _background_refresh(symbol, market, period, fetch_start, end_date, adjust)
-            )
+            lock_key = f"{market}:{symbol}:{period}"
+            async with _get_lock(lock_key):
+                # Double-check: another coroutine may have refreshed while we waited
+                db_df2 = await _db_fetch_bars(symbol, market, period, fetch_start_ns, end_ns)
+                if not db_df2.empty:
+                    last2 = pd.Timestamp(int(db_df2["datetime"].max()))
+                    elapsed2 = (datetime.utcnow() - last2.to_pydatetime()).total_seconds()
+                    if period == PERIOD_DAILY:
+                        still_stale = elapsed2 > _STALENESS_DAILY_DAYS * 86400
+                    else:
+                        still_stale = elapsed2 > int(period) * 60
+                else:
+                    still_stale = True
+
+                if still_stale:
+                    logger.info(f"[DB陈旧] {market}:{symbol}:{period} 数据陈旧，同步拉取")
+                    async with _get_semaphore():
+                        fresh_df = await _dispatch_fetch(symbol, market, period, fetch_start, end_date, adjust)
+                    if fresh_df is not None and not fresh_df.empty:
+                        await _db_write_bars(fresh_df, symbol, market, period)
+                db_df = await _db_fetch_bars(symbol, market, period, fetch_start_ns, end_ns)
 
         df = _calculate_indicators(db_df)
         df = df[df["datetime"] >= start_ns].reset_index(drop=True)
