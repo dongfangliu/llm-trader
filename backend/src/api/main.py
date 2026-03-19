@@ -43,10 +43,8 @@ from src.services.user import user_service
 from src.services.data import data_service
 from src.services.data.name_service import get_symbol_name, preload_names, refresh_names, get_last_error
 from src.services.data.data_collector import (
-    run_collector,
     run_collection_cycle,
-    load_watchlist,
-    save_watchlist,
+    collect_symbol,
     get_market_data_status,
     is_collecting,
 )
@@ -96,11 +94,6 @@ async def lifespan(app: FastAPI):
         await _seed_settings_from_json(db)
         await _apply_db_overrides(db)
     # Stock name mappings are refreshed manually via admin panel (/api/admin/refresh-names)
-    # Start embedded data collector when explicitly enabled (dev convenience).
-    # In production Docker, run the data-collector as a separate container instead.
-    if os.getenv("ENABLE_COLLECTOR", "").lower() in ("1", "true", "yes"):
-        logger.info("ENABLE_COLLECTOR=true — starting embedded data collector")
-        asyncio.create_task(run_collector())
     # Initialize Redis connection pool for task queue
     app.state.redis = await create_pool(get_redis_settings())
     logger.info("Redis connection pool initialised")
@@ -2505,66 +2498,29 @@ async def admin_market_data_status(_: None = Depends(_verify_admin)):
     return {"collecting": is_collecting(), "symbols": status}
 
 
-class WatchlistRefreshRequest(BaseModel):
-    symbols: Optional[List[dict]] = Field(
-        None,
-        description=(
-            "Subset of watchlist entries to refresh. "
-            "Each dict: {symbol, market, periods?, adjust?}. "
-            "Omit to refresh the full watchlist."
-        ),
-    )
-
-
 @app.post("/api/admin/market-data/refresh")
-async def admin_market_data_refresh(
-    req: WatchlistRefreshRequest,
-    _: None = Depends(_verify_admin),
-):
-    """Trigger an immediate data collection cycle (admin only).
-
-    Runs as a background task — returns immediately with ``triggered: true``.
-    Poll ``/api/admin/market-data/status`` to track progress.
-    """
+async def admin_market_data_refresh(_: None = Depends(_verify_admin)):
+    """Trigger an immediate refresh of all symbols in the DB (admin only)."""
     if is_collecting():
         return {"triggered": False, "reason": "采集任务正在运行中，请稍后再试"}
-
-    target = req.symbols  # None → use full watchlist
-    asyncio.create_task(run_collection_cycle(target))
-    logger.info("admin triggered market-data refresh, target=%s", target)
+    asyncio.create_task(run_collection_cycle())
+    logger.info("admin triggered market-data refresh for all DB symbols")
     return {"triggered": True}
 
 
-@app.get("/api/admin/watchlist")
-async def admin_get_watchlist(_: None = Depends(_verify_admin)):
-    """Return the current data-collector watchlist (admin only)."""
-    watchlist = await load_watchlist()
-    return {"watchlist": watchlist}
+class SymbolRefreshRequest(BaseModel):
+    symbol: str
+    market: str
+    period: str
+    adjust: str = "qfq"
 
 
-class WatchlistUpdateRequest(BaseModel):
-    watchlist: List[dict] = Field(
-        ...,
-        description=(
-            "Full replacement watchlist. "
-            "Each entry: {symbol, market, periods: [...], adjust?: 'qfq'}."
-        ),
-    )
-
-
-@app.put("/api/admin/watchlist")
-async def admin_update_watchlist(
-    req: WatchlistUpdateRequest,
-    _: None = Depends(_verify_admin),
-):
-    """Replace the data-collector watchlist (admin only).
-
-    The new list is persisted to ``system_settings`` and takes effect on the
-    next collection cycle.
-    """
-    await save_watchlist(req.watchlist)
-    logger.info("admin updated watchlist: %d symbols", len(req.watchlist))
-    return {"success": True, "count": len(req.watchlist), "watchlist": req.watchlist}
+@app.post("/api/admin/market-data/refresh-symbol")
+async def admin_refresh_symbol(req: SymbolRefreshRequest, _: None = Depends(_verify_admin)):
+    """Refresh a single symbol/market/period (admin only)."""
+    asyncio.create_task(collect_symbol(req.symbol, req.market, req.period, req.adjust))
+    logger.info(f"admin triggered single refresh: {req.market}:{req.symbol}:{req.period}")
+    return {"triggered": True}
 
 
 @app.get("/api/health")

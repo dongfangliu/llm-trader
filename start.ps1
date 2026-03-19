@@ -11,7 +11,7 @@
 param(
     [switch]$Stop,
     [switch]$Build,
-    [ValidateSet("backend","worker","frontend","redis","postgres","data-collector","")]
+    [ValidateSet("backend","worker","frontend","redis","postgres","")]
     [string]$Service = ""
 )
 
@@ -109,11 +109,6 @@ if ($Service -ne "") {
             Write-Header "Starting frontend"
             Set-Location "$ScriptDir\frontend"
             npm run dev
-        }
-        "data-collector" {
-            Write-Header "Starting data-collector"
-            Set-Location "$ScriptDir\backend"
-            python -m src.services.data.data_collector
         }
     }
     exit 0

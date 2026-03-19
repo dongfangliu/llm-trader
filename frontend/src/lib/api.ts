@@ -554,7 +554,6 @@ export interface MarketDataSymbolStatus {
   bar_count: number;
   last_bar_date: string | null;
   is_empty: boolean;
-  in_watchlist: boolean;
 }
 
 export interface MarketDataStatus {
@@ -562,30 +561,20 @@ export interface MarketDataStatus {
   symbols: MarketDataSymbolStatus[];
 }
 
-export interface WatchlistEntry {
-  symbol: string;
-  market: string;
-  periods: string[];
-  adjust?: string;
-}
-
 export const adminGetMarketDataStatus = async (): Promise<MarketDataStatus> => {
   const response = await adminApi.get('/api/admin/market-data/status');
   return response.data;
 };
 
-export const adminTriggerRefresh = async (symbols?: WatchlistEntry[]): Promise<{ triggered: boolean; reason?: string }> => {
-  const response = await adminApi.post('/api/admin/market-data/refresh', { symbols: symbols ?? null });
+export const adminTriggerRefresh = async (): Promise<{ triggered: boolean; reason?: string }> => {
+  const response = await adminApi.post('/api/admin/market-data/refresh');
   return response.data;
 };
 
-export const adminGetWatchlist = async (): Promise<{ watchlist: WatchlistEntry[] }> => {
-  const response = await adminApi.get('/api/admin/watchlist');
-  return response.data;
-};
-
-export const adminUpdateWatchlist = async (watchlist: WatchlistEntry[]): Promise<{ success: boolean; count: number }> => {
-  const response = await adminApi.put('/api/admin/watchlist', { watchlist });
+export const adminRefreshOneSymbol = async (
+  symbol: string, market: string, period: string, adjust = 'qfq'
+): Promise<{ triggered: boolean }> => {
+  const response = await adminApi.post('/api/admin/market-data/refresh-symbol', { symbol, market, period, adjust });
   return response.data;
 };
 

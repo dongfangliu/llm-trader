@@ -4,13 +4,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   adminGetMarketDataStatus,
   adminTriggerRefresh,
-  adminGetWatchlist,
-  adminUpdateWatchlist,
+  adminRefreshOneSymbol,
   adminGetSymbolNames,
   adminRefreshNames,
   MarketDataStatus,
   MarketDataSymbolStatus,
-  WatchlistEntry,
   SymbolNameItem,
   SymbolNamesResponse,
 } from '@/lib/api';
@@ -26,7 +24,7 @@ function staleness(lastDate: string | null, period: string): 'empty' | 'stale' |
   if (!lastDate) return 'empty';
   const diff = Date.now() - new Date(lastDate).getTime();
   if (period === 'daily') {
-    return diff > 86400 * 1000 ? 'stale' : 'ok';  // > 1 day
+    return diff > 86400 * 1000 ? 'stale' : 'ok';
   }
   const periodMs = parseInt(period) * 60 * 1000;
   return diff > periodMs ? 'stale' : 'ok';
@@ -48,227 +46,16 @@ function StatusBadge({ s }: { s: MarketDataSymbolStatus }) {
   );
 }
 
-// ── Watchlist editor ──────────────────────────────────────────────────────────
-
-const BLANK_ENTRY: WatchlistEntry = { symbol: '', market: 'a', periods: ['daily'], adjust: 'qfq' };
-
-function WatchlistEditor({
-  initial,
-  onSaved,
-}: {
-  initial: WatchlistEntry[];
-  onSaved: (list: WatchlistEntry[]) => void;
-}) {
-  const [list, setList] = useState<WatchlistEntry[]>(initial);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  // new-row draft
-  const [draft, setDraft] = useState<WatchlistEntry>({ ...BLANK_ENTRY });
-
-  const update = (idx: number, patch: Partial<WatchlistEntry>) =>
-    setList(l => l.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
-
-  const remove = (idx: number) => setList(l => l.filter((_, i) => i !== idx));
-
-  const addRow = () => {
-    if (!draft.symbol.trim()) { setMsg('请填写代码'); return; }
-    setList(l => [...l, { ...draft, symbol: draft.symbol.trim().toUpperCase() }]);
-    setDraft({ ...BLANK_ENTRY });
-    setMsg('');
-  };
-
-  const save = async () => {
-    setSaving(true);
-    setMsg('');
-    try {
-      const res = await adminUpdateWatchlist(list);
-      setMsg(`✅ 已保存 ${res.count} 条`);
-      onSaved(list);
-    } catch (e: unknown) {
-      setMsg('❌ ' + (e instanceof Error ? e.message : '保存失败'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const periodToggle = (entry: WatchlistEntry, p: string, idx: number) => {
-    const next = entry.periods.includes(p)
-      ? entry.periods.filter(x => x !== p)
-      : [...entry.periods, p];
-    update(idx, { periods: next.length ? next : ['daily'] });
-  };
-
-  const PERIODS = ['daily', '60', '30', '15', '5', '1'];
-
-  const cellStyle: React.CSSProperties = {
-    padding: '0.5rem 0.6rem', fontSize: '0.82rem', verticalAlign: 'middle',
-  };
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>📋 采集 Watchlist</h2>
-        <button className="btn btn-primary" onClick={save} disabled={saving} style={{ minWidth: 90 }}>
-          {saving ? '保存中…' : '💾 保存'}
-        </button>
-      </div>
-      {msg && (
-        <div style={{
-          padding: '0.5rem 0.75rem', marginBottom: '0.75rem', borderRadius: '0.375rem',
-          background: msg.startsWith('✅') ? '#dcfce7' : '#fee2e2',
-          color: msg.startsWith('✅') ? '#166534' : '#991b1b', fontSize: '0.85rem',
-        }}>{msg}</div>
-      )}
-
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid var(--border)', background: 'var(--muted-bg, #f8fafc)' }}>
-              {['代码', '市场', '周期', '复权', ''].map(h => (
-                <th key={h} style={{ ...cellStyle, fontWeight: 600, textAlign: 'left' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((entry, idx) => (
-              <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={cellStyle}>
-                  <input
-                    value={entry.symbol}
-                    onChange={e => update(idx, { symbol: e.target.value.toUpperCase() })}
-                    style={{ width: 90, padding: '0.3rem 0.4rem', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.82rem', background: 'var(--background)', color: 'var(--foreground)' }}
-                  />
-                </td>
-                <td style={cellStyle}>
-                  <select
-                    value={entry.market}
-                    onChange={e => update(idx, { market: e.target.value })}
-                    style={{ padding: '0.3rem 0.4rem', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.82rem', background: 'var(--background)', color: 'var(--foreground)' }}
-                  >
-                    {Object.entries(MARKET_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </td>
-                <td style={cellStyle}>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {PERIODS.map(p => {
-                      const active = entry.periods.includes(p);
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => periodToggle(entry, p, idx)}
-                          style={{
-                            padding: '0.15rem 0.45rem', fontSize: '0.72rem', borderRadius: 4, cursor: 'pointer',
-                            background: active ? '#3b82f6' : 'transparent',
-                            color: active ? '#fff' : 'var(--muted)',
-                            border: `1px solid ${active ? '#3b82f6' : 'var(--border)'}`,
-                          }}
-                        >{PERIOD_LABEL[p] ?? p}</button>
-                      );
-                    })}
-                  </div>
-                </td>
-                <td style={cellStyle}>
-                  {entry.market === 'a' || entry.market === 'hk' ? (
-                    <select
-                      value={entry.adjust ?? 'qfq'}
-                      onChange={e => update(idx, { adjust: e.target.value })}
-                      style={{ padding: '0.3rem 0.4rem', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.82rem', background: 'var(--background)', color: 'var(--foreground)' }}
-                    >
-                      <option value="qfq">前复权</option>
-                      <option value="hfq">后复权</option>
-                      <option value="">不复权</option>
-                    </select>
-                  ) : <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>—</span>}
-                </td>
-                <td style={cellStyle}>
-                  <button
-                    onClick={() => remove(idx)}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1rem' }}
-                    title="删除"
-                  >🗑</button>
-                </td>
-              </tr>
-            ))}
-            {/* Add row */}
-            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--muted-bg, #f8fafc)' }}>
-              <td style={cellStyle}>
-                <input
-                  value={draft.symbol}
-                  placeholder="代码"
-                  onChange={e => setDraft(d => ({ ...d, symbol: e.target.value }))}
-                  style={{ width: 90, padding: '0.3rem 0.4rem', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.82rem', background: 'var(--background)', color: 'var(--foreground)' }}
-                />
-              </td>
-              <td style={cellStyle}>
-                <select
-                  value={draft.market}
-                  onChange={e => setDraft(d => ({ ...d, market: e.target.value }))}
-                  style={{ padding: '0.3rem 0.4rem', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.82rem', background: 'var(--background)', color: 'var(--foreground)' }}
-                >
-                  {Object.entries(MARKET_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </td>
-              <td style={cellStyle}>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {PERIODS.map(p => {
-                    const active = draft.periods.includes(p);
-                    return (
-                      <button
-                        key={p}
-                        onClick={() => setDraft(d => {
-                          const next = d.periods.includes(p) ? d.periods.filter(x => x !== p) : [...d.periods, p];
-                          return { ...d, periods: next.length ? next : ['daily'] };
-                        })}
-                        style={{
-                          padding: '0.15rem 0.45rem', fontSize: '0.72rem', borderRadius: 4, cursor: 'pointer',
-                          background: active ? '#3b82f6' : 'transparent',
-                          color: active ? '#fff' : 'var(--muted)',
-                          border: `1px solid ${active ? '#3b82f6' : 'var(--border)'}`,
-                        }}
-                      >{PERIOD_LABEL[p] ?? p}</button>
-                    );
-                  })}
-                </div>
-              </td>
-              <td style={cellStyle}>
-                {draft.market === 'a' || draft.market === 'hk' ? (
-                  <select
-                    value={draft.adjust ?? 'qfq'}
-                    onChange={e => setDraft(d => ({ ...d, adjust: e.target.value }))}
-                    style={{ padding: '0.3rem 0.4rem', border: '1px solid var(--border)', borderRadius: 4, fontSize: '0.82rem', background: 'var(--background)', color: 'var(--foreground)' }}
-                  >
-                    <option value="qfq">前复权</option>
-                    <option value="hfq">后复权</option>
-                    <option value="">不复权</option>
-                  </select>
-                ) : <span style={{ color: 'var(--muted)', fontSize: '0.75rem' }}>—</span>}
-              </td>
-              <td style={cellStyle}>
-                <button className="btn btn-secondary" onClick={addRow} style={{ fontSize: '0.8rem', padding: '0.3rem 0.7rem' }}>
-                  ＋ 添加
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ── Status table ──────────────────────────────────────────────────────────────
 
 function DataStatusTable({
   symbols,
   onRefreshOne,
   refreshingKey,
-  watchlist,
 }: {
   symbols: MarketDataSymbolStatus[];
   onRefreshOne: (sym: MarketDataSymbolStatus) => void;
   refreshingKey: string | null;
-  watchlist: WatchlistEntry[];
 }) {
   const cellStyle: React.CSSProperties = {
     padding: '0.55rem 0.75rem', fontSize: '0.85rem', verticalAlign: 'middle',
@@ -277,7 +64,7 @@ function DataStatusTable({
   if (symbols.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)', fontSize: '0.9rem' }}>
-        尚未采集任何数据，且 Watchlist 为空。
+        DB 中尚无数据，用户发起分析后会自动按需缓存。
       </div>
     );
   }
@@ -287,7 +74,7 @@ function DataStatusTable({
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)', background: 'var(--muted-bg, #f8fafc)' }}>
-            {['代码 / 名称', '市场', '周期', 'K线数', '最新数据日期', '状态', '来源', '操作'].map(h => (
+            {['代码 / 名称', '市场', '周期', 'K线数', '最新数据日期', '状态', '操作'].map(h => (
               <th key={h} style={{ ...cellStyle, fontWeight: 600, textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
             ))}
           </tr>
@@ -296,9 +83,6 @@ function DataStatusTable({
           {symbols.map((s, i) => {
             const key = `${s.symbol}|${s.market}|${s.period}`;
             const isRefreshing = refreshingKey === key;
-            const wlEntry = s.in_watchlist
-              ? watchlist.find(e => e.symbol === s.symbol && e.market === s.market)
-              : undefined;
             return (
               <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={{ ...cellStyle, fontWeight: 600, fontFamily: 'monospace' }}>
@@ -319,25 +103,14 @@ function DataStatusTable({
                 </td>
                 <td style={cellStyle}><StatusBadge s={s} /></td>
                 <td style={cellStyle}>
-                  {s.in_watchlist ? (
-                    <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 500 }}>📋 监控</span>
-                  ) : (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>按需</span>
-                  )}
-                </td>
-                <td style={cellStyle}>
-                  {wlEntry ? (
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => onRefreshOne(s)}
-                      disabled={isRefreshing}
-                      style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem', minWidth: 70 }}
-                    >
-                      {isRefreshing ? '刷新中…' : '🔄 刷新'}
-                    </button>
-                  ) : (
-                    <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>—</span>
-                  )}
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => onRefreshOne(s)}
+                    disabled={isRefreshing}
+                    style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem', minWidth: 70 }}
+                  >
+                    {isRefreshing ? '刷新中…' : '🔄 刷新'}
+                  </button>
                 </td>
               </tr>
             );
@@ -392,17 +165,11 @@ function SymbolNamesSection() {
     setMsg('');
     try {
       const res = await adminRefreshNames(market);
-
-      // Build result message with counts
       const parts = Object.entries(res.counts).map(([m, n]) => `${MARKET_NAME_LABEL[m] ?? m}: ${n} 条`).join(' / ');
-
       if (!res.success && res.errors) {
-        // Show error details
         const errorDetails = Object.entries(res.errors).map(([m, err]) => {
-          const marketLabel = MARKET_NAME_LABEL[m] ?? m;
-          // Truncate long error messages
           const shortErr = err.length > 80 ? err.substring(0, 80) + '...' : err;
-          return `${marketLabel}: ${shortErr}`;
+          return `${MARKET_NAME_LABEL[m] ?? m}: ${shortErr}`;
         }).join('; ');
         setMsg(`⚠️ 部分刷新失败 — ${parts} | 错误: ${errorDetails}`);
       } else if (res.success) {
@@ -410,7 +177,6 @@ function SymbolNamesSection() {
       } else {
         setMsg(`❌ 刷新失败 — ${parts}`);
       }
-
       await load(search, marketFilter);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string; message?: string } } };
@@ -424,7 +190,6 @@ function SymbolNamesSection() {
 
   return (
     <div className="card" style={{ padding: '1.25rem', marginBottom: '2rem' }}>
-      {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: expanded ? '1rem' : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>🗂️ 股票名称映射</h2>
@@ -450,7 +215,7 @@ function SymbolNamesSection() {
               ))}
             </>
           )}
-          <button className="btn btn-secondary" onClick={() => { setExpanded(v => !v); }} style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem' }}>
+          <button className="btn btn-secondary" onClick={() => setExpanded(v => !v)} style={{ fontSize: '0.78rem', padding: '0.25rem 0.6rem' }}>
             {expanded ? '▲ 收起' : '▼ 展开'}
           </button>
         </div>
@@ -471,8 +236,6 @@ function SymbolNamesSection() {
               color: msg.startsWith('✅') ? '#166534' : '#991b1b',
             }}>{msg}</div>
           )}
-
-          {/* Filters */}
           <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
             <input
               placeholder="搜索代码或名称…"
@@ -492,8 +255,6 @@ function SymbolNamesSection() {
               {loading ? '加载中…' : `显示 ${data?.items.length ?? 0} / ${data?.total ?? 0} 条（最多 300）`}
             </span>
           </div>
-
-          {/* Table */}
           <div style={{ overflowX: 'auto', maxHeight: '24rem', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, background: 'var(--muted-bg, #f8fafc)', zIndex: 1 }}>
@@ -534,7 +295,6 @@ function SymbolNamesSection() {
 
 export default function MarketDataPage() {
   const [status, setStatus] = useState<MarketDataStatus | null>(null);
-  const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshMsg, setRefreshMsg] = useState('');
@@ -544,9 +304,8 @@ export default function MarketDataPage() {
 
   const loadData = async () => {
     try {
-      const [s, w] = await Promise.all([adminGetMarketDataStatus(), adminGetWatchlist()]);
+      const s = await adminGetMarketDataStatus();
       setStatus(s);
-      setWatchlist(w.watchlist);
       setLoadError('');
     } catch (e: unknown) {
       setLoadError(e instanceof Error ? e.message : '加载失败');
@@ -555,9 +314,7 @@ export default function MarketDataPage() {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   // Poll every 8s while collecting
   useEffect(() => {
@@ -592,17 +349,9 @@ export default function MarketDataPage() {
     setRefreshingKey(key);
     setRefreshMsg('');
     try {
-      // Build minimal watchlist entry with just this symbol+period
-      const wlEntry = watchlist.find(e => e.symbol === sym.symbol && e.market === sym.market);
-      if (!wlEntry) return;
-      const target = [{ ...wlEntry, periods: [sym.period] }];
-      const res = await adminTriggerRefresh(target);
-      if (res.triggered) {
-        setRefreshMsg(`✅ ${sym.symbol}（${sym.period}）刷新已触发`);
-        setTimeout(loadData, 3000);
-      } else {
-        setRefreshMsg(`⚠️ ${res.reason ?? '触发失败'}`);
-      }
+      await adminRefreshOneSymbol(sym.symbol, sym.market, sym.period);
+      setRefreshMsg(`✅ ${sym.symbol}（${sym.period}）刷新已触发`);
+      setTimeout(loadData, 3000);
     } catch (e: unknown) {
       setRefreshMsg('❌ ' + (e instanceof Error ? e.message : '请求失败'));
     } finally {
@@ -634,7 +383,7 @@ export default function MarketDataPage() {
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.25rem' }}>📈 数据采集</h1>
           <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>
-            管理自动采集任务 · Watchlist · 手动触发刷新
+            DB 中所有标的均由用户请求按需缓存 · 手动触发全量或单标的刷新
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -652,11 +401,8 @@ export default function MarketDataPage() {
         </div>
       </div>
 
-      {/* Collector status banner */}
-      <div style={{
-        display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem',
-      }}>
-        {/* Collector running indicator */}
+      {/* Status banner */}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
         <div className="card" style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem' }}>
           <span style={{
             display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
@@ -667,9 +413,8 @@ export default function MarketDataPage() {
             {status?.collecting ? '采集中' : '空闲'}
           </span>
         </div>
-        {/* Summary cards */}
         {[
-          { label: '总跟踪', value: totalSymbols, color: 'var(--foreground)' },
+          { label: '总标的', value: totalSymbols, color: 'var(--foreground)' },
           { label: '✅ 正常', value: okCount, color: '#166534' },
           { label: '⚠️ 陈旧', value: staleCount, color: '#92400e' },
           { label: '🚫 无数据', value: emptyCount, color: '#991b1b' },
@@ -693,33 +438,16 @@ export default function MarketDataPage() {
 
       {/* Data status table */}
       <div className="card" style={{ marginBottom: '2rem', padding: '1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>📊 DB 数据覆盖情况</h2>
-          <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>
-            仅显示 Watchlist 中的标的 · 非 Watchlist 标的由用户请求触发后在 DB 中按需缓存
-          </span>
-        </div>
+        <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 0.75rem' }}>📊 DB 数据覆盖情况</h2>
         <DataStatusTable
           symbols={status?.symbols ?? []}
           onRefreshOne={triggerOne}
           refreshingKey={refreshingKey}
-          watchlist={watchlist}
         />
       </div>
 
       {/* Symbol names mapping */}
       <SymbolNamesSection />
-
-      {/* Watchlist editor */}
-      <div className="card" style={{ padding: '1.25rem' }}>
-        <WatchlistEditor
-          initial={watchlist}
-          onSaved={newList => {
-            setWatchlist(newList);
-            loadData();
-          }}
-        />
-      </div>
     </div>
   );
 }

@@ -332,8 +332,8 @@ async def fetch_market_data(
         if raw_df is None or raw_df.empty:
             raise ValueError(f"未获取到数据: {market.upper()} {symbol}")
 
-        # Persist to DB in background (non-blocking)
-        asyncio.create_task(_db_write_bars(raw_df, symbol, market, period))
+        # Write to DB synchronously inside the lock so subsequent waiters find data
+        await _db_write_bars(raw_df, symbol, market, period)
 
         df = _calculate_indicators(raw_df)
         df = df[df["datetime"] >= start_ns].reset_index(drop=True)
@@ -594,7 +594,15 @@ def _normalize(raw: pd.DataFrame, date_col: str, open_col: str, high_col: str, l
         low_col: "low",
         close_col: "close",
         volume_col: "volume",
-    })[["datetime", "open", "high", "low", "close", "volume"]].copy()
+    })
+    missing = [c for c in ("datetime", "open", "high", "low", "close", "volume") if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"列名映射失败，缺少 {missing}；"
+            f"期望源列 [{date_col},{open_col},{high_col},{low_col},{close_col},{volume_col}]，"
+            f"实际列 {list(raw.columns)}"
+        )
+    df = df[["datetime", "open", "high", "low", "close", "volume"]].copy()
 
     df["datetime"] = pd.to_datetime(df["datetime"]).astype("datetime64[ns]").astype("int64")
     df["timestamp"] = df["datetime"]
