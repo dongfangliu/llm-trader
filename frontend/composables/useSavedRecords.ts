@@ -49,5 +49,9 @@ export function useSavedRecords() {
     }
   }
 
-  return { savedRecords, loadSaved, saveRecord, deleteRecord }
+  function isSaved(id: string): boolean {
+    return savedRecords.value.some(r => r.id === id)
+  }
+
+  return { savedRecords, loadSaved, saveRecord, deleteRecord, isSaved }
 }
