@@ -6,8 +6,9 @@ numpy>=1.24.0
 pandas>=2.0.0
 ta>=0.11.0
 
-# ========== Market Data (AKShare only - no TqSDK) ==========
+# ========== Market Data ==========
 akshare>=1.12.0
+yfinance>=0.2.0
 
 # ========== LLM Clients ==========
 anthropic>=0.18.0

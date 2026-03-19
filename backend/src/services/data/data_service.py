@@ -15,6 +15,8 @@ to fetch incremental bars without warmup or indicator computation.
 """
 
 import asyncio
+import random
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 import os
@@ -67,22 +69,43 @@ def _get_lock(key: str) -> asyncio.Lock:
 
 
 
-def _try_sources(sources: list, context: str) -> pd.DataFrame:
-    """Try each (name, callable) source in order; return first non-empty result.
+_RETRY_EXCEPTIONS = ("Connection aborted", "RemoteDisconnected", "ConnectionError",
+                     "timeout", "Timeout", "429", "503", "502", "reset by peer")
+
+def _is_retriable(exc: Exception) -> bool:
+    msg = str(exc)
+    return any(k in msg for k in _RETRY_EXCEPTIONS)
+
+
+def _try_sources(sources: list, context: str, max_retries: int = 3) -> pd.DataFrame:
+    """Try each (name, callable) source in order with exponential backoff retry.
     Raises ValueError with all failure details when every source is exhausted.
     """
     errors: list[str] = []
     for name, fn in sources:
-        try:
-            df = fn()
-            if df is not None and not df.empty:
-                logger.info(f"[{context}] 数据源 '{name}' 成功，共 {len(df)} 行")
-                return df
-            logger.warning(f"[{context}] 数据源 '{name}' 返回空数据，尝试下一个")
-            errors.append(f"{name}: 返回空数据")
-        except Exception as exc:
-            logger.warning(f"[{context}] 数据源 '{name}' 失败: {exc}，尝试下一个")
-            errors.append(f"{name}: {exc}")
+        last_exc = None
+        for attempt in range(max_retries):
+            try:
+                df = fn()
+                if df is not None and not df.empty:
+                    logger.info(f"[{context}] 数据源 '{name}' 成功，共 {len(df)} 行")
+                    return df
+                logger.warning(f"[{context}] 数据源 '{name}' 返回空数据，尝试下一个")
+                errors.append(f"{name}: 返回空数据")
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < max_retries - 1 and _is_retriable(exc):
+                    delay = (2 ** attempt) * 3 + random.uniform(0, 2)
+                    logger.warning(
+                        f"[{context}] 数据源 '{name}' 第{attempt+1}次失败(可重试)，"
+                        f"{delay:.1f}s 后重试: {exc}"
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.warning(f"[{context}] 数据源 '{name}' 失败: {exc}，尝试下一个")
+                    errors.append(f"{name}: {exc}")
+                    break
     raise ValueError(f"[{context}] 所有数据源均失败:\n" + "\n".join(f"  • {e}" for e in errors))
 
 
