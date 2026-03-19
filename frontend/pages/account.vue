@@ -1,127 +1,235 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from '#app'
 import { useAuthStore } from '~/stores/auth'
-import { navigateTo } from '#app'
+import api from '~/lib/api'
 
+const router = useRouter()
 const auth = useAuthStore()
 
-onMounted(() => {
-  if (auth.initialized && !auth.isLoggedIn) {
-    navigateTo('/login')
+const limits = ref<{ remaining: number; daily_limit: number } | null>(null)
+const afdianBasicLink = ref('https://afdian.net')
+const afdianPremiumLink = ref('https://afdian.net')
+const inviteInput = ref('')
+const inviteMsg = ref<{ type: 'ok' | 'err'; text: string } | null>(null)
+const inviteLoading = ref(false)
+const copiedInvite = ref(false)
+
+const TIER_LABELS: Record<string, string> = { free: '免费版', basic: '标准版', premium: '专业版' }
+
+onMounted(async () => {
+  await auth.fetchMe()
+  if (!auth.isLoggedIn) {
+    router.push('/login')
+    return
   }
+
+  try {
+    const res = await api.get('/api/subscription/status')
+    limits.value = { remaining: res.data.remaining, daily_limit: res.data.daily_limit }
+  } catch {}
+
+  try {
+    const res = await api.get('/api/config')
+    if (res.data.afdian_basic_link) afdianBasicLink.value = res.data.afdian_basic_link
+    if (res.data.afdian_premium_link) afdianPremiumLink.value = res.data.afdian_premium_link
+  } catch {}
 })
 
-const tierLabels: Record<string, string> = {
-  free: '免费版',
-  basic: '标准版',
-  premium: '专业版',
+async function handleUseInvite() {
+  if (!inviteInput.value.trim()) return
+  inviteLoading.value = true
+  inviteMsg.value = null
+  try {
+    const res = await api.post('/api/invite/use', { invite_code: inviteInput.value.trim() })
+    inviteMsg.value = { type: 'ok', text: res.data.message || '成功！双方各获得 +10 次分析额度 🎉' }
+    inviteInput.value = ''
+    await auth.fetchMe()
+  } catch (e: any) {
+    inviteMsg.value = { type: 'err', text: e.response?.data?.detail || '邀请码无效' }
+  } finally {
+    inviteLoading.value = false
+  }
 }
 
-const tierColors: Record<string, string> = {
-  free: 'default',
-  basic: 'basic',
-  premium: 'premium',
+function copyInviteCode() {
+  if (!auth.user?.invite_code) return
+  navigator.clipboard?.writeText(auth.user.invite_code).then(() => {
+    copiedInvite.value = true
+    setTimeout(() => { copiedInvite.value = false }, 2000)
+  })
 }
 
 function handleLogout() {
   auth.logout()
-  navigateTo('/')
+  router.push('/login')
 }
+
+const tier = computed(() => auth.user?.tier ?? 'free')
+const tierLabel = computed(() => TIER_LABELS[tier.value] ?? tier.value)
 </script>
 
 <template>
-  <div class="fixed inset-0 bg-ios-bg flex flex-col overflow-y-auto">
-    <!-- Header -->
-    <div class="flex items-center px-4 pt-12 pb-4">
-      <NuxtLink to="/" class="text-ios-blue">← 返回</NuxtLink>
-      <h1 class="flex-1 text-center font-semibold text-ios-label mr-8">账户</h1>
+  <div style="min-height: 100vh; background: #f2f2f7;">
+    <!-- Nav Bar -->
+    <div style="position: sticky; top: 0; z-index: 100; background: rgba(249,249,249,0.94); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 0.5px solid rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 44px;">
+      <NuxtLink to="/" style="font-size: 17px; color: #007aff; text-decoration: none; display: flex; align-items: center; gap: 2px;">‹ 返回</NuxtLink>
+      <span style="font-size: 17px; font-weight: 600; color: #000;">账户</span>
+      <span style="width: 40px; display: inline-block;" />
     </div>
 
-    <div class="px-4 pb-8 max-w-lg mx-auto w-full space-y-4">
-      <!-- Not logged in -->
-      <div v-if="!auth.isLoggedIn" class="text-center py-12">
-        <div class="text-5xl mb-4">👤</div>
-        <p class="text-ios-secondary mb-6">登录后可管理账户</p>
-        <NuxtLink to="/login">
-          <IosButton variant="primary" size="lg" :fullWidth="true">登录账户</IosButton>
-        </NuxtLink>
+    <!-- Not logged in state -->
+    <div v-if="!auth.isLoggedIn" style="display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 44px);">
+      <div style="background: white; border-radius: 20px; padding: 40px 32px; text-align: center; max-width: 320px; width: calc(100% - 48px); box-shadow: 0 2px 16px rgba(0,0,0,0.08);">
+        <div style="font-size: 48px; margin-bottom: 12px;">🔐</div>
+        <p style="font-size: 17px; font-weight: 600; color: #000; margin: 0 0 8px;">请先登录</p>
+        <p style="font-size: 14px; color: #8e8e93; margin: 0 0 24px;">登录后查看账号信息和历史分析</p>
+        <NuxtLink to="/login" style="display: block; width: 100%; height: 50px; background: #007aff; color: white; border-radius: 12px; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; margin-bottom: 12px; box-sizing: border-box;">前往登录</NuxtLink>
+        <NuxtLink to="/" style="display: block; width: 100%; height: 50px; background: #f2f2f7; color: #007aff; border-radius: 12px; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; box-sizing: border-box;">返回首页</NuxtLink>
       </div>
+    </div>
 
-      <template v-else>
-        <!-- User info card -->
-        <IosCard>
-          <div class="flex items-center gap-4">
-            <div class="w-14 h-14 rounded-full bg-ios-blue/10 flex items-center justify-center text-ios-blue font-bold text-xl">
-              {{ (auth.user?.email || '?')[0].toUpperCase() }}
+    <!-- Logged in state -->
+    <template v-else>
+      <div style="padding: 20px 16px; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+        <!-- Profile card -->
+        <div style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <!-- Avatar -->
+            <div style="width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 22px; flex-shrink: 0;">
+              {{ (auth.user?.email || 'U')[0].toUpperCase() }}
             </div>
-            <div>
-              <p class="font-semibold text-ios-label">{{ auth.user?.email }}</p>
-              <div class="flex items-center gap-2 mt-1">
-                <IosBadge :variant="tierColors[auth.user?.tier || 'free'] as any">
-                  {{ tierLabels[auth.user?.tier || 'free'] }}
-                </IosBadge>
-                <IosBadge v-if="!auth.user?.is_verified" variant="warning">未验证</IosBadge>
+            <div style="flex: 1; min-width: 0;">
+              <p style="font-size: 16px; font-weight: 600; color: #000; margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ auth.user?.email }}</p>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <!-- Tier badge -->
+                <span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 9999px;"
+                  :style="tier === 'premium' ? { background: '#f3e8ff', color: '#7c3aed' } : tier === 'basic' ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f2f2f7', color: '#8e8e93' }">
+                  {{ tierLabel }}
+                </span>
+                <!-- Verification badge -->
+                <span v-if="!auth.user?.is_verified" style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; background: #fff7ed; color: #c2410c;">未验证</span>
+                <!-- Quota -->
+                <span v-if="limits" style="font-size: 12px; color: #8e8e93;">
+                  今日剩余 {{ limits.remaining }}/{{ limits.daily_limit }} 次
+                </span>
               </div>
             </div>
           </div>
-        </IosCard>
+        </div>
 
         <!-- Subscription card -->
-        <IosCard>
-          <h3 class="text-sm font-semibold text-ios-secondary mb-3">订阅状态</h3>
-          <div class="flex items-center justify-between">
-            <span class="text-ios-label">当前套餐</span>
-            <span class="font-semibold text-ios-label">{{ tierLabels[auth.user?.tier || 'free'] }}</span>
+        <div style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
+          <div style="padding: 16px 20px 0; font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em;">订阅状态</div>
+          <div style="padding: 12px 20px 20px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 0.5px solid rgba(60,60,67,0.1);">
+              <span style="font-size: 15px; color: #000;">当前套餐</span>
+              <span style="font-size: 15px; font-weight: 600; color: #000;">{{ tierLabel }}</span>
+            </div>
+            <!-- Premium status -->
+            <div v-if="tier === 'premium'" style="margin-top: 16px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #c4b5fd;">
+              <div style="font-size: 24px; margin-bottom: 6px;">🏆</div>
+              <p style="font-size: 15px; font-weight: 700; color: #5b21b6; margin: 0 0 4px;">您已是专业会员</p>
+              <p style="font-size: 13px; color: #6d28d9; margin: 0;">每日 {{ 15 }} 次分析 · 全市场 · 优先通道</p>
+            </div>
+            <!-- Upgrade button for non-premium -->
+            <div v-else style="margin-top: 16px; display: flex; flex-direction: column; gap: 10px;">
+              <NuxtLink v-if="tier === 'free'" :to="'/upgrade?tier=basic'" style="display: block; width: 100%; height: 50px; border-radius: 12px; background: #007aff; color: white; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; box-sizing: border-box;">升级标准版 →</NuxtLink>
+              <NuxtLink :to="'/upgrade?tier=premium'" style="display: block; width: 100%; height: 50px; border-radius: 12px; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; box-sizing: border-box;">升级专业版 →</NuxtLink>
+            </div>
           </div>
-          <div class="mt-3" v-if="auth.user?.tier === 'free'">
-            <NuxtLink to="/upgrade">
-              <IosButton variant="primary" size="md" :fullWidth="true">升级套餐</IosButton>
-            </NuxtLink>
-          </div>
-        </IosCard>
+        </div>
 
-        <!-- Invite code -->
-        <IosCard v-if="auth.user?.invite_code">
-          <h3 class="text-sm font-semibold text-ios-secondary mb-3">邀请码</h3>
-          <div class="flex items-center justify-between">
-            <code class="font-mono font-bold text-ios-blue text-lg tracking-wider">{{ auth.user?.invite_code }}</code>
-            <button
-              class="text-ios-blue text-sm"
-              @click="navigator.clipboard?.writeText(auth.user?.invite_code || '')"
-            >
-              复制
-            </button>
+        <!-- Invite code card -->
+        <div v-if="auth.user?.invite_code" style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span style="font-size: 18px;">🎁</span>
+            <h2 style="font-size: 16px; font-weight: 700; color: #000; margin: 0;">邀请好友·共享额度</h2>
           </div>
-          <p class="text-xs text-ios-secondary mt-2">分享给朋友，双方各获 +10 次永久额度</p>
-        </IosCard>
+          <p style="font-size: 13px; color: #8e8e93; margin: 0 0 16px; line-height: 1.5;">
+            每成功邀请一位新用户注册，双方各获得 <strong style="color: #000;">+10 次</strong>分析额度（永久累加）
+            <span v-if="(auth.user?.bonus_quota ?? 0) > 0" style="margin-left: 8px; color: #7c3aed; font-weight: 600;">当前奖励余额：{{ auth.user?.bonus_quota }} 次</span>
+          </p>
 
-        <!-- Bonus quota -->
-        <IosCard v-if="(auth.user?.bonus_quota || 0) > 0">
-          <div class="flex items-center justify-between">
-            <span class="text-ios-label">永久额度</span>
-            <span class="font-bold text-ios-green text-lg">+{{ auth.user?.bonus_quota }}</span>
+          <!-- My invite code -->
+          <div style="margin-bottom: 16px;">
+            <p style="font-size: 12px; color: #8e8e93; margin: 0 0 6px;">我的邀请码</p>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <code style="background: #f2f2f7; padding: 8px 14px; border-radius: 10px; font-weight: 700; font-size: 18px; letter-spacing: 0.15em; color: #000; border: 1px solid #e5e5ea; flex: 1; text-align: center; font-family: monospace;">{{ auth.user?.invite_code }}</code>
+              <button @click="copyInviteCode" style="height: 40px; padding: 0 16px; background: #f2f2f7; color: #007aff; border: 1px solid #e5e5ea; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
+                {{ copiedInvite ? '已复制 ✓' : '复制' }}
+              </button>
+            </div>
           </div>
-        </IosCard>
 
-        <!-- Actions -->
-        <IosCard>
-          <div class="space-y-1 -m-1">
-            <NuxtLink
-              v-if="auth.isAdmin"
-              to="/admin"
-              class="flex items-center justify-between px-3 py-3 rounded-ios hover:bg-ios-fill min-h-[44px]"
-            >
-              <span class="text-ios-label">管理后台</span>
-              <span class="text-ios-secondary">›</span>
-            </NuxtLink>
+          <!-- Use friend's invite code -->
+          <div>
+            <p style="font-size: 12px; color: #8e8e93; margin: 0 0 6px;">输入好友邀请码</p>
+            <div v-if="auth.user?.used_invite_code" style="font-size: 13px; color: #16a34a; font-weight: 600; padding: 10px 14px; background: #f0fdf4; border-radius: 10px;">
+              ✓ 已兑换邀请码 <code style="background: white; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.1em;">{{ auth.user?.used_invite_code }}</code>（每账号限兑换一次）
+            </div>
+            <template v-else>
+              <div style="display: flex; gap: 10px;">
+                <input
+                  v-model="inviteInput"
+                  @input="inviteInput = (inviteInput as string).toUpperCase()"
+                  @keydown.enter="handleUseInvite"
+                  placeholder="8位邀请码"
+                  maxlength="8"
+                  style="flex: 1; height: 44px; padding: 0 14px; border: 1px solid rgba(60,60,67,0.18); border-radius: 10px; font-size: 16px; font-family: monospace; letter-spacing: 0.1em; text-transform: uppercase; background: #f2f2f7; color: #000; outline: none; box-sizing: border-box;"
+                />
+                <button
+                  @click="handleUseInvite"
+                  :disabled="inviteLoading || !inviteInput.trim()"
+                  style="height: 44px; padding: 0 20px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; white-space: nowrap;"
+                  :style="inviteLoading || !inviteInput.trim() ? { background: '#c7c7cc', color: 'white', cursor: 'default' } : { background: '#007aff', color: 'white' }"
+                >
+                  {{ inviteLoading ? '...' : '兑换' }}
+                </button>
+              </div>
+              <p v-if="inviteMsg" style="font-size: 13px; margin-top: 8px;" :style="inviteMsg.type === 'ok' ? { color: '#16a34a' } : { color: '#dc2626' }">
+                {{ inviteMsg.text }}
+              </p>
+            </template>
           </div>
-        </IosCard>
+        </div>
 
-        <!-- Logout -->
-        <IosButton variant="danger" size="lg" :fullWidth="true" @click="handleLogout">
+        <!-- Bonus quota card (standalone if no invite_code section) -->
+        <div v-if="!auth.user?.invite_code && (auth.user?.bonus_quota ?? 0) > 0" style="background: white; border-radius: 20px; padding: 16px 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 15px; color: #000;">永久额度</span>
+          <span style="font-size: 20px; font-weight: 700; color: #34c759;">+{{ auth.user?.bonus_quota }}</span>
+        </div>
+
+        <!-- Quick links card -->
+        <div style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
+          <NuxtLink v-if="auth.isAdmin" to="/admin" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; text-decoration: none; border-bottom: 0.5px solid rgba(60,60,67,0.1);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #ff9500, #ffcc02); display: flex; align-items: center; justify-content: center; font-size: 16px;">⚙️</div>
+              <span style="font-size: 15px; color: #000;">管理后台</span>
+            </div>
+            <span style="font-size: 18px; color: #c7c7cc;">›</span>
+          </NuxtLink>
+          <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; text-decoration: none;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #7c3aed, #4f46e5); display: flex; align-items: center; justify-content: center; font-size: 16px;">👑</div>
+              <span style="font-size: 15px; color: #000;">订阅管理 / 激活</span>
+            </div>
+            <span style="font-size: 18px; color: #c7c7cc;">›</span>
+          </NuxtLink>
+        </div>
+
+        <!-- Logout button -->
+        <button
+          @click="handleLogout"
+          style="width: 100%; height: 50px; border-radius: 12px; border: none; background: #fff2f2; color: #ff3b30; font-size: 17px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.06);"
+        >
           退出登录
-        </IosButton>
-      </template>
-    </div>
+        </button>
+
+      </div>
+    </template>
+
+    <div style="height: 48px;" />
   </div>
 </template>
