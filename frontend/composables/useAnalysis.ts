@@ -147,6 +147,8 @@ export function useAnalysis() {
       costPrice?: number
       maxPosition?: number
       holdingText?: string
+      multiPeriodEnabled?: boolean
+      auxiliaryPeriods?: string[]
     }
   ) {
     if (isAnalyzing.value) return

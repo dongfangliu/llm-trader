@@ -12,6 +12,7 @@ export interface UserOut {
   is_admin: boolean
   bonus_quota: number
   invite_code?: string
+  used_invite_code?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
