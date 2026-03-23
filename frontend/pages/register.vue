@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { navigateTo } from '#app'
+import api from '~/lib/api'
 
 const auth = useAuthStore()
 
@@ -16,6 +17,7 @@ const showConfirmPwd = ref(false)
 const success = ref(false)
 const resendStatus = ref('')
 const resendCooldown = ref(0)
+const requireInviteCode = ref(false)
 
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
@@ -26,12 +28,16 @@ const BENEFITS = [
   { icon: '↑', bg: 'linear-gradient(135deg, #5856d6, #7c3aed)', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
 ]
 
-onMounted(() => {
+onMounted(async () => {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
     const inv = params.get('invite')
     if (inv) inviteCode.value = inv
   }
+  try {
+    const res = await api.get('/api/config')
+    requireInviteCode.value = !!res.data.require_invite_code
+  } catch {}
 })
 
 async function handleRegister() {
@@ -47,6 +53,10 @@ async function handleRegister() {
   }
   if (password.value.length < 6) {
     localError.value = '密码至少 6 位'
+    return
+  }
+  if (requireInviteCode.value && !inviteCode.value.trim()) {
+    localError.value = '注册需要邀请码'
     return
   }
 
@@ -286,13 +296,14 @@ function handleInviteCodeInput(e: Event) {
             padding: '0 16px',
           }">
             <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, minWidth: '80px', flexShrink: 0 }">
-              邀请码<span :style="{ fontSize: '11px', color: '#aeaeb2', marginLeft: '2px' }">（可选）</span>
+              邀请码<span v-if="requireInviteCode" :style="{ fontSize: '11px', color: '#ff3b30', marginLeft: '2px' }">*</span>
+              <span v-else :style="{ fontSize: '11px', color: '#aeaeb2', marginLeft: '2px' }">（可选）</span>
             </label>
             <input
               :value="inviteCode"
               @input="handleInviteCodeInput"
               type="text"
-              placeholder="邀请码（可选）"
+              :placeholder="requireInviteCode ? '邀请码（必填）' : '邀请码（可选）'"
               autocomplete="off"
               :style="{
                 flex: 1, border: 'none', outline: 'none', background: 'transparent',

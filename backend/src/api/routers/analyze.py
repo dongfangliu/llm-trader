@@ -189,6 +189,20 @@ async def analyze(
         used = usage_after.count
         daily_limit_shown = device_limit
 
+    # Extract and validate client-side OHLCV bars
+    client_bars = None
+    if req.ohlcv_bars and len(req.ohlcv_bars) >= 20:
+        client_bars = [b.model_dump() for b in req.ohlcv_bars[:500]]
+        logger.info(
+            "客户端行情数据: symbol=%s market=%s bars=%d",
+            symbol_clean, req.market, len(client_bars),
+        )
+    elif req.ohlcv_bars is not None:
+        logger.info(
+            "客户端行情数据不足 (%d 根)，降级服务端拉取: symbol=%s",
+            len(req.ohlcv_bars), symbol_clean,
+        )
+
     # Enqueue task
     try:
         redis_pool = request.app.state.redis
@@ -207,6 +221,8 @@ async def analyze(
             holding_quantity=req.holding_quantity,
             cost_price=req.cost_price,
             max_position=req.max_position,
+            ohlcv_bars=client_bars,
+            is_pro_trial=is_first_trial,
         )
     except Exception as eq_err:
         logger.error("enqueue_job failed: %s", eq_err)
@@ -386,6 +402,7 @@ async def get_analysis_history(
                 "period": item.period,
                 "created_at": item.analyzed_at.isoformat() if item.analyzed_at else "",
                 "is_favorited": bool(item.is_favorited),
+                "is_pro_trial": bool(item.is_pro_trial),
                 "result": json.loads(item.result) if item.result else None,
             }
             for item in items

@@ -23,6 +23,8 @@ async def submit_analysis(
     holding_quantity: Optional[float] = None,
     cost_price: Optional[float] = None,
     max_position: Optional[float] = None,
+    ohlcv_bars: Optional[list] = None,
+    is_pro_trial: bool = False,
 ) -> str:
     """Submit analysis task to worker queue. Returns task_id.
 
@@ -43,7 +45,7 @@ async def submit_analysis(
     # Enqueue to arq worker — positional args must match analyze_task signature exactly:
     # analyze_task(ctx, task_id, symbol, market, period, history_days,
     #              holding_quantity, cost_price, max_position,
-    #              subscription, usage_mode, user_id, device_id)
+    #              subscription, usage_mode, user_id, device_id, ohlcv_bars)
     await redis_pool.enqueue_job(
         "analyze_task",
         task_id,
@@ -58,7 +60,9 @@ async def submit_analysis(
         usage_mode,
         user_id,
         device_id,
+        ohlcv_bars,
         _job_id=task_id,
+        is_pro_trial=is_pro_trial,
     )
 
     return task_id

@@ -39,3 +39,4 @@ class AnalysisHistory(Base):
     analyzed_at = Column(DateTime, default=datetime.utcnow, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_favorited = Column(Boolean, default=False)
+    is_pro_trial = Column(Boolean, default=False, nullable=False)

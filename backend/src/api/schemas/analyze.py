@@ -2,6 +2,15 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from enum import Enum
 
+
+class OhlcvBarInput(BaseModel):
+    d: str
+    o: float
+    h: float
+    l: float
+    c: float
+    v: float = 0.0
+
 class MarketEnum(str, Enum):
     a = "a"
     hk = "hk"
@@ -26,6 +35,7 @@ class AnalyzeRequest(BaseModel):
     max_position: Optional[int] = None
     holding_text: Optional[str] = Field(None, max_length=500)
     device_id: Optional[str] = None
+    ohlcv_bars: Optional[List[OhlcvBarInput]] = Field(default=None)
 
 class AnalyzeResponse(BaseModel):
     task_id: str
@@ -58,6 +68,7 @@ class HistoryItem(BaseModel):
     created_at: str
     result: Optional[Any] = None
     is_favorited: bool = False
+    is_pro_trial: bool = False
 
     class Config:
         from_attributes = True

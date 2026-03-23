@@ -25,7 +25,7 @@ onMounted(async () => {
   }
 
   try {
-    const res = await api.get('/api/subscription/status')
+    const res = await api.get('/api/analyze/limits')
     limits.value = { remaining: res.data.remaining, daily_limit: res.data.daily_limit }
   } catch {}
 
@@ -41,7 +41,7 @@ async function handleUseInvite() {
   inviteLoading.value = true
   inviteMsg.value = null
   try {
-    const res = await api.post('/api/invite/use', { invite_code: inviteInput.value.trim() })
+    const res = await api.post('/api/auth/invite/use', { invite_code: inviteInput.value.trim() })
     inviteMsg.value = { type: 'ok', text: res.data.message || '成功！双方各获得 +10 次分析额度 🎉' }
     inviteInput.value = ''
     await auth.fetchMe()

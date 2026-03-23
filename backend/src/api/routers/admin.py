@@ -6,7 +6,7 @@ import json
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -141,6 +141,50 @@ async def admin_stats(
         "analysis_last_24h": analysis_24h,
         "tier_distribution": tier_dist,
         "total_users": user_count,
+    }
+
+
+@router.get("/datasource-stats")
+async def admin_datasource_stats(
+    request: Request,
+    days: int = Query(7, ge=1, le=30),
+    _: bool = _Admin,
+):
+    """数据来源统计：客户端 vs akshare，最近 N 天（从 Redis 读取计数器）。"""
+    redis = request.app.state.redis
+
+    result = []
+    today = datetime.utcnow().date()
+    for i in range(days):
+        d = (today - timedelta(days=i)).isoformat()
+        client_raw = await redis.get(f"stats:datasource:client:{d}")
+        akshare_raw = await redis.get(f"stats:datasource:akshare:{d}")
+        client_count = int(client_raw) if client_raw else 0
+        akshare_count = int(akshare_raw) if akshare_raw else 0
+        total = client_count + akshare_count
+        result.append({
+            "date": d,
+            "client": client_count,
+            "akshare": akshare_count,
+            "total": total,
+            "client_pct": round(client_count / total * 100) if total else 0,
+        })
+
+    result.sort(key=lambda x: x["date"])
+
+    # Summary
+    total_client = sum(r["client"] for r in result)
+    total_akshare = sum(r["akshare"] for r in result)
+    grand_total = total_client + total_akshare
+
+    return {
+        "days": result,
+        "summary": {
+            "client": total_client,
+            "akshare": total_akshare,
+            "total": grand_total,
+            "client_pct": round(total_client / grand_total * 100) if grand_total else 0,
+        },
     }
 
 

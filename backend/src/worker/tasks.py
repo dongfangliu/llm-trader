@@ -162,6 +162,7 @@ async def _save_analysis_history_in_worker(
     result_payload: dict,
     user_id: Optional[int],
     device_id: Optional[str],
+    is_pro_trial: bool = False,
 ) -> None:
     """Save analysis history to DB using a fresh async session."""
     from src.database.db import async_session, AnalysisHistory
@@ -175,6 +176,7 @@ async def _save_analysis_history_in_worker(
         result=json.dumps(result_payload, ensure_ascii=False),
         analysis_date=analyzed_at.date(),
         analyzed_at=analyzed_at,
+        is_pro_trial=is_pro_trial,
     )
     async with async_session() as db:
         db.add(history)
@@ -195,6 +197,8 @@ async def analyze_task(
     usage_mode: str = "device",
     user_id: Optional[int] = None,
     device_id: Optional[str] = None,
+    ohlcv_bars: Optional[list] = None,
+    is_pro_trial: bool = False,
 ) -> dict:
     """
     arq task: fetch market data + run LLM analysis.
@@ -233,16 +237,74 @@ async def analyze_task(
             await redis.set(f"task:{task_id}", json.dumps(payload), ex=3600)
             return payload
 
-        # --- Fetch market data ---
-        from src.services.data.data_service import fetch_market_data
+        # --- Path A: 优先使用客户端传来的 OHLCV 数据 ---
+        import asyncio
+        df = None
+        data_source = "akshare"  # 记录数据来源，用于日志监控
 
-        df = await fetch_market_data(
-            symbol=symbol,
-            market=market,
-            period=period,
-            start_date=None,
-            end_date=None,
-        )
+        if ohlcv_bars and len(ohlcv_bars) >= 20:
+            try:
+                import pandas as pd
+                rows = [
+                    {
+                        "datetime": pd.Timestamp(b["d"]).value,
+                        "open": float(b["o"]),
+                        "high": float(b["h"]),
+                        "low": float(b["l"]),
+                        "close": float(b["c"]),
+                        "volume": float(b.get("v", 0)),
+                    }
+                    for b in ohlcv_bars
+                ]
+                raw_df = pd.DataFrame(rows).sort_values("datetime").reset_index(drop=True)
+                raw_df = raw_df.dropna(subset=["open", "high", "low", "close"])
+                if len(raw_df) >= 20:
+                    from src.services.data.data_service import _calculate_indicators, _db_write_bars
+                    df = _calculate_indicators(raw_df)
+                    data_source = "client"
+                    logger.info(
+                        "[客户端数据] %s:%s period=%s 使用客户端 %d 根K线 (任务 %s)",
+                        market, symbol, period, len(df), task_id,
+                    )
+                    # 后台异步写入 DB，不阻塞分析
+                    asyncio.ensure_future(_db_write_bars(raw_df, symbol, market, period))
+                else:
+                    logger.warning(
+                        "[客户端数据] %s:%s 清洗后仅剩 %d 根，不足20根，降级 akshare",
+                        market, symbol, len(raw_df),
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "[客户端数据] %s:%s 解析失败，降级服务端拉取: %s",
+                    market, symbol, exc,
+                )
+                df = None
+        else:
+            if ohlcv_bars is not None:
+                logger.info(
+                    "[客户端数据] %s:%s 收到 %d 根 (不足20)，降级 akshare",
+                    market, symbol, len(ohlcv_bars),
+                )
+            else:
+                logger.info("[客户端数据] %s:%s 无客户端数据，走 akshare", market, symbol)
+
+        # --- Path B: 服务端 akshare 拉取（降级兜底）---
+        if df is None or df.empty:
+            from src.services.data.data_service import fetch_market_data
+
+            df = await fetch_market_data(
+                symbol=symbol,
+                market=market,
+                period=period,
+                start_date=None,
+                end_date=None,
+            )
+            data_source = "akshare"
+            if df is not None and not df.empty:
+                logger.info(
+                    "[AKShare] %s:%s period=%s 拉取 %d 根K线 (任务 %s)",
+                    market, symbol, period, len(df), task_id,
+                )
 
         if df is None or df.empty:
             await _set_status("failed", error=f'未找到 "{symbol}" 的市场数据')
@@ -334,9 +396,19 @@ async def analyze_task(
                 result_payload=api_result,
                 user_id=user_id,
                 device_id=device_id,
+                is_pro_trial=is_pro_trial,
             )
         except Exception as hist_err:
             logger.warning("Failed to save analysis history (non-fatal): %s", hist_err)
+
+        # --- 记录数据来源统计计数（用于管理后台监控）---
+        try:
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            counter_key = f"stats:datasource:{data_source}:{today}"
+            await redis.incr(counter_key)
+            await redis.expire(counter_key, 7 * 86400)  # 保留 7 天
+        except Exception:
+            pass  # 统计失败不影响主流程
 
         # Store task result (with masking applied for the requesting user)
         done_payload = {
@@ -346,6 +418,7 @@ async def analyze_task(
             "result": api_result_display,
             "latest_price": latest_price,
             "analyzed_at": analyzed_at_iso,
+            "data_source": data_source,  # "client" | "akshare"
         }
         await redis.set(f"task:{task_id}", json.dumps(done_payload), ex=3600)
         return done_payload

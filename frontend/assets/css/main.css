@@ -259,6 +259,21 @@
   color: #aeaeb2;
 }
 .rg-card-chevron {}
+.rg-card-pro-trial-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+  padding: 2px 7px;
+  background: rgba(175, 82, 222, 0.1);
+  color: #AF52DE;
+  border: 1px solid rgba(175, 82, 222, 0.2);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+}
 
 /* ── Bottom Navigation ── */
 .bottom-nav {

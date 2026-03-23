@@ -1,6 +1,7 @@
 """Authentication service - JWT, registration, login, email verification."""
 from datetime import datetime, timedelta
 from typing import Optional
+import json
 import jwt
 import bcrypt
 import uuid
@@ -10,6 +11,7 @@ from fastapi import HTTPException
 
 from src.config import settings
 from src.models.user import User
+from src.models.settings import SystemSetting
 from src.services.email_service import send_verification_email as _send_verification_email
 
 
@@ -53,6 +55,21 @@ async def register_user(db: AsyncSession, email: str, password: str, username: O
 
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="密码至少6位")
+
+    # Check if invite code is required
+    app_row = await db.get(SystemSetting, "app")
+    require_invite = False
+    if app_row:
+        try:
+            require_invite = bool(json.loads(app_row.value).get("require_invite_code", False))
+        except Exception:
+            pass
+    if require_invite:
+        if not invite_code:
+            raise HTTPException(status_code=400, detail="注册需要邀请码")
+        result = await db.execute(select(User).where(User.invite_code == invite_code.upper()))
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="邀请码无效")
 
     # Generate invite code for new user
     new_invite_code = str(uuid.uuid4())[:8].upper()

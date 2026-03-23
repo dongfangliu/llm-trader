@@ -6,18 +6,26 @@ export function useTrial() {
 
   const showGuestTrialEndedScreen = ref(false)
   const showProTrialWelcomeModal = ref(false)
+  const showProTrialEndedBanner = ref(false)  // registered users who have used their trial
+  const trialActivated = ref(false)           // true from modal confirm until result returns
 
-  // Called when analyze returns trial_expired error
+  // Called when user confirms the ProTrialWelcomeModal ("立即开始体验")
+  function activateTrial() {
+    trialActivated.value = true
+    showProTrialWelcomeModal.value = false
+  }
+
+  // Called when analyze returns trial_expired error (belt-and-suspenders for guests)
   function handleGuestTrialExpired() {
     if (!auth.isLoggedIn) {
       showGuestTrialEndedScreen.value = true
     }
   }
 
-  // Called when analyze succeeds and is_first_trial was true
-  function handleProTrialConsumed() {
+  // Called on page load when registered user has already used their trial
+  function handleRegisteredTrialExpired() {
     if (auth.isLoggedIn) {
-      showProTrialWelcomeModal.value = true
+      showProTrialEndedBanner.value = true
     }
   }
 
@@ -25,16 +33,19 @@ export function useTrial() {
     showGuestTrialEndedScreen.value = false
   }
 
-  function dismissProTrialModal() {
-    showProTrialWelcomeModal.value = false
+  function dismissProTrialEndedBanner() {
+    showProTrialEndedBanner.value = false
   }
 
   return {
     showGuestTrialEndedScreen,
     showProTrialWelcomeModal,
+    showProTrialEndedBanner,
+    trialActivated,
+    activateTrial,
     handleGuestTrialExpired,
-    handleProTrialConsumed,
+    handleRegisteredTrialExpired,
     dismissGuestTrialScreen,
-    dismissProTrialModal,
+    dismissProTrialEndedBanner,
   }
 }

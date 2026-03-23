@@ -13,7 +13,7 @@ from src.config import settings
 from src.models.subscription import AfdianOrder
 from src.models.user import User
 from src.models.device import Device
-from src.api.schemas.subscription import PricingPlan, PricingResponse
+from src.api.schemas.subscription import FeatureItem, TierConfig, PricingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -165,43 +165,32 @@ async def activate_subscription(
     return {"status": "activated", "tier": tier, "expires_at": new_expires.isoformat()}
 
 
+_DEFAULT_FEATURES = [
+    {"text": "全市场支持（A股/港股/美股/期货）", "tiers": ["basic", "premium"]},
+    {"text": "多周期技术分析", "tiers": ["basic", "premium"]},
+    {"text": "AI智能解读", "tiers": ["basic", "premium"]},
+    {"text": "优先响应速度", "tiers": ["premium"]},
+    {"text": "专属客服支持", "tiers": ["premium"]},
+]
+
+
 def get_pricing_plans() -> PricingResponse:
-    """Return pricing plans from settings."""
+    """Return default pricing plans from settings."""
     period = settings.pricing_period
-    plans = [
-        PricingPlan(
-            id="basic",
-            name="基础版",
+    return PricingResponse(
+        features=[FeatureItem(**f) for f in _DEFAULT_FEATURES],
+        guest=TierConfig(daily_limit=settings.pricing_guest_daily),
+        free=TierConfig(daily_limit=settings.pricing_free_daily),
+        basic=TierConfig(
+            daily_limit=settings.pricing_basic_daily,
             price=settings.pricing_basic_price,
             period=period,
-            daily_limit=settings.pricing_basic_daily,
-            tier="basic",
-            features=[
-                f"每日 {settings.pricing_basic_daily} 次分析",
-                "全市场支持（A股/港股/美股/期货）",
-                "多周期技术分析",
-                "AI智能解读",
-            ],
             afdian_link=settings.afdian_basic_link,
-            is_recommended=False,
         ),
-        PricingPlan(
-            id="premium",
-            name="专业版",
+        premium=TierConfig(
+            daily_limit=settings.pricing_premium_daily,
             price=settings.pricing_premium_price,
             period=period,
-            daily_limit=settings.pricing_premium_daily,
-            tier="premium",
-            features=[
-                f"每日 {settings.pricing_premium_daily} 次分析",
-                "全市场支持（A股/港股/美股/期货）",
-                "多周期技术分析",
-                "AI智能解读",
-                "优先响应速度",
-                "专属客服支持",
-            ],
             afdian_link=settings.afdian_premium_link,
-            is_recommended=True,
         ),
-    ]
-    return PricingResponse(plans=plans, period=period)
+    )

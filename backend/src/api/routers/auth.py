@@ -1,5 +1,7 @@
 """Authentication router."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select, update as _upd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.new_db import get_db
@@ -63,3 +65,40 @@ async def resend_verification_route(req: ResendVerificationRequest, db: AsyncSes
     """Resend verification email."""
     await resend_verification(db, req.email)
     return SuccessResponse(message="验证邮件已重新发送")
+
+
+class UseInviteRequest(BaseModel):
+    invite_code: str
+
+
+@router.post("/invite/use")
+async def use_invite_code(
+    req: UseInviteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply an invite code: reward both inviter and invitee +10 bonus_quota."""
+    code = req.invite_code.strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="邀请码不能为空")
+    if current_user.used_invite_code:
+        raise HTTPException(status_code=400, detail="您已使用过邀请码")
+    if current_user.invite_code and current_user.invite_code.upper() == code:
+        raise HTTPException(status_code=400, detail="不能使用自己的邀请码")
+
+    result = await db.execute(select(User).where(User.invite_code == code))
+    inviter = result.scalars().first()
+    if not inviter:
+        raise HTTPException(status_code=404, detail="邀请码无效")
+
+    await db.execute(
+        _upd(User).where(User.id == inviter.id).values(bonus_quota=User.bonus_quota + 10)
+    )
+    await db.execute(
+        _upd(User).where(User.id == current_user.id).values(
+            bonus_quota=User.bonus_quota + 10,
+            used_invite_code=code,
+        )
+    )
+    await db.commit()
+    return {"success": True, "message": "邀请码兑换成功！双方各获得 +10 次分析额度 🎉"}

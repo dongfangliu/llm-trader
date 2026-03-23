@@ -2,6 +2,7 @@ import { ref, onUnmounted } from 'vue'
 import api from '~/lib/api'
 import { useDevice } from '~/composables/useDevice'
 import { useAuthStore } from '~/stores/auth'
+import { fetchOhlcv } from '~/composables/useMarketDataFetcher'
 
 export type AnalysisStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'
 
@@ -66,7 +67,7 @@ export function useAnalysis() {
           const res = await api.get(`/api/task/${tId}`)
           const data = res.data
 
-          if (data.status === 'completed') {
+          if (data.status === 'done') {
             resolve(data.result)
           } else if (data.status === 'failed') {
             reject(new Error(data.error || '分析失败'))
@@ -106,7 +107,7 @@ export function useAnalysis() {
         try {
           const data = JSON.parse(event.data)
 
-          if (data.status === 'completed') {
+          if (data.status === 'done') {
             clearTimeout(timeout)
             eventSource.close()
             resolve(data.result)
@@ -153,10 +154,17 @@ export function useAnalysis() {
     clearState()
     isAnalyzing.value = true
     progress.value = 5
-    statusMessage.value = '正在提交分析任务...'
+    statusMessage.value = '正在获取行情数据...'
 
     try {
       const deviceId = getDeviceId()
+
+      // Fetch OHLCV data from browser (client-side, user IP)
+      const historyDays = options?.historyDays ?? 90
+      const ohlcvBars = await fetchOhlcv(symbol, market, period, historyDays)
+
+      statusMessage.value = '正在提交分析任务...'
+      progress.value = 10
 
       // Submit analysis
       const submitRes = await api.post('/api/analyze', {
@@ -164,11 +172,12 @@ export function useAnalysis() {
         market,
         period,
         device_id: deviceId,
-        history_days: options?.historyDays ?? 90,
+        history_days: historyDays,
         holding_quantity: options?.holdingQuantity ?? null,
         cost_price: options?.costPrice ?? null,
         max_position: options?.maxPosition ?? null,
         holding_text: options?.holdingText ?? null,
+        ohlcv_bars: ohlcvBars,
       })
 
       const submitData = submitRes.data

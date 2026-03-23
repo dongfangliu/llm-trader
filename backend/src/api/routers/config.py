@@ -1,8 +1,13 @@
 """Config / health router — GET /api/health and GET /api/config."""
 
+import json
 from datetime import datetime
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.config import settings
+from src.database.new_db import get_db
+from src.models.settings import SystemSetting
 
 router = APIRouter(prefix="/api", tags=["config"])
 
@@ -14,19 +19,59 @@ async def health():
 
 
 @router.get("/config")
-async def get_config():
-    """Return public runtime configuration for the frontend."""
+async def get_config(db: AsyncSession = Depends(get_db)):
+    """Return public runtime configuration for the frontend, overlaid with DB settings."""
+    # Start with env-based defaults
+    app_name = settings.app_name
+    require_invite_code = False
+    pricing_period = settings.pricing_period
+    pricing_guest_daily = settings.pricing_guest_daily
+    pricing_free_daily = settings.pricing_free_daily
+    pricing_basic_price = settings.pricing_basic_price
+    pricing_basic_daily = settings.pricing_basic_daily
+    pricing_premium_price = settings.pricing_premium_price
+    pricing_premium_daily = settings.pricing_premium_daily
+    afdian_basic_link = settings.afdian_basic_link
+    afdian_premium_link = settings.afdian_premium_link
+
+    # Overlay with DB settings
+    for section_key, apply in (("app", None), ("pricing", None), ("afdian", None)):
+        row = await db.get(SystemSetting, section_key)
+        if not row:
+            continue
+        try:
+            data = json.loads(row.value)
+        except Exception:
+            continue
+        if section_key == "app":
+            app_name = data.get("name", app_name)
+            require_invite_code = bool(data.get("require_invite_code", False))
+        elif section_key == "pricing":
+            pricing_period = data.get("period", pricing_period)
+            pricing_guest_daily = data.get("guest_daily", pricing_guest_daily)
+            pricing_free_daily = data.get("free_daily", pricing_free_daily)
+            basic = data.get("basic", {})
+            premium = data.get("premium", {})
+            pricing_basic_price = basic.get("price", pricing_basic_price)
+            pricing_basic_daily = basic.get("daily", pricing_basic_daily)
+            pricing_premium_price = premium.get("price", pricing_premium_price)
+            pricing_premium_daily = premium.get("daily", pricing_premium_daily)
+        elif section_key == "afdian":
+            afdian_basic_link = data.get("basic_link", afdian_basic_link)
+            afdian_premium_link = data.get("premium_link", afdian_premium_link)
+
     return {
-        "app_name": settings.app_name,
-        "pricing_period": settings.pricing_period,
-        "pricing_guest_daily": settings.pricing_guest_daily,
-        "pricing_free_daily": settings.pricing_free_daily,
-        "pricing_basic_price": settings.pricing_basic_price,
-        "pricing_basic_daily": settings.pricing_basic_daily,
-        "pricing_premium_price": settings.pricing_premium_price,
-        "pricing_premium_daily": settings.pricing_premium_daily,
-        "afdian_basic_link": settings.afdian_basic_link,
-        "afdian_premium_link": settings.afdian_premium_link,
+        "app_name": app_name,
+        "require_invite_code": require_invite_code,
+        "pricing_period": pricing_period,
+        "pricing_guest_daily": pricing_guest_daily,
+        "pricing_free_daily": pricing_free_daily,
+        "pricing_basic_price": pricing_basic_price,
+        "pricing_basic_daily": pricing_basic_daily,
+        "pricing_premium_price": pricing_premium_price,
+        "pricing_premium_daily": pricing_premium_daily,
+        "afdian_basic_link": afdian_basic_link,
+        "afdian_premium_link": afdian_premium_link,
         "markets": [
             {"value": "a", "label": "A股"},
             {"value": "hk", "label": "港股"},

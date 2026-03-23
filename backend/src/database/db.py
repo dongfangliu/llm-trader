@@ -171,6 +171,7 @@ class AnalysisHistory(Base):
     analyzed_at = Column(DateTime, default=datetime.utcnow, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_favorited = Column(Boolean, default=False)
+    is_pro_trial = Column(Boolean, default=False)
 
 
 class Subscription(Base):
@@ -327,6 +328,13 @@ async def _migrate_db():
         async with engine.begin() as conn:
             await conn.execute(text(
                 "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT FALSE"
+            ))
+    except Exception:
+        pass
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_pro_trial BOOLEAN DEFAULT FALSE"
             ))
     except Exception:
         pass

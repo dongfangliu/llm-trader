@@ -10,17 +10,19 @@ class ActivationResponse(BaseModel):
     tier: str
     message: str
 
-class PricingPlan(BaseModel):
-    id: str
-    name: str
-    price: str
-    period: str
+class FeatureItem(BaseModel):
+    text: str
+    tiers: List[str]
+
+class TierConfig(BaseModel):
     daily_limit: int
-    tier: str
-    features: List[str]
+    price: str = ""
+    period: str = ""
     afdian_link: str = ""
-    is_recommended: bool = False
 
 class PricingResponse(BaseModel):
-    plans: List[PricingPlan]
-    period: str
+    features: List[FeatureItem]
+    guest: TierConfig
+    free: TierConfig
+    basic: TierConfig
+    premium: TierConfig

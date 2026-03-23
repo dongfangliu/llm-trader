@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.database.new_db import get_db
-from src.api.schemas.subscription import ActivateRequest, ActivationResponse, PricingResponse
+from src.api.schemas.subscription import ActivateRequest, ActivationResponse, FeatureItem, PricingResponse
 from src.api.dependencies.auth import get_current_user_optional
 from src.services.subscription_service import activate_subscription, get_pricing_plans
 from src.models.user import User
@@ -98,6 +98,44 @@ async def get_status(
 
 
 @router.get("/pricing", response_model=PricingResponse)
-async def get_pricing():
-    """Get pricing plans."""
-    return get_pricing_plans()
+async def get_pricing(db: AsyncSession = Depends(get_db)):
+    """Get pricing plans, overlaid with DB-stored settings."""
+    import json
+    from src.models.settings import SystemSetting
+    base = get_pricing_plans()
+
+    for section_key in ("afdian", "pricing"):
+        row = await db.get(SystemSetting, section_key)
+        if not row:
+            continue
+        try:
+            data = json.loads(row.value)
+        except Exception:
+            continue
+        if section_key == "afdian":
+            if data.get("basic_link"):
+                base.basic.afdian_link = data["basic_link"]
+            if data.get("premium_link"):
+                base.premium.afdian_link = data["premium_link"]
+        elif section_key == "pricing":
+            period = data.get("period", base.basic.period)
+            base.basic.period = period
+            base.premium.period = period
+            if data.get("guest_daily") is not None:
+                base.guest.daily_limit = int(data["guest_daily"])
+            if data.get("free_daily") is not None:
+                base.free.daily_limit = int(data["free_daily"])
+            basic_d = data.get("basic", {})
+            premium_d = data.get("premium", {})
+            if basic_d.get("price"):
+                base.basic.price = str(basic_d["price"])
+            if basic_d.get("daily"):
+                base.basic.daily_limit = int(basic_d["daily"])
+            if premium_d.get("price"):
+                base.premium.price = str(premium_d["price"])
+            if premium_d.get("daily"):
+                base.premium.daily_limit = int(premium_d["daily"])
+            features = data.get("features")
+            if features:
+                base.features = [FeatureItem(**f) for f in features]
+    return base

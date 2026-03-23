@@ -17,7 +17,7 @@ const DEFAULT_PERKS = [
 </script>
 
 <template>
-  <div style="position: fixed; inset: 0; z-index: 9999; background: #f2f2f7; display: flex; flex-direction: column; align-items: center; padding: 0 0 40px; overflow-y: auto;">
+  <div style="position: fixed; inset: 0; z-index: 9999; background: #f2f2f7; display: flex; flex-direction: column; align-items: center; padding: 0 0 calc(40px + env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
 
     <!-- App hero -->
     <div style="width: 100%; max-width: 480px; display: flex; flex-direction: column; align-items: center; padding: 48px 16px 24px; text-align: center;">

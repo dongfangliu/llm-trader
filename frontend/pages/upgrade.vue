@@ -100,11 +100,11 @@ function missingFor(t: string) {
   return (pricing.value?.features ?? []).filter(f => !f.tiers.includes(t)).map(f => f.text)
 }
 
-const basicPrice = computed(() => pricing.value?.basic.price ?? '19.9')
-const basicLimit = computed(() => pricing.value?.basic.daily_limit ?? 5)
-const premiumPrice = computed(() => pricing.value?.premium.price ?? '49')
-const premiumLimit = computed(() => pricing.value?.premium.daily_limit ?? 15)
-const period = computed(() => pricing.value?.basic.period ?? '月')
+const basicPrice = computed(() => pricing.value?.basic?.price ?? '19.9')
+const basicLimit = computed(() => pricing.value?.basic?.daily_limit ?? 5)
+const premiumPrice = computed(() => pricing.value?.premium?.price ?? '49')
+const premiumLimit = computed(() => pricing.value?.premium?.daily_limit ?? 15)
+const period = computed(() => pricing.value?.basic?.period ?? '月')
 const freeLimit = computed(() => pricing.value?.free?.daily_limit ?? 3)
 const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
 </script>
