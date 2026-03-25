@@ -147,6 +147,15 @@ const isRegisteredProTrial = computed(() =>
 const effectiveTier = computed(() => (isGuestTrial.value || isRegisteredProTrial.value) ? 'premium' : tier.value)
 const showTrialInProgressBanner = computed(() => trialActivated.value && isAnalyzing.value)
 
+// Tier to pass to AnalysisResultSheet: if the selected history item is a pro trial, show as premium
+const sheetTier = computed(() => {
+  const item = selectedHistoryId.value
+    ? history.value.find(h => h.id === selectedHistoryId.value)
+    : null
+  if (item?.isProTrial) return 'premium'
+  return effectiveTier.value
+})
+
 const MARKET_LABELS: Record<string, string> = { a: 'A股', hk: '港股', us: '美股', futures: '期货' }
 const PERIOD_OPTIONS = [
   { value: 'daily', label: '日线' },
@@ -439,6 +448,9 @@ function selectHotStock(stock: { code: string; name: string; market: string }) {
 function setActivePanel(p: 'analyze' | 'loading' | 'result') {
   if (p === 'result') unreadResults.value = 0
   activePanel.value = p
+  if (p === 'analyze' && !auth.isLoggedIn && trialState.value === 'expired') {
+    showGuestTrialEndedScreen.value = true
+  }
 }
 
 function handleTabAccount() {
@@ -465,7 +477,7 @@ function handleLogout() {
     <!-- Sidebar -->
     <LayoutDesktopSidebar
       :appName="appName"
-      :tier="tier || 'free'"
+      :tier="sheetTier"
       :tierLabel="tierLabel"
       :remaining="remaining"
       :dailyLimit="dailyLimit"
@@ -733,13 +745,14 @@ function handleLogout() {
       v-if="sheetResult"
       :isOpen="resultSheetOpen"
       :result="sheetResult"
-      :tier="tier || 'free'"
+      :tier="sheetTier"
       :period="analysisStore.period || period"
       :historyItems="history"
       :selectedHistoryId="selectedHistoryId"
       :isSaved="selectedHistoryId ? isSaved(selectedHistoryId) : false"
+      :appName="appName"
       @close="resultSheetOpen = false"
-      @save="selectedHistoryId && saveRecord({ symbol: sheetResult?.data?.symbol, market: sheetResult?.data?.market, period: analysisStore.period, result: sheetResult })"
+      @save="selectedHistoryId && saveRecord({ historyId: selectedHistoryId, symbol: sheetResult?.data?.symbol, market: sheetResult?.data?.market, period: analysisStore.period, result: sheetResult })"
       @share="() => {}"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
       @upgrade="router.push('/upgrade')"
@@ -1174,13 +1187,14 @@ function handleLogout() {
       v-if="sheetResult"
       :isOpen="resultSheetOpen"
       :result="sheetResult"
-      :tier="tier || 'free'"
+      :tier="sheetTier"
       :period="analysisStore.period || period"
       :historyItems="history"
       :selectedHistoryId="selectedHistoryId"
       :isSaved="selectedHistoryId ? isSaved(selectedHistoryId) : false"
+      :appName="appName"
       @close="resultSheetOpen = false"
-      @save="selectedHistoryId && saveRecord({ symbol: sheetResult?.data?.symbol, market: sheetResult?.data?.market, period: analysisStore.period, result: sheetResult })"
+      @save="selectedHistoryId && saveRecord({ historyId: selectedHistoryId, symbol: sheetResult?.data?.symbol, market: sheetResult?.data?.market, period: analysisStore.period, result: sheetResult })"
       @share="() => {}"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
       @upgrade="router.push('/upgrade')"

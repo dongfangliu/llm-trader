@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 interface SavedRecord {
   id: string
+  historyId?: string
   symbol: string
   market: string
   period: string
@@ -49,8 +50,8 @@ export function useSavedRecords() {
     }
   }
 
-  function isSaved(id: string): boolean {
-    return savedRecords.value.some(r => r.id === id)
+  function isSaved(historyId: string): boolean {
+    return savedRecords.value.some(r => r.historyId === historyId || r.id === historyId)
   }
 
   return { savedRecords, loadSaved, saveRecord, deleteRecord, isSaved }

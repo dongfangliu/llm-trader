@@ -235,6 +235,19 @@ async def analyze_task(
                     cached_result["result"] = _mask_result_for_free_tier(cached_result["result"])
             payload = {"status": "done", "task_id": task_id, "cached": True, **cached_result}
             await redis.set(f"task:{task_id}", json.dumps(payload), ex=3600)
+            # Save history even on cache hits so every analysis request is recorded
+            try:
+                await _save_analysis_history_in_worker(
+                    symbol=symbol,
+                    market=market,
+                    period=period,
+                    result_payload=cached_result.get("result", cached_result),
+                    user_id=user_id,
+                    device_id=device_id,
+                    is_pro_trial=is_pro_trial,
+                )
+            except Exception as hist_err:
+                logger.warning("Failed to save history on cache hit (non-fatal): %s", hist_err)
             return payload
 
         # --- Path A: 优先使用客户端传来的 OHLCV 数据 ---

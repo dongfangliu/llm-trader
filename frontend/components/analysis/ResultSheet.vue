@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import SharePreviewSheet from '~/components/analysis/SharePreviewSheet.vue'
 
 const props = defineProps<{
   isOpen: boolean
@@ -9,6 +10,7 @@ const props = defineProps<{
   historyItems?: Array<{ id: string; symbol: string; name?: string; action?: string; analyzedAt?: string; confidence?: number }>
   selectedHistoryId?: string
   isSaved?: boolean
+  appName?: string
 }>()
 
 const emit = defineEmits<{
@@ -25,7 +27,9 @@ const dragStartY = ref(0)
 const isDragging = ref(false)
 const displayedConfidence = ref(0)
 const shareLoading = ref(false)
+const shareCopied = ref(false)
 const saveLongLoading = ref(false)
+const showSharePreview = ref(false)
 
 function dismiss() {
   closing.value = true
@@ -38,13 +42,20 @@ function dismiss() {
 watch(() => props.isOpen, (open) => {
   if (open) {
     document.body.style.overflow = 'hidden'
-    // Animate confidence ring
     setTimeout(() => {
       displayedConfidence.value = confidence.value ?? 0
     }, 80)
   } else {
     document.body.style.overflow = ''
     displayedConfidence.value = 0
+  }
+}, { immediate: true })
+
+onMounted(() => {
+  if (props.isOpen) {
+    setTimeout(() => {
+      displayedConfidence.value = confidence.value ?? 0
+    }, 80)
   }
 })
 
@@ -243,6 +254,10 @@ function getHistoryActionConfig(a: string | undefined) {
 function formatHistDate(isoString?: string) {
   if (!isoString) return ''
   return new Date(isoString).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+async function handleShare() {
+  showSharePreview.value = true
 }
 </script>
 
@@ -561,26 +576,40 @@ function formatHistDate(isoString?: string) {
 
           <!-- Share button -->
           <button
-            @click="emit('share')"
+            @click="handleShare()"
             :disabled="shareLoading"
             class="rs-btn-share-cta"
             :class="{ 'rs-btn-share-cta-loading': shareLoading }"
           >
             <template v-if="shareLoading">
               <div class="rs-btn-spinner rs-btn-spinner-white"/>
-              <span>生成中…</span>
+              <span>分享中…</span>
             </template>
             <template v-else>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg v-if="!shareCopied" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
                 <polyline points="16 6 12 2 8 6"/>
                 <line x1="12" y1="2" x2="12" y2="15"/>
               </svg>
-              <span>分享预判</span>
+              <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span>{{ shareCopied ? '已复制' : '分享预判' }}</span>
             </template>
           </button>
         </div>
       </div>
     </div>
+
+    <!-- Share Preview Sheet -->
+    <SharePreviewSheet
+      v-model="showSharePreview"
+      :result="result"
+      :symbol="result?.data?.symbol"
+      :market="result?.data?.market || 'a'"
+      :period="period"
+      :tier="tier"
+      :appName="appName"
+    />
   </div>
 </template>

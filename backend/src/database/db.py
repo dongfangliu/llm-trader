@@ -322,19 +322,7 @@ async def _migrate_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_device_id VARCHAR(255)",
+            "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_pro_trial BOOLEAN DEFAULT FALSE",
         ]:
             await conn.execute(text(col_sql))
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text(
-                "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT FALSE"
-            ))
-    except Exception:
-        pass
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text(
-                "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_pro_trial BOOLEAN DEFAULT FALSE"
-            ))
-    except Exception:
-        pass
