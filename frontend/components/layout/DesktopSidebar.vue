@@ -18,6 +18,8 @@ interface Props {
   tierLabel: string
   remaining: number | null
   dailyLimit: number | null
+  deepRemaining?: number | null
+  deepDailyLimit?: number | null
   user: any
   history: HistoryItem[]
   activePanel: string
@@ -29,6 +31,8 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   isRegisteredProTrial: false,
   isGuestTrial: false,
+  deepRemaining: null,
+  deepDailyLimit: null,
 })
 
 const emit = defineEmits<{
@@ -95,6 +99,10 @@ const isAnalyzeActive = computed(() =>
             v-if="remaining !== null && dailyLimit !== null"
             style="font-size: 11px; color: #8e8e93;"
           >{{ remaining }} / {{ dailyLimit }} 次</span>
+          <span
+            v-if="tier === 'basic' && deepRemaining !== null && deepDailyLimit !== null"
+            style="font-size: 11px; color: #7c3aed;"
+          >深度 {{ deepRemaining }}/{{ deepDailyLimit }}</span>
         </template>
       </div>
     </div>

@@ -634,12 +634,16 @@ def _build_default_settings() -> dict:
             "basic": {
                 "price": settings.pricing_basic_price,
                 "daily": settings.pricing_basic_daily,
+                "deep_daily": settings.pricing_basic_deep_daily,
             },
             "premium": {
                 "price": settings.pricing_premium_price,
                 "daily": settings.pricing_premium_daily,
             },
             "features": [],
+            "free_features": [],
+            "basic_features": [],
+            "premium_features": [],
         },
     }
 
@@ -707,13 +711,16 @@ async def admin_update_settings(
         if section == "pricing":
             basic = data.get("basic", {})
             premium = data.get("premium", {})
-            for simple_key in ("period", "guest_daily", "free_daily", "features"):
+            for simple_key in ("period", "guest_daily", "free_daily", "features",
+                               "free_features", "basic_features", "premium_features"):
                 if simple_key in data:
                     existing[simple_key] = data[simple_key]
             if isinstance(basic, dict):
                 existing.setdefault("basic", {}).update(
-                    {k: v for k, v in basic.items() if v is not None}
+                    {k: v for k, v in basic.items() if v is not None and k != "deep_daily"}
                 )
+                if "deep_daily" in basic and basic["deep_daily"] is not None:
+                    existing.setdefault("basic", {})["deep_daily"] = int(basic["deep_daily"])
             if isinstance(premium, dict):
                 existing.setdefault("premium", {}).update(
                     {k: v for k, v in premium.items() if v is not None}

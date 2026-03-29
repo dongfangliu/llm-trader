@@ -1,5 +1,13 @@
 <script setup lang="ts">
-const appName = '行情研判'
+import { ref, onMounted } from 'vue'
+import api from '~/lib/api'
+const appName = ref('AI 选股')
+onMounted(async () => {
+  try {
+    const res = await api.get('/api/config')
+    if (res.data?.app_name) appName.value = res.data.app_name
+  } catch {}
+})
 </script>
 
 <template>

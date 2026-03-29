@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     pricing_free_daily: int = 3     # 免费版（已登录）每日分析次数
     pricing_basic_price: str = "19.9"
     pricing_basic_daily: int = 5
+    pricing_basic_deep_daily: int = 1   # 标准版每日深度研判次数
     pricing_premium_price: str = "49"
     pricing_premium_daily: int = 15
 

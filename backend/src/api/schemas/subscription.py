@@ -22,6 +22,10 @@ class TierConfig(BaseModel):
 
 class PricingResponse(BaseModel):
     features: List[FeatureItem]
+    free_features: List[str] = []
+    basic_features: List[str] = []
+    premium_features: List[str] = []
+    basic_deep_daily: int = 1
     guest: TierConfig
     free: TierConfig
     basic: TierConfig

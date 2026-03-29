@@ -13,6 +13,8 @@ export function useQuota() {
   const trialUsed = ref(false)
   const resetAt = ref('')
   const loading = ref(false)
+  const deepRemaining = ref<number | null>(null)  // null = unlimited (premium)
+  const deepDailyLimit = ref<number | null>(null)
 
   async function fetchQuota() {
     loading.value = true
@@ -29,6 +31,8 @@ export function useQuota() {
       trialState.value = data.trial_state ?? 'available'
       trialUsed.value = data.trial_used ?? false
       resetAt.value = data.reset_at ?? ''
+      deepRemaining.value = data.deep_remaining ?? null
+      deepDailyLimit.value = data.deep_daily_limit ?? null
     } catch (e) {
       console.error('Failed to fetch quota:', e)
     } finally {
@@ -40,6 +44,6 @@ export function useQuota() {
 
   return {
     remaining, dailyLimit, totalAvailable, tier, trialState, trialUsed, resetAt,
-    loading, hasQuota, fetchQuota
+    loading, hasQuota, fetchQuota, deepRemaining, deepDailyLimit,
   }
 }

@@ -173,12 +173,20 @@ _DEFAULT_FEATURES = [
     {"text": "专属客服支持", "tiers": ["premium"]},
 ]
 
+_DEFAULT_FREE_FEATURES: list[str] = ["基础股票分析", "每日限额次数分析"]
+_DEFAULT_BASIC_FEATURES: list[str] = ["全市场支持（A股/港股/美股/期货）", "多周期技术分析", "AI智能解读"]
+_DEFAULT_PREMIUM_FEATURES: list[str] = ["全市场支持（A股/港股/美股/期货）", "多周期技术分析", "AI智能解读", "优先响应速度", "专属客服支持"]
+
 
 def get_pricing_plans() -> PricingResponse:
     """Return default pricing plans from settings."""
     period = settings.pricing_period
     return PricingResponse(
         features=[FeatureItem(**f) for f in _DEFAULT_FEATURES],
+        free_features=list(_DEFAULT_FREE_FEATURES),
+        basic_features=list(_DEFAULT_BASIC_FEATURES),
+        premium_features=list(_DEFAULT_PREMIUM_FEATURES),
+        basic_deep_daily=settings.pricing_basic_deep_daily,
         guest=TierConfig(daily_limit=settings.pricing_guest_daily),
         free=TierConfig(daily_limit=settings.pricing_free_daily),
         basic=TierConfig(

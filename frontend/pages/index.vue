@@ -22,7 +22,7 @@ const {
 } = useAnalysis()
 
 const {
-  remaining, dailyLimit, totalAvailable, tier, trialState, fetchQuota
+  remaining, dailyLimit, totalAvailable, tier, trialState, fetchQuota, deepRemaining, deepDailyLimit
 } = useQuota()
 
 const {
@@ -481,6 +481,8 @@ function handleLogout() {
       :tierLabel="tierLabel"
       :remaining="remaining"
       :dailyLimit="dailyLimit"
+      :deepRemaining="deepRemaining"
+      :deepDailyLimit="deepDailyLimit"
       :user="auth.user"
       :history="history"
       :activePanel="activePanel"
@@ -790,6 +792,9 @@ function handleLogout() {
         <div style="display: flex; align-items: center; gap: 8px;">
           <span :style="{ fontSize: '12px', fontWeight: 500, color: tier === 'premium' ? '#7c3aed' : tier === 'basic' ? '#007aff' : '#8e8e93' }">
             {{ tierLabel }} · {{ remaining ?? '-' }}次
+            <template v-if="tier === 'basic' && deepRemaining !== null">
+              · 深度 {{ deepRemaining }}/{{ deepDailyLimit }}
+            </template>
           </span>
           <button v-if="auth.isLoggedIn" @click="userMenuOpen = true" style="width: 32px; height: 32px; border-radius: 50%; background: #e9e9eb; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; color: #3c3c43;">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>

@@ -26,7 +26,9 @@ from src.services.trial_service import get_trial_state, can_use_trial, get_effec
 from src.services.quota_service import (
     get_or_create_usage_log, increment_device_usage, rollback_device_usage,
     get_quota_info_for_device, get_quota_info_for_user,
-    USER_LIMITS, DEVICE_LIMITS
+    USER_LIMITS, DEVICE_LIMITS,
+    get_deep_usage_for_user, increment_deep_usage_for_user,
+    get_deep_usage_for_device, increment_deep_usage_for_device,
 )
 from src.services.analysis_service import submit_analysis, get_task_status, get_history, delete_history_item, toggle_favorite
 import src.services.user.user_service as user_service
@@ -49,6 +51,21 @@ ALLOWED_MARKETS = {
     "basic": {"a", "hk", "us", "futures"},
     "premium": {"a", "hk", "us", "futures"},
 }
+
+
+async def _get_basic_deep_daily(db: AsyncSession) -> int:
+    """Load basic_deep_daily from DB pricing settings, fallback to config."""
+    try:
+        from src.models.settings import SystemSetting
+        row = await db.get(SystemSetting, "pricing")
+        if row:
+            data = json.loads(row.value)
+            basic = data.get("basic", {})
+            if basic.get("deep_daily") is not None:
+                return int(basic["deep_daily"])
+    except Exception:
+        pass
+    return settings.pricing_basic_deep_daily
 
 
 async def _get_or_create_device(db: AsyncSession, device_id: str) -> Device:
@@ -148,6 +165,29 @@ async def analyze(
     if req.market not in ALLOWED_MARKETS.get(subscription, {"a"}):
         raise HTTPException(status_code=403, detail="当前套餐不支持该市场")
 
+    # Position params: premium only
+    if subscription == "premium":
+        pos_holding_quantity = req.holding_quantity
+        pos_cost_price = req.cost_price
+        pos_max_position = req.max_position
+    else:
+        pos_holding_quantity = None
+        pos_cost_price = None
+        pos_max_position = None
+
+    # Determine is_deep (before quota increment so count is accurate)
+    basic_deep_daily = await _get_basic_deep_daily(db)
+    if subscription == "premium":
+        is_deep = True
+    elif subscription == "basic":
+        if usage_mode == "account":
+            deep_used = get_deep_usage_for_user(current_user)
+        else:
+            deep_used = await get_deep_usage_for_device(db, device_id)
+        is_deep = deep_used < basic_deep_daily
+    else:
+        is_deep = False
+
     if not has_limit:
         raise HTTPException(
             status_code=429,
@@ -189,6 +229,13 @@ async def analyze(
         used = usage_after.count
         daily_limit_shown = device_limit
 
+    # Increment deep usage counter for basic tier
+    if is_deep and subscription == "basic":
+        if usage_mode == "account":
+            await increment_deep_usage_for_user(db, current_user)
+        else:
+            await increment_deep_usage_for_device(db, device_id)
+
     # Extract and validate client-side OHLCV bars
     client_bars = None
     if req.ohlcv_bars and len(req.ohlcv_bars) >= 20:
@@ -218,10 +265,11 @@ async def analyze(
             user_id=current_user.id if current_user else None,
             device_id=device_id if usage_mode == "device" else None,
             history_days=req.history_days or 90,
-            holding_quantity=req.holding_quantity,
-            cost_price=req.cost_price,
-            max_position=req.max_position,
+            holding_quantity=pos_holding_quantity,
+            cost_price=pos_cost_price,
+            max_position=pos_max_position,
             ohlcv_bars=client_bars,
+            is_deep=is_deep,
             is_pro_trial=is_first_trial,
         )
     except Exception as eq_err:
@@ -316,6 +364,7 @@ async def get_limits(
 ):
     """Get current quota limits."""
     tomorrow = (datetime.utcnow() + timedelta(days=1)).replace(hour=0, minute=0, second=0)
+    basic_deep_daily = await _get_basic_deep_daily(db)
 
     if current_user:
         is_first_trial = not current_user.has_had_pro_trial
@@ -337,6 +386,18 @@ async def get_limits(
         else:
             trial_state = "available"
 
+        # Deep remaining
+        if effective_tier == "premium":
+            deep_remaining = None
+            deep_daily_limit = None
+        elif effective_tier == "basic":
+            deep_used = get_deep_usage_for_user(current_user)
+            deep_remaining = max(0, basic_deep_daily - deep_used)
+            deep_daily_limit = basic_deep_daily
+        else:
+            deep_remaining = 0
+            deep_daily_limit = 0
+
         return {
             "remaining": remaining,
             "daily_limit": daily_limit,
@@ -345,6 +406,8 @@ async def get_limits(
             "trial_used": current_user.has_had_pro_trial,
             "trial_state": trial_state,
             "reset_at": tomorrow.isoformat(),
+            "deep_remaining": deep_remaining,
+            "deep_daily_limit": deep_daily_limit,
         }
     else:
         dv_id = (device_id or "").strip()
@@ -357,6 +420,8 @@ async def get_limits(
                 "trial_used": False,
                 "trial_state": "available",
                 "reset_at": tomorrow.isoformat(),
+                "deep_remaining": 0,
+                "deep_daily_limit": 0,
             }
 
         device = await _get_or_create_device(db, dv_id)
@@ -373,6 +438,18 @@ async def get_limits(
         else:
             trial_state = "available"
 
+        # Deep remaining for device
+        if effective_tier == "premium":
+            deep_remaining = None
+            deep_daily_limit = None
+        elif effective_tier == "basic":
+            deep_used = usage_log.position_count if usage_log else 0
+            deep_remaining = max(0, basic_deep_daily - deep_used)
+            deep_daily_limit = basic_deep_daily
+        else:
+            deep_remaining = 0
+            deep_daily_limit = 0
+
         return {
             "remaining": remaining,
             "daily_limit": device_limit,
@@ -381,6 +458,8 @@ async def get_limits(
             "trial_used": device.has_had_pro_trial,
             "trial_state": trial_state,
             "reset_at": tomorrow.isoformat(),
+            "deep_remaining": deep_remaining,
+            "deep_daily_limit": deep_daily_limit,
         }
 
 

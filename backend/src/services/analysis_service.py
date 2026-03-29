@@ -25,6 +25,7 @@ async def submit_analysis(
     max_position: Optional[float] = None,
     ohlcv_bars: Optional[list] = None,
     is_pro_trial: bool = False,
+    is_deep: bool = False,
 ) -> str:
     """Submit analysis task to worker queue. Returns task_id.
 
@@ -63,6 +64,7 @@ async def submit_analysis(
         ohlcv_bars,
         _job_id=task_id,
         is_pro_trial=is_pro_trial,
+        is_deep=is_deep,
     )
 
     return task_id

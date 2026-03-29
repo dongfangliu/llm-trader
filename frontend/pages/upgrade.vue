@@ -11,6 +11,9 @@ const auth = useAuthStore()
 interface FeatureItem { text: string; tiers: string[] }
 interface PricingData {
   features: FeatureItem[]
+  free_features: string[]
+  basic_features: string[]
+  premium_features: string[]
   guest: { daily_limit: number }
   free: { daily_limit: number }
   basic: { price: string; period: string; daily_limit: number }
@@ -93,11 +96,12 @@ async function handleActivate() {
 
 const tier = computed(() => auth.user?.tier ?? null)
 
-function featuresFor(t: string) {
-  return (pricing.value?.features ?? []).filter(f => f.tiers.includes(t)).map(f => f.text)
-}
-function missingFor(t: string) {
-  return (pricing.value?.features ?? []).filter(f => !f.tiers.includes(t)).map(f => f.text)
+function featuresFor(t: string): string[] {
+  if (!pricing.value) return []
+  const key = `${t}_features` as 'free_features' | 'basic_features' | 'premium_features'
+  if (pricing.value[key]?.length) return pricing.value[key]
+  // fallback to old tiers-tagged structure
+  return pricing.value.features.filter(f => f.tiers.includes(t)).map(f => f.text)
 }
 
 const basicPrice = computed(() => pricing.value?.basic?.price ?? '19.9')
@@ -182,10 +186,6 @@ const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
               <span style="width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: #34c759; color: white;">✓</span>
               {{ item.trim() }}
             </li>
-            <li v-for="(item, i) in missingFor('free')" :key="'mf'+i" style="display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 9px 0; color: #aeaeb2;" :style="i < missingFor('free').length - 1 ? { borderBottom: '0.5px solid rgba(60,60,67,0.08)' } : {}">
-              <span style="width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 1.5px solid #d1d1d6; color: #d1d1d6;">✗</span>
-              {{ item.trim() }}
-            </li>
           </ul>
           <div style="margin-top: 20px;">
             <template v-if="auth.isLoggedIn">
@@ -217,10 +217,6 @@ const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
               <ul style="list-style: none; padding: 0; margin: 0;">
                 <li v-for="(item, i) in featuresFor('basic')" :key="'cb'+i" style="display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 9px 0; color: #1c1c1e;" :style="i < featuresFor('basic').length - 1 ? { borderBottom: '0.5px solid rgba(60,60,67,0.08)' } : {}">
                   <span style="width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: #34c759; color: white;">✓</span>
-                  {{ item.trim() }}
-                </li>
-                <li v-for="(item, i) in missingFor('basic')" :key="'mb'+i" style="display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 9px 0; color: #aeaeb2;" :style="i < missingFor('basic').length - 1 ? { borderBottom: '0.5px solid rgba(60,60,67,0.08)' } : {}">
-                  <span style="width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 1.5px solid #d1d1d6; color: #d1d1d6;">✗</span>
                   {{ item.trim() }}
                 </li>
               </ul>
@@ -264,10 +260,6 @@ const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
               <ul style="list-style: none; padding: 0; margin: 0;">
                 <li v-for="(item, i) in featuresFor('premium')" :key="'cp'+i" style="display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 9px 0; color: #1c1c1e;" :style="i < featuresFor('premium').length - 1 ? { borderBottom: '0.5px solid rgba(60,60,67,0.08)' } : {}">
                   <span style="width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: #34c759; color: white;">✓</span>
-                  {{ item.trim() }}
-                </li>
-                <li v-for="(item, i) in missingFor('premium')" :key="'mp'+i" style="display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 9px 0; color: #aeaeb2;" :style="i < missingFor('premium').length - 1 ? { borderBottom: '0.5px solid rgba(60,60,67,0.08)' } : {}">
-                  <span style="width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 1.5px solid #d1d1d6; color: #d1d1d6;">✗</span>
                   {{ item.trim() }}
                 </li>
               </ul>

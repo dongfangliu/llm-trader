@@ -58,29 +58,72 @@ function setTierField(tier: string, field: string, val: any) {
   settings.value.pricing[tier][field] = val
 }
 
-function getFeatures(): { text: string; tiers: string[] }[] {
+const DEFAULT_TIER_FEATURES: Record<string, string[]> = {
+  // 免费版：仅 A 股，每日 3 次，登录后有历史/收藏/分享/邀请额度
+  free: [
+    '每日 3 次 AI 研判',
+    '仅支持 A 股市场',
+    '分析历史记录与收藏',
+    '生成分享卡片',
+    '邀请好友可获赠额外次数',
+  ],
+  // 标准版：全市场解锁，每日 5 次，每日 1 次深度研判（完整结果含目标价/止损/置信度）
+  basic: [
+    '每日 5 次 AI 研判',
+    '全市场支持（A 股 / 港股 / 美股 / 期货）',
+    '每日 1 次深度研判（完整结果）',
+    '分析历史记录与收藏',
+    '生成分享卡片',
+    '邀请好友可获赠额外次数',
+  ],
+  // 专业版：全市场，每日 15 次，每次均为深度研判 + 持仓智能分析
+  premium: [
+    '每日 15 次 AI 研判',
+    '全市场支持（A 股 / 港股 / 美股 / 期货）',
+    '每次深度研判（完整结果）',
+    '持仓智能分析（基于成本价/数量/仓位优化建议）',
+    '分析历史记录与收藏',
+    '生成分享卡片',
+    '邀请好友可获赠额外次数',
+    '优先响应速度',
+  ],
+}
+
+const autoFilling = ref(false)
+
+async function autoFillFeatures() {
+  autoFilling.value = true
+  try {
+    if (!settings.value.pricing) settings.value.pricing = {}
+    for (const tier of tiers) {
+      settings.value.pricing[`${tier}_features`] = [...DEFAULT_TIER_FEATURES[tier]]
+    }
+    await api.put('/api/admin/settings', { pricing: settings.value.pricing }, { headers: getAdminHeaders() })
+    showMsg('✅ 已自动填充并保存', 'success')
+  } catch {
+    showMsg('❌ 自动填充失败', 'error')
+  } finally {
+    autoFilling.value = false
+  }
+}
+
+function getTierFeatures(tier: string): string[] {
   if (!settings.value.pricing) settings.value.pricing = {}
-  if (!Array.isArray(settings.value.pricing.features)) settings.value.pricing.features = []
-  return settings.value.pricing.features
+  const key = `${tier}_features`
+  if (!Array.isArray(settings.value.pricing[key])) settings.value.pricing[key] = []
+  return settings.value.pricing[key]
 }
 
-function addFeature() {
-  getFeatures().push({ text: '', tiers: [] })
+function addTierFeature(tier: string) {
+  getTierFeatures(tier).push('')
 }
 
-function removeFeature(i: number) {
-  getFeatures().splice(i, 1)
+function removeTierFeature(tier: string, i: number) {
+  getTierFeatures(tier).splice(i, 1)
 }
 
-function setFeatureText(i: number, v: string) {
-  getFeatures()[i].text = v
-}
-
-function toggleTier(i: number, tier: string) {
-  const f = getFeatures()[i]
-  const idx = f.tiers.indexOf(tier)
-  if (idx === -1) f.tiers.push(tier)
-  else f.tiers.splice(idx, 1)
+function setTierFeatureText(tier: string, i: number, v: string) {
+  getTierFeatures(tier)[i] = v
 }
 
 onMounted(async () => {
@@ -313,46 +356,65 @@ async function onFileChange(e: Event) {
                       style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
                     />
                   </div>
+                  <div v-if="tier === 'basic'">
+                    <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">
+                      每日深度研判次数
+                      <span style="font-size:11px;font-weight:500;color:#8e8e93;margin-left:6px;">（完整结果，超出后降为标准研判）</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      :value="getTierField(tier,'deep_daily')"
+                      @input="setTierField(tier,'deep_daily',Number(($event.target as HTMLInputElement).value))"
+                      placeholder="1"
+                      style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-          <!-- Features editor -->
-          <div style="margin-top:24px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-              <h3 style="font-size:14px;font-weight:700;color:#1c1c1e;margin:0;">功能列表</h3>
+          <!-- Per-tier features editor -->
+          <div style="margin-top:24px;display:flex;flex-direction:column;gap:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <h3 style="font-size:14px;font-weight:700;color:#1c1c1e;margin:0;">各版本功能列表</h3>
               <button
-                @click="addFeature"
-                style="padding:6px 12px;background:#007aff;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;"
-              >➕ 添加功能</button>
+                @click="autoFillFeatures"
+                :disabled="autoFilling"
+                style="padding:7px 14px;background:#ff9500;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.15s;"
+                :style="{ opacity: autoFilling ? 0.6 : 1 }"
+              >{{ autoFilling ? '填充中...' : '✨ 自动填充' }}</button>
             </div>
-            <div style="display:flex;flex-direction:column;gap:8px;">
-              <div
-                v-for="(f, i) in getFeatures()"
-                :key="i"
-                style="display:flex;align-items:center;gap:8px;background:#f9f9fb;border-radius:8px;padding:8px 10px;"
-              >
-                <input
-                  type="text"
-                  :value="f.text"
-                  @input="setFeatureText(i, ($event.target as HTMLInputElement).value)"
-                  placeholder="功能说明"
-                  style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,0.12);font-size:14px;outline:none;"
-                />
-                <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#3c3c43;white-space:nowrap;cursor:pointer;">
-                  <input type="checkbox" :checked="f.tiers.includes('basic')" @change="toggleTier(i,'basic')" style="cursor:pointer;" />
-                  标准版
-                </label>
-                <label style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:#3c3c43;white-space:nowrap;cursor:pointer;">
-                  <input type="checkbox" :checked="f.tiers.includes('premium')" @change="toggleTier(i,'premium')" style="cursor:pointer;" />
-                  专业版
-                </label>
+            <div v-for="tier in tiers" :key="tier" style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <h3 style="font-size:14px;font-weight:700;margin:0;" :style="{ color: tier === 'free' ? '#8e8e93' : tier === 'basic' ? '#1d4ed8' : '#7c3aed' }">
+                  {{ tierLabels[tier] }}功能列表
+                </h3>
                 <button
-                  @click="removeFeature(i)"
-                  style="padding:4px 8px;background:#ff3b30;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;"
-                >删除</button>
+                  @click="addTierFeature(tier)"
+                  style="padding:5px 10px;background:#007aff;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;"
+                >➕ 添加</button>
               </div>
-              <p v-if="getFeatures().length === 0" style="font-size:13px;color:#aeaeb2;text-align:center;padding:8px 0;">暂无功能，点击「添加功能」</p>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div
+                  v-for="(feat, i) in getTierFeatures(tier)"
+                  :key="i"
+                  style="display:flex;align-items:center;gap:8px;background:#f9f9fb;border-radius:8px;padding:6px 10px;"
+                >
+                  <input
+                    type="text"
+                    :value="feat"
+                    @input="setTierFeatureText(tier, i, ($event.target as HTMLInputElement).value)"
+                    placeholder="功能说明"
+                    style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,0.12);font-size:14px;outline:none;"
+                  />
+                  <button
+                    @click="removeTierFeature(tier, i)"
+                    style="padding:4px 8px;background:#ff3b30;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;"
+                  >删除</button>
+                </div>
+                <p v-if="getTierFeatures(tier).length === 0" style="font-size:13px;color:#aeaeb2;text-align:center;padding:6px 0;">暂无功能</p>
+              </div>
             </div>
           </div>
           </template>
@@ -448,8 +510,8 @@ async function onFileChange(e: Event) {
                 <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">应用名称</label>
                 <input
                   type="text"
-                  :value="getField('app','app_name')"
-                  @input="setField('app','app_name',($event.target as HTMLInputElement).value)"
+                  :value="getField('app','name')"
+                  @input="setField('app','name',($event.target as HTMLInputElement).value)"
                   style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
                 />
               </div>

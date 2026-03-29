@@ -138,4 +138,13 @@ async def get_pricing(db: AsyncSession = Depends(get_db)):
             features = data.get("features")
             if features:
                 base.features = [FeatureItem(**f) for f in features]
+            if data.get("free_features") is not None:
+                base.free_features = list(data["free_features"])
+            if data.get("basic_features") is not None:
+                base.basic_features = list(data["basic_features"])
+            if data.get("premium_features") is not None:
+                base.premium_features = list(data["premium_features"])
+            basic_d = data.get("basic", {})
+            if basic_d.get("deep_daily") is not None:
+                base.basic_deep_daily = int(basic_d["deep_daily"])
     return base

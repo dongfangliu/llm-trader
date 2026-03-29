@@ -133,6 +133,57 @@ async def get_quota_info_for_device(
     )
 
 
+def get_deep_usage_for_user(user: User) -> int:
+    """Return today's deep analysis usage count for a registered user.
+    Reuses the daily_position_usage / last_position_date fields."""
+    today = date.today()
+    last = user.last_position_date.date() if user.last_position_date else None
+    return user.daily_position_usage if last == today else 0
+
+
+async def increment_deep_usage_for_user(db: AsyncSession, user: User) -> None:
+    """Increment deep analysis usage for a registered user."""
+    today = date.today()
+    last = user.last_position_date.date() if user.last_position_date else None
+    if last != today:
+        user.daily_position_usage = 1
+        user.last_position_date = datetime.utcnow()
+    else:
+        user.daily_position_usage += 1
+    await db.commit()
+
+
+async def get_deep_usage_for_device(db: AsyncSession, device_id: str) -> int:
+    """Return today's deep analysis usage count for a device.
+    Reuses the position_count field in UsageLog."""
+    today = date.today()
+    result = await db.execute(
+        select(UsageLog).where(
+            UsageLog.device_id == device_id,
+            UsageLog.date == today
+        )
+    )
+    log = result.scalar_one_or_none()
+    return log.position_count if log else 0
+
+
+async def increment_deep_usage_for_device(db: AsyncSession, device_id: str) -> None:
+    """Atomically increment deep analysis usage for a device (upsert on position_count)."""
+    today = date.today()
+    stmt = pg_insert(UsageLog).values(
+        device_id=device_id,
+        date=today,
+        count=0,
+        position_count=1,
+        subscription="basic",
+    ).on_conflict_do_update(
+        index_elements=["device_id", "date"],
+        set_={"position_count": UsageLog.position_count + 1},
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+
 async def get_quota_info_for_user(db: AsyncSession, user: User, effective_tier: str) -> QuotaInfo:
     """Get quota info for a registered user."""
     from src.services.trial_service import get_trial_state

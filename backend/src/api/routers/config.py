@@ -29,6 +29,7 @@ async def get_config(db: AsyncSession = Depends(get_db)):
     pricing_free_daily = settings.pricing_free_daily
     pricing_basic_price = settings.pricing_basic_price
     pricing_basic_daily = settings.pricing_basic_daily
+    pricing_basic_deep_daily = settings.pricing_basic_deep_daily
     pricing_premium_price = settings.pricing_premium_price
     pricing_premium_daily = settings.pricing_premium_daily
     afdian_basic_link = settings.afdian_basic_link
@@ -54,6 +55,7 @@ async def get_config(db: AsyncSession = Depends(get_db)):
             premium = data.get("premium", {})
             pricing_basic_price = basic.get("price", pricing_basic_price)
             pricing_basic_daily = basic.get("daily", pricing_basic_daily)
+            pricing_basic_deep_daily = int(basic.get("deep_daily", pricing_basic_deep_daily))
             pricing_premium_price = premium.get("price", pricing_premium_price)
             pricing_premium_daily = premium.get("daily", pricing_premium_daily)
         elif section_key == "afdian":
@@ -68,6 +70,7 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         "pricing_free_daily": pricing_free_daily,
         "pricing_basic_price": pricing_basic_price,
         "pricing_basic_daily": pricing_basic_daily,
+        "pricing_basic_deep_daily": pricing_basic_deep_daily,
         "pricing_premium_price": pricing_premium_price,
         "pricing_premium_daily": pricing_premium_daily,
         "afdian_basic_link": afdian_basic_link,

@@ -199,6 +199,7 @@ async def analyze_task(
     device_id: Optional[str] = None,
     ohlcv_bars: Optional[list] = None,
     is_pro_trial: bool = False,
+    is_deep: bool = False,
 ) -> dict:
     """
     arq task: fetch market data + run LLM analysis.
@@ -220,9 +221,9 @@ async def analyze_task(
         if cached_raw:
             logger.info("cache hit: %s", ck)
             cached_result = json.loads(cached_raw)
-            # Apply free-tier masking even on cache hits
+            # Apply masking on cache hits when not a deep analysis
             # cached_result["result"] is the full api_result envelope; mask inner "result" field
-            if subscription == "free" and "result" in cached_result:
+            if not is_deep and "result" in cached_result:
                 cached_envelope = cached_result["result"]
                 if isinstance(cached_envelope, dict) and "result" in cached_envelope:
                     import copy as _copy
@@ -384,8 +385,8 @@ async def analyze_task(
             "usage": {},  # usage is provided by the queued response, not the task
         }
 
-        # --- Apply free-tier masking ---
-        if subscription == "free":
+        # --- Apply masking for non-deep analyses ---
+        if not is_deep:
             api_result_display = dict(api_result)
             api_result_display["result"] = _mask_result_for_free_tier(normalized)
         else:
