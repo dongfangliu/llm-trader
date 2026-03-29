@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
-import { navigateTo } from '#app'
+import { navigateTo, useHead } from '#app'
+import api from '~/lib/api'
 
 const auth = useAuthStore()
+
+const appName = ref('AI 股票分析')
+useHead({ title: appName })
 
 const email = ref('')
 const password = ref('')
@@ -18,7 +22,7 @@ const resendCooldown = ref(0)
 
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
-onMounted(() => {
+onMounted(async () => {
   if (typeof window !== 'undefined') {
     const savedEmail = localStorage.getItem('savedEmail')
     const savedPassword = localStorage.getItem('savedPassword')
@@ -30,6 +34,10 @@ onMounted(() => {
   if (auth.isLoggedIn) {
     navigateTo('/')
   }
+  try {
+    const res = await api.get('/api/config')
+    if (res.data?.app_name) appName.value = res.data.app_name
+  } catch {}
 })
 
 async function handleLogin() {
@@ -127,7 +135,7 @@ function toggleRemember() {
         marginBottom: '16px',
       }">📈</div>
       <h1 :style="{ fontSize: '28px', fontWeight: 700, letterSpacing: '-0.5px', color: '#000', margin: '0 0 6px' }">
-        AI 股票分析
+        {{ appName }}
       </h1>
       <p :style="{ fontSize: '15px', color: '#8e8e93', margin: 0 }">
         AI 驱动的专业技术分析平台
