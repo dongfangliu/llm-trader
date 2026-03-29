@@ -134,8 +134,8 @@ until docker compose exec -T postgres pg_isready -U "${POSTGRES_USER:-trader}" &
 done
 log_ok "数据库就绪"
 
-log_info "重启应用服务（backend、worker、data-collector、frontend）..."
-docker compose up -d --remove-orphans backend worker data-collector frontend
+log_info "重启应用服务（backend、frontend）..."
+docker compose up -d --remove-orphans backend frontend
 
 log_ok "所有服务已启动"
 
