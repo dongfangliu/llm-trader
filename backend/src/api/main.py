@@ -790,8 +790,7 @@ async def register(
 
     resend_key = _email("resend_api_key")
     if resend_key:
-        # Fire-and-forget email — do NOT await so registration returns instantly
-        asyncio.create_task(send_verification_email(
+        email_ok = await send_verification_email(
             to_email=user.email,
             username=user.username or user.email.split("@")[0],
             token=user.email_verification_token,
@@ -799,12 +798,22 @@ async def register(
             email_from=settings.email_from,
             app_base_url=_email("app_base_url"),
             app_name=_app("name"),
-        ))
-        return {
-            "pending_verification": True,
-            "email": user.email,
-            "message": "注册成功！请查收验证邮件并点击链接激活账号。",
-        }
+        )
+        if email_ok:
+            return {
+                "pending_verification": True,
+                "email": user.email,
+                "message": "注册成功！请查收验证邮件并点击链接激活账号。",
+            }
+        else:
+            # Email sending failed — auto-verify so the user can still log in
+            logger.error("Verification email failed for %s — auto-verifying as fallback", user.email)
+            await user_service.verify_email(db, user)
+            return {
+                "pending_verification": False,
+                "email": user.email,
+                "message": "注册成功！邮件发送失败，已自动激活账号，请直接登录。",
+            }
     else:
         # No email service configured — auto-verify so users can log in immediately
         await user_service.verify_email(db, user)
@@ -826,8 +835,7 @@ async def resend_verification(req: ResendVerificationRequest, db: AsyncSession =
     # Return success regardless to avoid user enumeration
     if user and not user.email_verified:
         token = await user_service.refresh_verification_token(db, user)
-        # Fire-and-forget to avoid blocking the response
-        asyncio.create_task(send_verification_email(
+        email_ok = await send_verification_email(
             to_email=user.email,
             username=user.username or user.email.split("@")[0],
             token=token,
@@ -835,7 +843,9 @@ async def resend_verification(req: ResendVerificationRequest, db: AsyncSession =
             email_from=settings.email_from,
             app_base_url=_email("app_base_url"),
             app_name=_app("name"),
-        ))
+        )
+        if not email_ok:
+            logger.error("Resend-verification email failed for %s", user.email)
     return {"message": "若该邮箱已注册且未验证，验证邮件已重新发送。"}
 
 

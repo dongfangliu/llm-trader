@@ -396,8 +396,8 @@
 .rs-overlay-out { animation: rsOverlayOut 0.38s ease forwards; }
 .rs-panel {
   position: absolute; bottom: 0; left: 0; right: 0;
-  height: 100dvh; height: 100vh;
-  max-height: 100dvh; max-height: 100vh;
+  height: 100vh; height: 100dvh;
+  max-height: 100vh; max-height: 100dvh;
   background: #f2f2f7;
   border-radius: 20px 20px 0 0;
   display: flex; flex-direction: column;
