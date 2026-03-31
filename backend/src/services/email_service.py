@@ -36,8 +36,9 @@ async def send_verification_email(
     resend.api_key = resend_api_key
     # Derive email_from from APP_BASE_URL if not explicitly set
     if not email_from and app_base_url:
-        domain = urlparse(app_base_url).netloc
-        email_from = f"noreply@{domain}" if domain else ""
+        # Strip port from hostname so the address is valid (e.g. example.com:8080 → example.com)
+        host = urlparse(app_base_url).hostname or ""
+        email_from = f"noreply@{host}" if host else ""
     # Use app_name as display name; extract bare email address from email_from
     email_match = re.search(r'<([^>]+)>', email_from)
     email_addr = email_match.group(1) if email_match else (email_from or "onboarding@resend.dev")
@@ -91,8 +92,6 @@ async def send_verification_email(
             "html": html_body,
             "headers": {
                 "X-Entity-Ref-ID": f"verify-{token[:8]}",
-                "List-Unsubscribe": "<mailto:unsubscribe@resend.dev>",
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
             },
         })
         logger.info("Verification email sent to %s via Resend: %s", to_email, result)

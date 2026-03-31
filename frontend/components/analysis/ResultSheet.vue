@@ -285,25 +285,26 @@ async function handleShare() {
           <!-- Shine streak -->
           <div :style="{ position: 'absolute', inset: 0, background: info.shine, pointerEvents: 'none' }"/>
 
-          <!-- Drag handle + close button row -->
+          <!-- Close button (top-right corner) -->
+          <button
+            @click.stop="dismiss"
+            aria-label="关闭"
+            style="position: absolute; right: 16px; top: max(14px, env(safe-area-inset-top, 14px)); width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.18); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; -webkit-tap-highlight-color: transparent; z-index: 20;"
+          >
+            <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1l8 8M9 1L1 9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+
+          <!-- Drag handle -->
           <div
             class="rs-handle-zone"
-            style="padding-top: max(10px, env(safe-area-inset-top, 10px)); position: relative;"
+            style="padding-top: max(10px, env(safe-area-inset-top, 10px));"
             @touchstart="onTouchStart"
             @touchmove="onTouchMove"
             @touchend="onTouchEnd"
           >
             <div class="rs-handle-pill" :style="{ background: info.handleColor }"/>
-            <!-- Close button -->
-            <button
-              @click.stop="dismiss"
-              aria-label="关闭"
-              style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.22); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.9); -webkit-tap-highlight-color: transparent; z-index: 10;"
-            >
-              <svg width="13" height="13" viewBox="0 0 10 10" fill="none">
-                <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              </svg>
-            </button>
           </div>
 
           <!-- Stock identity -->

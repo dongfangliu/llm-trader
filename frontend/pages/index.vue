@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { useHead } from '#app'
 import { useRouter } from 'vue-router'
 import api from '~/lib/api'
 import { preloadAll, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
@@ -112,6 +113,8 @@ let analyzeTimeoutTimer: any = null
 const appName = ref('AI 选股')
 const pricing = ref<any>(null)
 const appConfig = ref<any>(null)
+
+useHead({ title: appName })
 
 // ── Unread ──
 const unreadResults = ref(0)
@@ -1241,10 +1244,10 @@ function handleLogout() {
     </Teleport>
 
     <!-- ═══ GUEST TRIAL ENDED ═══ -->
-    <TrialGuestTrialEndedScreen v-if="showGuestTrialEndedScreen" @dismiss="dismissGuestTrialScreen"/>
+    <TrialGuestTrialEndedScreen v-if="showGuestTrialEndedScreen" :appName="appName" @dismiss="dismissGuestTrialScreen"/>
 
     <!-- ═══ PRO TRIAL WELCOME ═══ -->
-    <TrialProTrialWelcomeModal v-if="showProTrialWelcomeModal" @dismiss="activateTrial"/>
+    <TrialProTrialWelcomeModal v-if="showProTrialWelcomeModal" :appName="appName" @dismiss="activateTrial"/>
 
     <!-- ═══ PRO TRIAL IN PROGRESS (floating capsule, layout-agnostic) ═══ -->
     <TrialProTrialInProgressBanner v-if="showTrialInProgressBanner" />
