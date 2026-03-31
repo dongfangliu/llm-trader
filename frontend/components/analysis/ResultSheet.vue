@@ -275,17 +275,6 @@ async function handleShare() {
       class="rs-panel"
       :style="{ transform: panelTransform, transition: panelTransition }"
     >
-      <!-- Close button -->
-      <button
-        @click="dismiss"
-        aria-label="关闭"
-        style="position: absolute; top: 10px; right: 14px; z-index: 10; width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.18); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.8); -webkit-tap-highlight-color: transparent;"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-      </button>
-
       <!-- Scroll body -->
       <div class="rs-scroll">
 
@@ -296,14 +285,25 @@ async function handleShare() {
           <!-- Shine streak -->
           <div :style="{ position: 'absolute', inset: 0, background: info.shine, pointerEvents: 'none' }"/>
 
-          <!-- Drag handle -->
+          <!-- Drag handle + close button row -->
           <div
             class="rs-handle-zone"
+            style="padding-top: max(10px, env(safe-area-inset-top, 10px)); position: relative;"
             @touchstart="onTouchStart"
             @touchmove="onTouchMove"
             @touchend="onTouchEnd"
           >
             <div class="rs-handle-pill" :style="{ background: info.handleColor }"/>
+            <!-- Close button -->
+            <button
+              @click.stop="dismiss"
+              aria-label="关闭"
+              style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.22); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.9); -webkit-tap-highlight-color: transparent; z-index: 10;"
+            >
+              <svg width="13" height="13" viewBox="0 0 10 10" fill="none">
+                <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
           </div>
 
           <!-- Stock identity -->

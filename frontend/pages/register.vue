@@ -6,6 +6,7 @@ import api from '~/lib/api'
 
 const auth = useAuthStore()
 
+const appName = ref('')
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -37,6 +38,7 @@ onMounted(async () => {
   try {
     const res = await api.get('/api/config')
     requireInviteCode.value = !!res.data.require_invite_code
+    if (res.data.app_name) appName.value = res.data.app_name
   } catch {}
 })
 
@@ -178,7 +180,7 @@ function handleInviteCodeInput(e: Event) {
           marginBottom: '14px',
         }">📈</div>
         <h1 :style="{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.4px', color: '#000', margin: '0 0 5px' }">
-          创建账号
+          {{ appName || '创建账号' }}
         </h1>
         <p :style="{ fontSize: '14px', color: '#8e8e93', margin: 0 }">
           注册即解锁完整分析功能
