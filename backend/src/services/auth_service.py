@@ -105,16 +105,37 @@ async def register_user(db: AsyncSession, email: str, password: str, username: O
     return user
 
 
+async def _get_email_settings(db: AsyncSession) -> dict:
+    """Read email settings from DB, falling back to env-var defaults."""
+    row = await db.get(SystemSetting, "email")
+    if row:
+        try:
+            data = json.loads(row.value)
+            return {
+                "resend_api_key": data.get("resend_api_key") or settings.resend_api_key,
+                "email_from": data.get("from") or settings.email_from,
+                "app_base_url": data.get("app_base_url") or settings.app_base_url,
+            }
+        except Exception:
+            pass
+    return {
+        "resend_api_key": settings.resend_api_key,
+        "email_from": settings.email_from,
+        "app_base_url": settings.app_base_url,
+    }
+
+
 async def _send_verification_email_new(db: AsyncSession, user: User, token: str):
     """Send verification email using existing email service."""
     username = user.username or (user.email.split("@")[0] if user.email else "用户")
+    email_cfg = await _get_email_settings(db)
     await _send_verification_email(
         to_email=user.email,
         username=username,
         token=token,
-        resend_api_key=settings.resend_api_key,
-        email_from=settings.email_from,
-        app_base_url=settings.app_base_url,
+        resend_api_key=email_cfg["resend_api_key"],
+        email_from=email_cfg["email_from"],
+        app_base_url=email_cfg["app_base_url"],
         app_name=settings.app_name,
     )
 
