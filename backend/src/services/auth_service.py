@@ -106,23 +106,34 @@ async def register_user(db: AsyncSession, email: str, password: str, username: O
 
 
 async def _get_email_settings(db: AsyncSession) -> dict:
-    """Read email settings from DB, falling back to env-var defaults."""
-    row = await db.get(SystemSetting, "email")
-    if row:
-        try:
-            data = json.loads(row.value)
-            return {
-                "resend_api_key": data.get("resend_api_key") or settings.resend_api_key,
-                "email_from": data.get("from") or settings.email_from,
-                "app_base_url": data.get("app_base_url") or settings.app_base_url,
-            }
-        except Exception:
-            pass
-    return {
+    """Read email and app settings from DB, falling back to env-var defaults."""
+    result = {
         "resend_api_key": settings.resend_api_key,
         "email_from": settings.email_from,
         "app_base_url": settings.app_base_url,
+        "app_name": settings.app_name,
     }
+    for section, row in [
+        ("email", await db.get(SystemSetting, "email")),
+        ("app", await db.get(SystemSetting, "app")),
+    ]:
+        if not row:
+            continue
+        try:
+            data = json.loads(row.value)
+        except Exception:
+            continue
+        if section == "email":
+            if data.get("resend_api_key"):
+                result["resend_api_key"] = data["resend_api_key"]
+            if data.get("from"):
+                result["email_from"] = data["from"]
+            if data.get("app_base_url"):
+                result["app_base_url"] = data["app_base_url"]
+        elif section == "app":
+            if data.get("name"):
+                result["app_name"] = data["name"]
+    return result
 
 
 async def _send_verification_email_new(db: AsyncSession, user: User, token: str):
@@ -136,7 +147,7 @@ async def _send_verification_email_new(db: AsyncSession, user: User, token: str)
         resend_api_key=email_cfg["resend_api_key"],
         email_from=email_cfg["email_from"],
         app_base_url=email_cfg["app_base_url"],
-        app_name=settings.app_name,
+        app_name=email_cfg["app_name"],
     )
 
 
