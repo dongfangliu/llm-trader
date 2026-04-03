@@ -7,7 +7,6 @@ import { preloadAll, searchSymbols, getSymbolName } from '~/composables/useSymbo
 import { useAnalysis } from '~/composables/useAnalysis'
 import { useQuota } from '~/composables/useQuota'
 import { useTrial } from '~/composables/useTrial'
-import { useSavedRecords } from '~/composables/useSavedRecords'
 import { useAuthStore } from '~/stores/auth'
 import { useAnalysisStore } from '~/stores/analysis'
 import { useDevice } from '~/composables/useDevice'
@@ -18,7 +17,7 @@ const analysisStore = useAnalysisStore()
 const { getDeviceId } = useDevice()
 
 const {
-  isAnalyzing, taskId, result, error, errorCode, progress, statusMessage, isFirstTrial,
+  isAnalyzing, taskId, result, historyId, error, errorCode, progress, statusMessage, isFirstTrial,
   submitAnalysis, clearState
 } = useAnalysis()
 
@@ -37,8 +36,6 @@ const {
   dismissGuestTrialScreen,
   dismissProTrialEndedBanner,
 } = useTrial()
-
-const { saveRecord, loadSaved, isSaved } = useSavedRecords()
 
 // ── Panel state ──
 const activePanel = ref<'analyze' | 'loading' | 'result'>('analyze')
@@ -92,7 +89,7 @@ const hotStocks = ref<Array<{ code: string; name: string; market: string }>>([])
 const history = ref<Array<{
   id: string; symbol: string; name: string; market: string;
   action?: string; confidence?: number; analyzedAt?: string;
-  detail?: any; positionParams?: any; isProTrial?: boolean
+  detail?: any; positionParams?: any; isProTrial?: boolean; isFavorited?: boolean
 }>>([])
 
 // ── Loading narrative ──
@@ -262,6 +259,7 @@ async function loadHistory() {
       detail: item.result,
       positionParams: null,
       isProTrial: !!item.is_pro_trial,
+      isFavorited: !!item.is_favorited,
     }))
   } catch {}
 }
@@ -269,7 +267,7 @@ async function loadHistory() {
 onMounted(async () => {
   checkDesktop()
   window.addEventListener('resize', checkDesktop)
-  await Promise.all([fetchQuota(), loadHistory(), loadSaved(), loadAppConfig(), loadPricing()])
+  await Promise.all([fetchQuota(), loadHistory(), loadAppConfig(), loadPricing()])
   loadHotStocks()
   preloadAll() // background — no await, loads cache for autocomplete
 
@@ -296,7 +294,7 @@ onMounted(async () => {
 watch(result, (newResult) => {
   if (newResult) {
     const histItem = {
-      id: `${analysisStore.symbol}_${Date.now()}`,
+      id: historyId.value ? String(historyId.value) : `${analysisStore.symbol}_${Date.now()}`,
       symbol: analysisStore.symbol,
       name: newResult?.data?.name || analysisStore.symbol,
       market: analysisStore.market,
@@ -310,6 +308,7 @@ watch(result, (newResult) => {
         maxPosition: maxPosition.value,
       } : null,
       isProTrial: isFirstTrial.value,
+      isFavorited: false,
     }
     history.value = [histItem, ...history.value]
     selectedHistoryId.value = histItem.id
@@ -368,6 +367,22 @@ onUnmounted(() => {
   clearTimeout(analyzeTimeoutTimer)
   window.removeEventListener('resize', checkDesktop)
 })
+
+async function handleToggleFavorite() {
+  const id = selectedHistoryId.value
+  if (!id || !auth.isLoggedIn) return
+  const numId = Number(id)
+  if (isNaN(numId)) return  // temp id (guest/not-yet-saved), can't favorite
+  try {
+    const res = await api.post(`/api/analyze/history/${numId}/favorite`)
+    const item = history.value.find(h => h.id === id)
+    if (item) {
+      item.isFavorited = res.data?.is_favorited ?? !item.isFavorited
+    }
+  } catch (e) {
+    console.error('Failed to toggle favorite:', e)
+  }
+}
 
 async function handleAnalyze() {
   if (!symbol.value.trim() || isAnalyzing.value) return
@@ -754,10 +769,10 @@ function handleLogout() {
       :period="analysisStore.period || period"
       :historyItems="history"
       :selectedHistoryId="selectedHistoryId"
-      :isSaved="selectedHistoryId ? isSaved(selectedHistoryId) : false"
+      :isSaved="selectedHistoryId ? (history.find(h => h.id === selectedHistoryId)?.isFavorited ?? false) : false"
       :appName="appName"
       @close="resultSheetOpen = false"
-      @save="selectedHistoryId && saveRecord({ historyId: selectedHistoryId, symbol: sheetResult?.data?.symbol, market: sheetResult?.data?.market, period: analysisStore.period, result: sheetResult })"
+      @save="handleToggleFavorite"
       @share="() => {}"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
       @upgrade="router.push('/upgrade')"
@@ -1199,10 +1214,10 @@ function handleLogout() {
       :period="analysisStore.period || period"
       :historyItems="history"
       :selectedHistoryId="selectedHistoryId"
-      :isSaved="selectedHistoryId ? isSaved(selectedHistoryId) : false"
+      :isSaved="selectedHistoryId ? (history.find(h => h.id === selectedHistoryId)?.isFavorited ?? false) : false"
       :appName="appName"
       @close="resultSheetOpen = false"
-      @save="selectedHistoryId && saveRecord({ historyId: selectedHistoryId, symbol: sheetResult?.data?.symbol, market: sheetResult?.data?.market, period: analysisStore.period, result: sheetResult })"
+      @save="handleToggleFavorite"
       @share="() => {}"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
       @upgrade="router.push('/upgrade')"

@@ -20,6 +20,7 @@ export function useAnalysis() {
   const isAnalyzing = ref(false)
   const taskId = ref<string | null>(null)
   const result = ref<any>(null)
+  const historyId = ref<number | null>(null)  // DB id of the saved history record
   const error = ref<string | null>(null)
   const errorCode = ref<string | null>(null)  // 'trial_expired', 'quota_exceeded', etc.
   const progress = ref(0)
@@ -33,6 +34,7 @@ export function useAnalysis() {
     isAnalyzing.value = false
     taskId.value = null
     result.value = null
+    historyId.value = null
     error.value = null
     errorCode.value = null
     progress.value = 0
@@ -68,6 +70,7 @@ export function useAnalysis() {
           const data = res.data
 
           if (data.status === 'done') {
+            if (data.history_id) historyId.value = data.history_id
             resolve(data.result)
           } else if (data.status === 'failed') {
             reject(new Error(data.error || '分析失败'))
@@ -110,6 +113,7 @@ export function useAnalysis() {
           if (data.status === 'done') {
             clearTimeout(timeout)
             eventSource.close()
+            if (data.history_id) historyId.value = data.history_id
             resolve(data.result)
           } else if (data.status === 'failed') {
             clearTimeout(timeout)
@@ -230,7 +234,7 @@ export function useAnalysis() {
   })
 
   return {
-    isAnalyzing, taskId, result, error, errorCode, progress, statusMessage, isFirstTrial,
+    isAnalyzing, taskId, result, historyId, error, errorCode, progress, statusMessage, isFirstTrial,
     submitAnalysis, cancelAnalysis, clearState,
   }
 }

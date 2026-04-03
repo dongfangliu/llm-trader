@@ -163,8 +163,8 @@ async def _save_analysis_history_in_worker(
     user_id: Optional[int],
     device_id: Optional[str],
     is_pro_trial: bool = False,
-) -> None:
-    """Save analysis history to DB using a fresh async session."""
+) -> Optional[int]:
+    """Save analysis history to DB using a fresh async session. Returns the saved record id."""
     from src.database.db import async_session, AnalysisHistory
     analyzed_at = datetime.utcnow()
     history = AnalysisHistory(
@@ -181,6 +181,8 @@ async def _save_analysis_history_in_worker(
     async with async_session() as db:
         db.add(history)
         await db.commit()
+        await db.refresh(history)
+        return history.id
 
 
 async def analyze_task(
@@ -238,7 +240,7 @@ async def analyze_task(
             await redis.set(f"task:{task_id}", json.dumps(payload), ex=3600)
             # Save history even on cache hits so every analysis request is recorded
             try:
-                await _save_analysis_history_in_worker(
+                history_id = await _save_analysis_history_in_worker(
                     symbol=symbol,
                     market=market,
                     period=period,
@@ -247,6 +249,9 @@ async def analyze_task(
                     device_id=device_id,
                     is_pro_trial=is_pro_trial,
                 )
+                if history_id:
+                    payload["history_id"] = history_id
+                    await redis.set(f"task:{task_id}", json.dumps(payload), ex=3600)
             except Exception as hist_err:
                 logger.warning("Failed to save history on cache hit (non-fatal): %s", hist_err)
             return payload
@@ -402,8 +407,9 @@ async def analyze_task(
         await redis.set(ck, json.dumps(cache_payload), ex=cache_ttl(period))
 
         # --- Save analysis history to DB ---
+        saved_history_id: Optional[int] = None
         try:
-            await _save_analysis_history_in_worker(
+            saved_history_id = await _save_analysis_history_in_worker(
                 symbol=symbol,
                 market=market,
                 period=period,
@@ -434,6 +440,8 @@ async def analyze_task(
             "analyzed_at": analyzed_at_iso,
             "data_source": data_source,  # "client" | "akshare"
         }
+        if saved_history_id:
+            done_payload["history_id"] = saved_history_id
         await redis.set(f"task:{task_id}", json.dumps(done_payload), ex=3600)
         return done_payload
 
