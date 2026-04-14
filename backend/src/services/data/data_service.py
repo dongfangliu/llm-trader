@@ -470,49 +470,38 @@ async def _fetch_us_stock(symbol: str, period: str, start: str, end: str, adjust
 
 async def _fetch_futures(symbol: str, period: str, start: str, end: str) -> pd.DataFrame:
     """Fetch futures data (domestic)."""
-    # Map common futures symbols
+    # Map common futures symbols to plain codes for futures_zh_index_sina
     symbol_map = {
-        "MA": "MA.CZCE",  # 甲醇
-        "RU": "RU.SHFE",  # 橡胶
-        "RM": "RM.CZCE",  # 菜粕
-        "TA": "TA.CZCE",  # PTA
-        "FG": "FG.CZCE",  # 玻璃
-        "CF": "CF.CZCE",  # 棉花
-        "SR": "SR.CZCE",  # 白糖
-        "CU": "CU.SHFE",  # 铜
-        "AL": "AL.SHFE",  # 铝
-        "ZN": "ZN.SHFE",  # 锌
-        "PB": "PB.SHFE",  # 铅
-        "AU": "AU.SHFE",  # 黄金
-        "AG": "AG.SHFE",  # 白银
-        "I": "I.DCE",     # 铁矿石
-        "J": "J.DCE",     # 焦炭
-        "JM": "JM.DCE",   # 焦煤
-        "RB": "RB.SHFE",  # 螺纹钢
-        "HC": "HC.SHFE",  # 热卷
-        "IF": "IF.CFFEX", # 股指期货
-        "IC": "IC.CFFEX",
-        "IH": "IH.CFFEX",
+        # 郑商所 CZCE
+        "MA": "MA", "SA": "SA", "TA": "TA", "FG": "FG",
+        "CF": "CF", "SR": "SR", "RM": "RM", "ZC": "ZC", "AP": "AP",
+        "OI": "OI", "CJ": "CJ",
+        # 上期所 SHFE
+        "CU": "CU", "AL": "AL", "ZN": "ZN", "PB": "PB",
+        "AU": "AU", "AG": "AG", "RB": "RB", "HC": "HC",
+        "NI": "NI", "SN": "SN", "RU": "RU",
+        # 大商所 DCE
+        "I": "I", "J": "J", "JM": "JM", "A": "A", "M": "M",
+        "Y": "Y", "P": "P", "L": "L", "V": "V", "PP": "PP",
+        "EB": "EB", "JD": "JD", "LH": "LH",
+        # 中金所 CFFEX
+        "IF": "IF", "IC": "IC", "IH": "IH", "IM": "IM",
+        "T": "T", "TF": "TF", "TL": "TL",
+        # 上期能源 INE
+        "SC": "SC", "LU": "LU",
     }
 
-    akshare_symbol = symbol_map.get(symbol.upper(), symbol)
+    plain_symbol = symbol_map.get(symbol.upper(), symbol.upper())
 
     if period == PERIOD_DAILY:
-        # Use futures daily data
+        # Primary: futures_zh_index_sina (continuous main contract, uses plain symbol)
         try:
-            raw = ak.futures_zh_daily_sina(symbol=akshare_symbol, start_date=start, end_date=end)
+            raw = ak.futures_zh_index_sina(symbol=plain_symbol)
             if raw is not None and not raw.empty:
-                return _normalize_futures(raw)
+                df = _normalize_futures(raw)
+                return _filter_date_range(df, start, end)
         except Exception as e:
-            logger.warning(f"期货获取失败: {e}")
-
-        # Fallback: try using futures_zh_index_sina
-        try:
-            raw = ak.futures_zh_index_sina(symbol=akshare_symbol)
-            if raw is not None and not raw.empty:
-                return _normalize_futures(raw)
-        except Exception as e:
-            logger.warning(f"期货指数获取失败: {e}")
+            logger.warning(f"futures_zh_index_sina 失败 ({plain_symbol}): {e}")
 
         raise ValueError(f"无法获取期货数据: {symbol}")
     else:
@@ -520,7 +509,7 @@ async def _fetch_futures(symbol: str, period: str, start: str, end: str) -> pd.D
         s = f"{start[:4]}-{start[4:6]}-{start[6:]} 09:00:00"
         e = f"{end[:4]}-{end[4:6]}-{end[6:]} 15:00:00"
         try:
-            raw = ak.futures_zh_min_sina(symbol=akshare_symbol, period=period, start_date=s, end_date=e)
+            raw = ak.futures_zh_min_sina(symbol=plain_symbol, period=period, start_date=s, end_date=e)
             return _normalize(raw, "time", "open", "high", "low", "close", "volume")
         except Exception as e:
             logger.warning(f"期货分钟数据获取失败: {e}")

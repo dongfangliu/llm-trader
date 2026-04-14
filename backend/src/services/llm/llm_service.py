@@ -26,6 +26,7 @@ SYSTEM_PROMPT = (
 async def analyze_with_llm(
     df,
     symbol: str = "",
+    market: str = "a",
     provider: str = "openai",
     api_key: str = "",
     base_url: str = "",
@@ -59,7 +60,7 @@ async def analyze_with_llm(
         raise ValueError("No market data available for analysis")
 
     # Build backtest-aligned enhanced prompt
-    prompt = _build_enhanced_prompt(df, symbol=symbol, user_context=user_context)
+    prompt = _build_enhanced_prompt(df, symbol=symbol, market=market, user_context=user_context)
 
     # Call LLM with timeout
     try:
@@ -171,7 +172,7 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str, Any]] = None) -> str:
+def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context: Optional[Dict[str, Any]] = None) -> str:
     """Build backtest-style enhanced decision prompt."""
     latest = df.iloc[-1]
     recent = df.tail(10)
@@ -198,32 +199,61 @@ def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str
     cost_price = _safe_float(user_context.get("cost_price") if user_context else 0)
     max_position = int(user_context.get("max_position") or 0) if user_context else 0
 
-    position_info = (
-        f"""## 📋 当前持仓状态（股票）
+    if market == "futures":
+        position_info = (
+            f"""## 📋 当前持仓状态（期货）
+- 持有数量: {holding_qty}手
+- 成本价: {cost_price:.2f}元
+- 当前价格: {close:.2f}元
+- 最大持仓: {max_position}手
+"""
+            if holding_qty > 0 or cost_price > 0 or max_position > 0
+            else """## 📋 当前持仓状态（期货）
+- 当前无持仓（空仓）
+"""
+        )
+        account_info = """## 💰 账户状态
+- 交易品类: 期货
+- 交易方向: 支持做多（open_long/close_long）和做空（open_short/close_short）
+- 注意: 期货有杠杆，需严格控制仓位和止损
+"""
+        costs_info = """## 💸 交易成本
+- 期货保证金交易，杠杆放大盈亏
+- 持仓过夜有隔夜风险，注意合约到期日
+"""
+        system_title = f"# 期货交易决策系统 - {symbol or 'UNKNOWN'}"
+        system_role = "你是一位经验丰富的期货交易员，精通技术分析与趋势判断，能够同时操作多空两个方向。"
+        action_enum = "open_long|close_long|open_short|close_short|hold"
+        position_unit = "手"
+    else:
+        position_info = (
+            f"""## 📋 当前持仓状态（股票）
 - 持有数量: {holding_qty}股
 - 成本价: {cost_price:.2f}元
 - 当前价格: {close:.2f}元
 - 最大持仓: {max_position}股
 """
-        if holding_qty > 0 or cost_price > 0 or max_position > 0
-        else """## 📋 当前持仓状态（股票）
+            if holding_qty > 0 or cost_price > 0 or max_position > 0
+            else """## 📋 当前持仓状态（股票）
 - 当前无持仓（空仓）
 """
-    )
-
-    account_info = """## 💰 账户状态
+        )
+        account_info = """## 💰 账户状态
 - 交易品类: 股票
 - 交易限制: 股票只能做多，不支持做空
 """
-
-    costs_info = """## 💸 交易成本
+        costs_info = """## 💸 交易成本
 - 股票全额买入（无杠杆）
 - 交易手续费、印花税会影响实际收益
 """
+        system_title = f"# 股票交易决策系统 - {symbol or 'UNKNOWN'}"
+        system_role = "你是一位经验丰富的股票投资专家，精通技术分析与择时，需要基于市场数据做出专业交易决策。"
+        action_enum = "open_long|close_long|adjust_position|hold"
+        position_unit = "股"
 
-    return f"""# 股票交易决策系统 - {symbol or "UNKNOWN"}
+    return f"""{system_title}
 
-你是一位经验丰富的股票投资专家，精通技术分析与择时，需要基于市场数据做出专业交易决策。
+{system_role}
 
 ## 📊 决策周期: 日内技术快照
 - 当前价格: {close:.2f}
@@ -271,8 +301,8 @@ def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str
 - 主要风险因素有哪些？（技术风险/消息风险/流动性风险）
 
 ## 第四步：执行方案制定 📝
-- 具体操作：买入/卖出/观望
-- 仓位建议：建议仓位与风险敞口
+- 具体操作：开多/平多/开空/平空/观望
+- 仓位建议：建议仓位（单位：{position_unit}）与风险敞口
 - 入场时机：立即还是等待确认
 - 出场计划：止损价位、止盈价位
 
@@ -281,11 +311,11 @@ def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str
 # 📤 决策输出格式
 请仅输出以下标准JSON格式（不要markdown）：
 {{
-  "action": "open_long|close_long|adjust_position|hold",
-  "target_position": <int, 目标总持仓股数（仅用于adjust_position，必须>=0）>,
-  "position_size": <int, 本次操作股数>,
-  "target_price": <float, 目标价格>,
-  "stop_loss": <float, 止损价格>,
+  "action": "{action_enum}",
+  "target_position": <int, 目标总持仓（仅用于adjust_position，必须>=0）>,
+  "position_size": <int, 本次操作数量（单位：{position_unit}）>,
+  "target_price": <float, 【必填，非null非0】根据技术分析推算的目标价格>,
+  "stop_loss": <float, 【必填，非null非0】止损价格>,
   "take_profit": <float, 止盈价格>,
   "confidence": <float 0.0-1.0 或 0-100>,
   "reasons": ["关键理由1", "关键理由2", "关键理由3"],
@@ -296,6 +326,9 @@ def _build_enhanced_prompt(df, symbol: str = "", user_context: Optional[Dict[str
   "risk_factors": ["风险1", "风险2"],
   "opportunity_quality": "A|B|C|D"
 }}
+
+重要：target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
+hold 操作时 target_price 填写当前价格附近的关键支撑或压力位。
 """
 
 

@@ -23,6 +23,18 @@ def _cache_key(symbol: str, market: str, period: str,
     return f"analysis_cache:{market}:{symbol}:{period}:{pos}"
 
 
+def _first_positive(*vals) -> Optional[float]:
+    """Return the first value that converts to a positive float, else None."""
+    for v in vals:
+        try:
+            f = float(v)
+            if f > 0:
+                return f
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
 def _build_position_advice(
     action: str,
     current_price: float,
@@ -69,6 +81,7 @@ def _normalize_result(
     holding_quantity=None,
     cost_price=None,
     max_position=None,
+    atr: float = 0.0,
 ) -> dict:
     """Inline equivalent of main.py _normalize_result (no req object needed)."""
     action = (raw_result or {}).get("action")
@@ -92,13 +105,27 @@ def _normalize_result(
         action = {"bullish": "buy", "bearish": "sell", "neutral": "hold"}.get(signal, "hold")
     confidence_raw = float((raw_result or {}).get("confidence", 50))
     confidence = int(confidence_raw if confidence_raw > 1 else confidence_raw * 100)
-    target_price = (
-        (raw_result or {}).get("target_price")
-        or (raw_result or {}).get("take_profit")
-        or (raw_result or {}).get("entry_price")
-        or current_price
+    target_price = _first_positive(
+        (raw_result or {}).get("target_price"),
+        (raw_result or {}).get("take_profit"),
+        (raw_result or {}).get("entry_price"),
     )
-    stop_loss = (raw_result or {}).get("stop_loss") or current_price * 0.97
+    # ATR-based fallback when LLM does not return a valid target price
+    if target_price is None:
+        atr_val = atr if atr and atr > 0 else current_price * 0.02
+        if action == "buy":
+            target_price = current_price + 3 * atr_val
+        elif action == "sell":
+            target_price = current_price - 3 * atr_val
+        # hold → remains None
+    stop_loss = _first_positive((raw_result or {}).get("stop_loss"))
+    if stop_loss is None:
+        atr_val = atr if atr and atr > 0 else current_price * 0.02
+        if action == "buy":
+            stop_loss = current_price - 2 * atr_val
+        elif action == "sell":
+            stop_loss = current_price + 2 * atr_val
+        # hold → remains None
     reasons = []
     if isinstance((raw_result or {}).get("reasons"), list):
         reasons.extend([str(x) for x in (raw_result or {}).get("reasons", []) if x])
@@ -119,8 +146,8 @@ def _normalize_result(
         "action": action,
         "signal": signal,
         "confidence": confidence,
-        "target_price": float(target_price),
-        "stop_loss": float(stop_loss),
+        "target_price": float(target_price) if target_price is not None else None,
+        "stop_loss": float(stop_loss) if stop_loss is not None else None,
         "reason": reasons[0] if reasons else "基于技术指标综合判断",
         "reasons": reasons[:6] if reasons else ["基于技术指标综合判断"],
         "market_diagnosis": str((raw_result or {}).get("market_diagnosis", "") or ""),
@@ -343,6 +370,7 @@ async def analyze_task(
         result = await analyze_with_llm(
             df=df,
             symbol=symbol,
+            market=market,
             provider=provider,
             api_key=api_key,
             base_url=base_url,
@@ -357,6 +385,7 @@ async def analyze_task(
         )
 
         latest_price = float(df.iloc[-1]["close"])
+        latest_atr = float(df.iloc[-1].get("atr") or 0)
 
         # --- Normalize the raw LLM result ---
         normalized = _normalize_result(
@@ -365,6 +394,7 @@ async def analyze_task(
             holding_quantity=holding_quantity,
             cost_price=cost_price,
             max_position=max_position,
+            atr=latest_atr,
         )
 
         # --- Get symbol name for data envelope ---
