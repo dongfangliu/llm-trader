@@ -22,7 +22,7 @@ const {
 } = useAnalysis()
 
 const {
-  remaining, dailyLimit, totalAvailable, tier, trialState, fetchQuota, deepRemaining, deepDailyLimit
+  remaining, dailyLimit, totalAvailable, tier, trialState, hasQuota, fetchQuota, deepRemaining, deepDailyLimit
 } = useQuota()
 
 const {
@@ -116,6 +116,12 @@ useHead({ title: appName })
 // ── Unread ──
 const unreadResults = ref(0)
 
+// ── Background analysis (premium only) ──
+const isBackgroundMode = ref(false)
+const showAnalysisNotification = ref(false)
+const pendingResult = ref<any>(null)
+const pendingResultSymbol = ref('')
+
 // ── User menus ──
 const userMenuOpen = ref(false)      // mobile bottom sheet
 const dtUserMenuOpen = ref(false)    // desktop popover
@@ -129,7 +135,7 @@ function checkDesktop() {
 }
 
 // ── Quota exhausted ──
-const showUpgradeBanner = computed(() => remaining.value !== null && remaining.value <= 0)
+const showUpgradeBanner = computed(() => remaining.value !== null && !hasQuota.value)
 
 // ── Tier display ──
 const tierLabel = computed(() => {
@@ -313,25 +319,40 @@ watch(result, (newResult) => {
     history.value = [histItem, ...history.value]
     selectedHistoryId.value = histItem.id
     sheetResult.value = newResult
-    activePanel.value = 'result'
-    resultSheetOpen.value = true
-    unreadResults.value = 0
     fetchQuota()
     trialActivated.value = false
     stopNarrativeLoop()
     clearTimeout(analyzeTimeoutTimer)
+
+    if (isBackgroundMode.value) {
+      pendingResult.value = newResult
+      pendingResultSymbol.value = histItem.name
+      showAnalysisNotification.value = true
+      unreadResults.value += 1
+    } else {
+      activePanel.value = 'result'
+      resultSheetOpen.value = true
+      unreadResults.value = 0
+    }
   }
 })
 
 watch(isAnalyzing, (analyzing) => {
   if (analyzing) {
-    activePanel.value = 'loading'
     analyzingSymbol.value = symbol.value.toUpperCase()
-    narrativeIdx.value = 0
     analyzeTimedOut.value = false
-    startNarrativeLoop()
-    analyzeTimeoutTimer = setTimeout(() => { analyzeTimedOut.value = true }, 180000)
+
+    if (effectiveTier.value === 'premium') {
+      isBackgroundMode.value = true
+    } else {
+      isBackgroundMode.value = false
+      activePanel.value = 'loading'
+      narrativeIdx.value = 0
+      startNarrativeLoop()
+      analyzeTimeoutTimer = setTimeout(() => { analyzeTimedOut.value = true }, 180000)
+    }
   } else {
+    isBackgroundMode.value = false
     stopNarrativeLoop()
     clearTimeout(analyzeTimeoutTimer)
     if (!result.value && activePanel.value === 'loading') {
@@ -360,6 +381,16 @@ function startNarrativeLoop() {
 
 function stopNarrativeLoop() {
   clearInterval(narrativeTimer)
+}
+
+function handleNotificationView() {
+  resultSheetOpen.value = true
+  unreadResults.value = 0
+  pendingResult.value = null
+}
+
+function handleNotificationDismiss() {
+  showAnalysisNotification.value = false
 }
 
 onUnmounted(() => {
@@ -809,7 +840,7 @@ function handleLogout() {
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <span :style="{ fontSize: '12px', fontWeight: 500, color: tier === 'premium' ? '#7c3aed' : tier === 'basic' ? '#007aff' : '#8e8e93' }">
-            {{ tierLabel }} · {{ remaining ?? '-' }}次
+            {{ tierLabel }} · {{ totalAvailable ?? '-' }}次
             <template v-if="tier === 'basic' && deepRemaining !== null">
               · 深度 {{ deepRemaining }}/{{ deepDailyLimit }}
             </template>
@@ -1266,6 +1297,22 @@ function handleLogout() {
 
     <!-- ═══ PRO TRIAL IN PROGRESS (floating capsule, layout-agnostic) ═══ -->
     <TrialProTrialInProgressBanner v-if="showTrialInProgressBanner" />
+
+    <!-- ═══ BACKGROUND ANALYSIS INDICATOR (premium) ═══ -->
+    <AnalysisBackgroundAnalysisIndicator
+      v-model="isBackgroundMode"
+      :symbol="analyzingSymbol"
+      :is-desktop="isDesktop"
+    />
+
+    <!-- ═══ ANALYSIS READY NOTIFICATION (premium) ═══ -->
+    <AnalysisAnalysisReadyNotification
+      v-model="showAnalysisNotification"
+      :symbol="pendingResultSymbol"
+      :is-desktop="isDesktop"
+      @view="handleNotificationView"
+      @dismiss="handleNotificationDismiss"
+    />
 
   </div><!-- end mobile -->
 </template>
