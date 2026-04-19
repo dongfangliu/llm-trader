@@ -8,6 +8,7 @@ from src.models.subscription import AfdianOrder  # noqa: F401
 from src.models.market import MarketBar, SymbolName  # noqa: F401
 from src.models.settings import SystemSetting  # noqa: F401
 from src.models.logs import UsageLog, IpUsageLog  # noqa: F401
+from src.models.xbot import XBotPrediction  # noqa: F401
 
 __all__ = [
     "Base",
@@ -21,4 +22,5 @@ __all__ = [
     "SystemSetting",
     "UsageLog",
     "IpUsageLog",
+    "XBotPrediction",
 ]

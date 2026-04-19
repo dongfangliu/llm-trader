@@ -14,6 +14,7 @@ from src.config import settings
 from src.database.new_db import init_db
 from src.api.routers import auth, analyze, subscription, market, admin
 from src.api.routers import config as config_router
+from src.api.routers import xbot as xbot_router
 from src.worker.redis_client import get_redis_settings
 
 
@@ -25,7 +26,10 @@ from src.worker.redis_client import get_redis_settings
 async def lifespan(app: FastAPI):
     await init_db()
     app.state.redis = await create_pool(get_redis_settings())
+    from src.services.xbot.scheduler import start_scheduler, stop_scheduler
+    await start_scheduler()
     yield
+    await stop_scheduler()
     await app.state.redis.aclose()
 
 
@@ -63,3 +67,4 @@ app.include_router(analyze.router)
 app.include_router(subscription.router)
 app.include_router(market.router)
 app.include_router(admin.router)
+app.include_router(xbot_router.router)

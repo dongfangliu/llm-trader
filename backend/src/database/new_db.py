@@ -7,7 +7,7 @@ from src.models.base import Base
 from src.models import (  # noqa: F401 — import all to register with Base.metadata
     User, Device, AnalysisRequest, AnalysisHistory,
     AfdianOrder, MarketBar, SymbolName, SystemSetting,
-    UsageLog, IpUsageLog,
+    UsageLog, IpUsageLog, XBotPrediction,
 )
 
 # ---------------------------------------------------------------------------

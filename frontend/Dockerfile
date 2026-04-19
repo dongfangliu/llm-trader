@@ -12,6 +12,12 @@ RUN npm install --registry=https://registry.npmmirror.com
 # Copy source code
 COPY . .
 
+# Download NotoSansSC font for card generation
+RUN mkdir -p public/fonts && \
+    wget -q -O public/fonts/NotoSansSC-Regular.ttf \
+    "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.0.12/files/noto-sans-sc-chinese-simplified-400-normal.woff" || \
+    echo "Font download failed, will use CDN fallback at runtime"
+
 # Build Nuxt app (outputs to .output/)
 RUN npm run build
 
