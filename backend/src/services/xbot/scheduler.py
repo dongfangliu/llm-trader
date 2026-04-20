@@ -143,6 +143,7 @@ async def job_settle_and_post_results():
             return
 
         stats = await get_accuracy_stats(db)
+        brand_name = await _get_app_name_from_db(db)
 
         # Fetch settled predictions without result tweet
         result = await db.execute(
@@ -160,7 +161,7 @@ async def job_settle_and_post_results():
 
     for pred in predictions:
         try:
-            tweet_id = await _post_result_thread(pred, publisher, config, stats)
+            tweet_id = await _post_result_thread(pred, publisher, config, stats, brand_name=brand_name)
             if tweet_id:
                 async with async_session() as db:
                     from sqlalchemy import update
@@ -208,18 +209,16 @@ async def job_sync_metrics():
         await db.commit()
 
 
-async def _post_prediction_thread(pred, publisher, config, stats) -> str | None:
+async def _post_prediction_thread(pred, publisher, config, stats, brand_name: str = "") -> str | None:
     """Post 2-tweet thread: promise card (single) → 4 data cards (2×2). Returns tweet1 id."""
     from src.services.xbot.card_service import generate_prediction_card_set
 
     product_url = config.get("xbot_product_url", "")
-    acc_7d = stats.get("7d", {})
 
     cards = await generate_prediction_card_set(
         pred,
         product_url=product_url,
-        accuracy_7d=acc_7d.get("label", "—"),
-        accuracy_7d_pct=acc_7d.get("pct", 0),
+        brand_name=brand_name,
     )
 
     dir_cn = {"up": "看涨", "down": "看跌", "hold": "震荡"}.get(pred.predicted_direction or "", "")
@@ -243,21 +242,19 @@ async def _post_prediction_thread(pred, publisher, config, stats) -> str | None:
     return tweet1_id
 
 
-async def _post_result_thread(pred, publisher, config, stats) -> str | None:
+async def _post_result_thread(pred, publisher, config, stats, brand_name: str = "") -> str | None:
     """Post 2-tweet result thread: proof card (single) → 4 data cards (2×2). Returns tweet1 id."""
     from src.services.xbot.card_service import generate_result_card_set
 
     product_url = config.get("xbot_product_url", "")
     hashtags = config.get("xbot_hashtags", "#A股 #AI选股")
-    acc_7d = stats.get("7d", {})
     acc_30d = stats.get("30d", {})
 
     cards = await generate_result_card_set(
         pred,
-        accuracy_7d=acc_7d.get("label", "—"),
-        accuracy_7d_pct=acc_7d.get("pct", 0),
         accuracy_30d=acc_30d.get("label", "—"),
         product_url=product_url,
+        brand_name=brand_name,
     )
 
     tweet1_text = "说到做到 ✓\n今日新预测已发布" if pred.is_correct else "未中，结果公开 ✗\n今日继续"
@@ -301,11 +298,12 @@ async def post_approved_predictions() -> int:
         )
         predictions = result.scalars().all()
         stats = await get_accuracy_stats(db)
+        brand_name = await _get_app_name_from_db(db)
 
     posted = 0
     for pred in predictions:
         try:
-            tweet_id = await _post_prediction_thread(pred, publisher, config, stats)
+            tweet_id = await _post_prediction_thread(pred, publisher, config, stats, brand_name=brand_name)
             if tweet_id:
                 async with async_session() as db:
                     await db.execute(
@@ -345,6 +343,19 @@ async def _load_config() -> dict:
     except Exception as e:
         logger.warning(f"Failed to load xbot config: {e}")
         return {}
+
+
+async def _get_app_name_from_db(db) -> str:
+    """Read app.name from the 'app' SystemSetting section."""
+    import json as _json
+    from src.models.settings import SystemSetting
+    try:
+        row = await db.get(SystemSetting, "app")
+        if row:
+            return _json.loads(row.value).get("name", "")
+    except Exception:
+        pass
+    return ""
 
 
 def _is_enabled(config: dict) -> bool:

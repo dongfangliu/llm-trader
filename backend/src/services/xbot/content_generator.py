@@ -24,8 +24,7 @@ _DEFAULT_RESULT_TEMPLATE = """{result_emoji} 昨日预测结果
 预测：{pred_emoji} {direction_cn} {confidence}%
 实际：{actual_pct:+.2f}% {hit_emoji}
 
-📊 近7日准确率：{accuracy_7d}（{pct_7d}%）
-近30日：{accuracy_30d}（{pct_30d}%）
+📊 累计胜率：{accuracy_30d}（{pct_30d}%）
 
 🔮 今日预测已发布，免费体验完整AI分析
 {product_url}
@@ -75,8 +74,6 @@ def render_prediction_tweet(
 
 def render_result_tweet(
     prediction: XBotPrediction,
-    accuracy_7d_label: str,
-    accuracy_7d_pct: int,
     accuracy_30d_label: str,
     accuracy_30d_pct: int,
     template: str = "",
@@ -101,8 +98,6 @@ def render_result_tweet(
         confidence=confidence,
         actual_pct=actual_pct,
         hit_emoji=hit_emoji,
-        accuracy_7d=accuracy_7d_label,
-        pct_7d=accuracy_7d_pct,
         accuracy_30d=accuracy_30d_label,
         pct_30d=accuracy_30d_pct,
         product_url=product_url or "",

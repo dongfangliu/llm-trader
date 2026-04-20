@@ -162,6 +162,7 @@ async def preview_card(
 
     stats = await get_accuracy_stats(db)
     product_url = config.get("xbot_product_url", "")
+    brand_name = await _get_app_name(db)
     acc_7d = stats.get("7d", {})
     acc_30d = stats.get("30d", {})
 
@@ -169,17 +170,15 @@ async def preview_card(
     if variant in result_variants and pred.actual_change_pct is not None:
         cards = await generate_result_card_set(
             pred,
-            accuracy_7d=acc_7d.get("label", "—"),
-            accuracy_7d_pct=acc_7d.get("pct", 0),
             accuracy_30d=acc_30d.get("label", "—"),
             product_url=product_url,
+            brand_name=brand_name,
         )
     else:
         cards = await generate_prediction_card_set(
             pred,
             product_url=product_url,
-            accuracy_7d=acc_7d.get("label", "—"),
-            accuracy_7d_pct=acc_7d.get("pct", 0),
+            brand_name=brand_name,
         )
 
     png = cards.get(variant)
@@ -397,6 +396,16 @@ async def test_card(
 async def _load_config(db: AsyncSession) -> dict:
     result = await db.execute(select(SystemSetting).where(SystemSetting.key.in_(_XBOT_KEYS)))
     return {row.key: row.value for row in result.scalars().all()}
+
+
+async def _get_app_name(db: AsyncSession) -> str:
+    row = await db.get(SystemSetting, "app")
+    if row:
+        try:
+            return json.loads(row.value).get("name", "")
+        except Exception:
+            pass
+    return ""
 
 
 async def _get_prediction(db: AsyncSession, prediction_id: int) -> XBotPrediction:

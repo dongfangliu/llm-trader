@@ -49,7 +49,6 @@ async def generate_prediction_card(
 
 async def generate_result_card(
     prediction: XBotPrediction,
-    accuracy_7d: str,
     accuracy_30d: str,
     product_url: str = "",
 ) -> Optional[bytes]:
@@ -66,7 +65,6 @@ async def generate_result_card(
         "confidence": prediction.confidence,
         "actual_change_pct": prediction.actual_change_pct,
         "is_correct": prediction.is_correct,
-        "accuracy_7d": accuracy_7d,
         "accuracy_30d": accuracy_30d,
         "product_url": product_url,
     }
@@ -77,8 +75,7 @@ async def generate_prediction_card_set(
     prediction: XBotPrediction,
     product_url: str = "",
     disclaimer: str = "⚠️ 仅供参考，非投资建议",
-    accuracy_7d: str = "—",
-    accuracy_7d_pct: int = 0,
+    brand_name: str = "",
 ) -> dict:
     """Concurrently generate 5 cards: promise + data×4. Returns dict keyed by variant name."""
     base = {
@@ -93,9 +90,8 @@ async def generate_prediction_card_set(
         "close_price": prediction.close_price,
         "target_price": prediction.target_price,
         "stop_loss": prediction.stop_loss,
-        "accuracy_7d": accuracy_7d,
-        "accuracy_7d_pct": accuracy_7d_pct,
         "product_url": product_url,
+        "brand_name": brand_name or None,
     }
     variants = ["promise", "data_conf", "data_price", "data_heat", "data_record"]
     results = await asyncio.gather(*[
@@ -109,10 +105,9 @@ async def generate_prediction_card_set(
 
 async def generate_result_card_set(
     prediction: XBotPrediction,
-    accuracy_7d: str = "—",
-    accuracy_7d_pct: int = 0,
     accuracy_30d: str = "—",
     product_url: str = "",
+    brand_name: str = "",
 ) -> dict:
     """Concurrently generate 5 cards: proof + data×4. Returns dict keyed by variant name."""
     base = {
@@ -130,10 +125,9 @@ async def generate_result_card_set(
         "stop_loss": prediction.stop_loss,
         "actual_change_pct": prediction.actual_change_pct,
         "is_correct": prediction.is_correct,
-        "accuracy_7d": accuracy_7d,
-        "accuracy_7d_pct": accuracy_7d_pct,
         "accuracy_30d": accuracy_30d,
         "product_url": product_url,
+        "brand_name": brand_name or None,
     }
     variants = ["proof", "data_conf", "data_price", "data_heat", "data_record"]
     results = await asyncio.gather(*[

@@ -547,7 +547,7 @@ onMounted(async () => {
       <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:16px">
         <div style="font-size:15px;font-weight:600;margin-bottom:4px">结果推文模板</div>
         <div style="font-size:12px;color:#8e8e93;margin-bottom:12px">
-          可用变量：{name} {symbol} {pred_emoji} {direction_cn} {confidence} {actual_pct} {hit_emoji} {result_emoji} {accuracy_7d} {pct_7d} {accuracy_30d} {pct_30d} {product_url} {hashtags}
+          可用变量：{name} {symbol} {pred_emoji} {direction_cn} {confidence} {actual_pct} {hit_emoji} {result_emoji} {accuracy_30d} {pct_30d} {product_url} {hashtags}
         </div>
         <textarea v-model="settings.xbot_result_template" rows="8" placeholder="留空使用默认模板"
           style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid #e5e5ea;font-size:14px;background:#f2f2f7;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>
