@@ -95,35 +95,41 @@ async function saveSettings() {
   } finally { settingsSaving.value = false }
 }
 
-// ─── Card preview ──────────────────────────────────────────────────────────────
+// ─── Card preview + tweet preview ─────────────────────────────────────────────
 const previewVisible = ref(false)
 const previewLoading = ref(false)
+const previewPred = ref<any>(null)
+const previewTweet = ref<any>(null)  // { tweet1_text, tweet2_text, card1_variant, card2_variant, is_result }
 type PreviewCard = { variant: string; label: string; url: string }
 const previewCards = ref<PreviewCard[]>([])
 
-const PREVIEW_VARIANTS = [
-  { variant: 'promise',     label: '承诺卡 (推文1)' },
-  { variant: 'data_conf',   label: '置信度卡' },
-  { variant: 'data_price',  label: '价格空间卡' },
-  { variant: 'data_heat',   label: '市场热度卡' },
-  { variant: 'data_record', label: '近期战绩卡' },
-]
-const PREVIEW_VARIANTS_RESULT = [
-  { variant: 'proof',       label: '兑现卡 (推文1)' },
-  { variant: 'data_conf',   label: '置信度卡' },
-  { variant: 'data_price',  label: '价格空间卡' },
-  { variant: 'data_heat',   label: '市场热度卡' },
-  { variant: 'data_record', label: '近期战绩卡' },
-]
+const CARD_LABELS: Record<string, string> = {
+  promise: '预测卡 (推文1)',
+  proof: '结算卡 (推文1)',
+  data_record: '战绩卡 (推文2)',
+}
 
 async function openPreview(pred: any) {
   previewVisible.value = true
   previewLoading.value = true
+  previewPred.value = pred
   previewCards.value = []
-  const variants = pred.actual_change_pct != null ? PREVIEW_VARIANTS_RESULT : PREVIEW_VARIANTS
+  previewTweet.value = null
+
   try {
+    // Fetch tweet texts and card variant info
+    const tweetRes = await api.get(`/api/admin/xbot/predictions/${pred.id}/tweet-preview`, {
+      headers: getAdminHeaders(),
+    })
+    previewTweet.value = tweetRes.data
+
+    const variantList = [
+      { variant: tweetRes.data.card1_variant, label: CARD_LABELS[tweetRes.data.card1_variant] || tweetRes.data.card1_variant },
+      { variant: 'data_record', label: CARD_LABELS['data_record'] },
+    ]
+
     const results = await Promise.allSettled(
-      variants.map(v =>
+      variantList.map(v =>
         api.get(`/api/admin/xbot/predictions/${pred.id}/card-preview?variant=${v.variant}`, {
           headers: getAdminHeaders(),
           responseType: 'blob',
@@ -133,12 +139,13 @@ async function openPreview(pred: any) {
     previewCards.value = results
       .filter((r): r is PromiseFulfilledResult<PreviewCard> => r.status === 'fulfilled')
       .map(r => r.value)
+
     if (!previewCards.value.length) {
       showMsg('卡片生成失败', 'error')
       previewVisible.value = false
     }
   } catch (e: any) {
-    showMsg('卡片生成失败', 'error')
+    showMsg(e.response?.data?.detail || '预览加载失败', 'error')
     previewVisible.value = false
   } finally { previewLoading.value = false }
 }
@@ -146,6 +153,31 @@ function closePreview() {
   previewCards.value.forEach(c => URL.revokeObjectURL(c.url))
   previewCards.value = []
   previewVisible.value = false
+  previewPred.value = null
+  previewTweet.value = null
+}
+
+// ─── Approve + Post combined (from preview) ───────────────────────────────────
+const approvePostLoading = ref(false)
+async function approveAndPost() {
+  const pred = previewPred.value
+  if (!pred) return
+  if (!confirm(`确认发布 ${pred.symbol_name} 的预测推文（共2条）？`)) return
+  approvePostLoading.value = true
+  try {
+    if (pred.status === 'pending') {
+      await api.post(`/api/admin/xbot/predictions/${pred.id}/approve`, {}, { headers: getAdminHeaders() })
+      pred.status = 'approved'
+    }
+    const res = await api.post(`/api/admin/xbot/predictions/${pred.id}/post`, {}, { headers: getAdminHeaders() })
+    pred.status = 'posted'
+    pred.prediction_tweet_id = res.data.tweet_id
+    showMsg(`${pred.symbol_name} 推文已发布！`)
+    closePreview()
+    await loadTodayPreds()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '发布失败', 'error')
+  } finally { approvePostLoading.value = false }
 }
 
 // ─── Prediction actions ────────────────────────────────────────────────────────
@@ -292,22 +324,45 @@ onMounted(async () => {
       </div>
     </Transition>
 
-    <!-- Card preview sheet -->
+    <!-- Card preview + tweet confirm sheet -->
     <Transition name="sheet">
       <div v-if="previewVisible" style="position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;justify-content:flex-end;">
         <div style="position:absolute;inset:0;background:rgba(0,0,0,0.4)" @click="closePreview"></div>
-        <div style="position:relative;background:#fff;border-radius:20px 20px 0 0;padding:16px;max-height:92vh;overflow-y:auto">
-          <div style="width:40px;height:4px;border-radius:2px;background:#e5e5ea;margin:0 auto 16px"></div>
-          <div style="font-size:17px;font-weight:600;text-align:center;margin-bottom:16px">推文卡片预览</div>
-          <div v-if="previewLoading" style="text-align:center;padding:60px 0;color:#8e8e93">生成中，并发渲染5张卡片...</div>
-          <div v-else style="display:flex;flex-direction:column;gap:16px">
-            <div v-for="card in previewCards" :key="card.variant">
-              <div style="font-size:12px;font-weight:600;color:#8e8e93;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">{{ card.label }}</div>
-              <img :src="card.url" style="width:100%;border-radius:12px;display:block" />
+        <div style="position:relative;background:#fff;border-radius:20px 20px 0 0;padding:16px;max-height:94vh;overflow-y:auto">
+          <div style="width:40px;height:4px;border-radius:2px;background:#e5e5ea;margin:0 auto 12px"></div>
+          <div style="font-size:17px;font-weight:600;text-align:center;margin-bottom:16px">
+            发推预览 — {{ previewPred?.symbol_name }}
+          </div>
+
+          <div v-if="previewLoading" style="text-align:center;padding:60px 0;color:#8e8e93">加载中，生成卡片与推文文案...</div>
+          <div v-else style="display:flex;flex-direction:column;gap:20px">
+
+            <!-- Tweet 1 -->
+            <div v-if="previewTweet">
+              <div style="font-size:12px;font-weight:700;color:#8e8e93;letter-spacing:0.5px;margin-bottom:8px">推文 1 · 主卡</div>
+              <div style="background:#f2f2f7;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin-bottom:8px;color:#1c1c1e">{{ previewTweet.tweet1_text }}</div>
+              <img v-if="previewCards[0]" :src="previewCards[0].url" style="width:100%;border-radius:12px;display:block" />
+            </div>
+
+            <!-- Tweet 2 -->
+            <div v-if="previewTweet">
+              <div style="font-size:12px;font-weight:700;color:#8e8e93;letter-spacing:0.5px;margin-bottom:8px">推文 2 · 战绩卡（回复）</div>
+              <div style="background:#f2f2f7;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin-bottom:8px;color:#1c1c1e">{{ previewTweet.tweet2_text }}</div>
+              <img v-if="previewCards[1]" :src="previewCards[1].url" style="width:100%;border-radius:12px;display:block" />
             </div>
           </div>
-          <div style="height:16px"></div>
-          <button @click="closePreview" style="width:100%;height:44px;border-radius:12px;background:#f2f2f7;border:none;font-size:16px;font-weight:500;cursor:pointer">关闭</button>
+
+          <div style="height:20px"></div>
+
+          <!-- Action buttons -->
+          <div v-if="!previewLoading && previewPred && !previewPred.prediction_tweet_id" style="display:flex;gap:10px;margin-bottom:12px">
+            <button @click="approveAndPost" :disabled="approvePostLoading"
+              style="flex:1;height:50px;border-radius:14px;background:#007aff;color:#fff;border:none;font-size:16px;font-weight:600;cursor:pointer"
+              :style="approvePostLoading ? 'opacity:0.6' : ''">
+              {{ approvePostLoading ? '发布中...' : '✅ 确认发布' }}
+            </button>
+          </div>
+          <button @click="closePreview" style="width:100%;height:44px;border-radius:12px;background:#f2f2f7;border:none;font-size:15px;font-weight:500;cursor:pointer;color:#636366">关闭</button>
         </div>
       </div>
     </Transition>
@@ -324,12 +379,11 @@ onMounted(async () => {
       <div v-if="dashboard" :style="`background:${dashboard.enabled ? '#34c759' : '#ff9500'};border-radius:16px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:20px`">
         <div style="color:#fff;font-size:15px;font-weight:600">
           {{ dashboard.enabled ? '🟢 机器人运行中' : '🟡 机器人已暂停' }}
-          <span style="font-weight:400;opacity:0.85;margin-left:8px;font-size:13px">
-            {{ dashboard.auto_post ? '自动发帖模式' : '人工审核模式' }}
-          </span>
+          <span style="font-weight:400;opacity:0.85;margin-left:8px;font-size:13px">人工审核模式</span>
         </div>
-        <div style="color:rgba(255,255,255,0.9);font-size:13px">
-          预测 {{ dashboard.predict_time }} · 发布 {{ dashboard.post_time }}
+        <div style="color:rgba(255,255,255,0.9);font-size:12px;text-align:right;line-height:1.5">
+          <div>A股结算 {{ dashboard.a_settle_time }} / 港股 {{ dashboard.hk_settle_time }}</div>
+          <div>生成预测 {{ dashboard.predict_time }}</div>
         </div>
       </div>
 
@@ -547,7 +601,7 @@ onMounted(async () => {
       <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:16px">
         <div style="font-size:15px;font-weight:600;margin-bottom:4px">结果推文模板</div>
         <div style="font-size:12px;color:#8e8e93;margin-bottom:12px">
-          可用变量：{name} {symbol} {pred_emoji} {direction_cn} {confidence} {actual_pct} {hit_emoji} {result_emoji} {accuracy_30d} {pct_30d} {product_url} {hashtags}
+          可用变量：{name} {symbol} {pred_emoji} {direction_cn} {confidence} {actual_pct} {hit_emoji} {result_emoji} {accuracy_all} {pct_all} {product_url} {hashtags}
         </div>
         <textarea v-model="settings.xbot_result_template" rows="8" placeholder="留空使用默认模板"
           style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid #e5e5ea;font-size:14px;background:#f2f2f7;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>
@@ -577,8 +631,7 @@ onMounted(async () => {
       <!-- On/Off switches -->
       <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:16px">
         <div style="font-size:15px;font-weight:600;margin-bottom:16px">运行控制</div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f2f2f7">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">
           <div>
             <div style="font-size:15px;font-weight:500">机器人总开关</div>
             <div style="font-size:12px;color:#8e8e93;margin-top:2px">关闭后定时任务停止执行</div>
@@ -589,17 +642,28 @@ onMounted(async () => {
             <span :style="`position:absolute;width:27px;height:27px;border-radius:50%;background:#fff;top:2px;transition:.3s;left:${settings.xbot_enabled==='true'?'22px':'2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2)`"></span>
           </label>
         </div>
+      </div>
 
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">
-          <div>
-            <div style="font-size:15px;font-weight:500">自动发帖模式</div>
-            <div style="font-size:12px;color:#8e8e93;margin-top:2px">关闭后需手动审核才会发布</div>
+      <!-- Markets & Stock selection -->
+      <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:16px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:16px">选股配置</div>
+        <div style="margin-bottom:14px">
+          <div style="font-size:13px;color:#8e8e93;margin-bottom:6px">启用市场 <span style="color:#c7c7cc">逗号分隔：a / hk</span></div>
+          <input v-model="settings.xbot_markets" type="text" placeholder="a,hk"
+            style="width:200px;height:44px;padding:0 14px;border-radius:10px;border:1px solid #e5e5ea;font-size:15px;background:#f2f2f7">
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div v-for="(item, i) in [
+            { key: 'xbot_hot_stock_count', label: '每市场选股数', placeholder: '5', note: '只' },
+            { key: 'xbot_min_price_a', label: 'A股最低价格', placeholder: '5', note: '元' },
+            { key: 'xbot_min_price_hk', label: '港股最低价格', placeholder: '1', note: '港元' },
+          ]" :key="i">
+            <div>
+              <div style="font-size:13px;color:#8e8e93;margin-bottom:6px">{{ item.label }} <span style="color:#c7c7cc">{{ item.note }}</span></div>
+              <input v-model="settings[item.key]" type="number" :placeholder="item.placeholder"
+                style="width:120px;height:44px;padding:0 14px;border-radius:10px;border:1px solid #e5e5ea;font-size:15px;background:#f2f2f7">
+            </div>
           </div>
-          <label style="position:relative;width:51px;height:31px;cursor:pointer">
-            <input type="checkbox" :checked="settings.xbot_auto_post === 'true'" @change="settings.xbot_auto_post = ($event.target as HTMLInputElement).checked ? 'true' : 'false'" style="opacity:0;width:0;height:0;position:absolute">
-            <span :style="`position:absolute;inset:0;border-radius:34px;transition:.3s;background:${settings.xbot_auto_post==='true'?'#007aff':'#e5e5ea'}`"></span>
-            <span :style="`position:absolute;width:27px;height:27px;border-radius:50%;background:#fff;top:2px;transition:.3s;left:${settings.xbot_auto_post==='true'?'22px':'2px'};box-shadow:0 2px 4px rgba(0,0,0,0.2)`"></span>
-          </label>
         </div>
       </div>
 
@@ -607,14 +671,30 @@ onMounted(async () => {
       <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:16px">
         <div style="font-size:15px;font-weight:600;margin-bottom:16px">时间配置（北京时间）</div>
         <div v-for="(item, i) in [
-          { key: 'xbot_stocks_count', label: '每日选股数量', type: 'number', placeholder: '5', note: '1-10只' },
-          { key: 'xbot_predict_time', label: '预测生成时间', type: 'time', placeholder: '16:15', note: '收盘后' },
-          { key: 'xbot_post_time', label: '自动发帖时间', type: 'time', placeholder: '16:30', note: '仅自动模式' },
-          { key: 'xbot_result_time', label: '结果发布时间', type: 'time', placeholder: '09:30', note: '次日开盘前' },
+          { key: 'xbot_a_settle_time', label: 'A股结算发推时间', placeholder: '15:30', note: 'A股收盘后自动结算' },
+          { key: 'xbot_hk_settle_time', label: '港股结算发推时间', placeholder: '16:30', note: '港股收盘后自动结算' },
+          { key: 'xbot_predict_time', label: '生成次日预测时间', placeholder: '16:45', note: '两市收盘后自动生成' },
         ]" :key="i" style="margin-bottom:14px">
           <div style="font-size:13px;color:#8e8e93;margin-bottom:6px">{{ item.label }} <span style="color:#c7c7cc">{{ item.note }}</span></div>
-          <input v-model="settings[item.key]" :type="item.type" :placeholder="item.placeholder"
+          <input v-model="settings[item.key]" type="time" :placeholder="item.placeholder"
             style="width:160px;height:44px;padding:0 14px;border-radius:10px;border:1px solid #e5e5ea;font-size:15px;background:#f2f2f7">
+        </div>
+      </div>
+
+      <!-- Settlement mode -->
+      <div style="background:#fff;border-radius:16px;padding:20px;margin-bottom:16px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:12px">结算卡片模式</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label v-for="opt in [
+            { value: 'per_stock', label: '单股模式', desc: '每只股票各发一条独立结算推文' },
+            { value: 'market_summary', label: '市场汇总模式', desc: '同一市场合并成一张汇总卡发推（待实现）' },
+          ]" :key="opt.value" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer">
+            <input type="radio" :value="opt.value" v-model="settings.xbot_settlement_mode" style="margin-top:3px">
+            <div>
+              <div style="font-size:15px;font-weight:500">{{ opt.label }}</div>
+              <div style="font-size:12px;color:#8e8e93">{{ opt.desc }}</div>
+            </div>
+          </label>
         </div>
       </div>
 

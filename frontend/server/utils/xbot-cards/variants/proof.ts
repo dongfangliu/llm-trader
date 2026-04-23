@@ -20,7 +20,7 @@ export function renderProof(p: CardPayload): any {
   const reportId  = resultReportId(p)
   const domain    = prettyDomain(p.product_url)
   const brandName = p.brand_name ?? BRAND.name
-  const pct30     = parsePct(p.accuracy_30d)
+  const pct30     = parsePct(p.accuracy_all)
   const wrColor   = pctColor(pct30)
 
   const MONO = 'NotoSansSC'

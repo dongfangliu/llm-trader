@@ -39,68 +39,74 @@ async def stop_scheduler():
 
 def _register_jobs(scheduler: AsyncIOScheduler, config: dict):
     """Register all xbot cron jobs."""
-    predict_time = config.get("xbot_predict_time", "16:15")
-    post_time = config.get("xbot_post_time", "16:30")
-    result_time = config.get("xbot_result_time", "09:30")
+    a_settle_time  = config.get("xbot_a_settle_time", "15:30")
+    hk_settle_time = config.get("xbot_hk_settle_time", "16:30")
+    predict_time   = config.get("xbot_predict_time", "16:45")
 
-    predict_h, predict_m = _parse_time(predict_time)
-    post_h, post_m = _parse_time(post_time)
-    result_h, result_m = _parse_time(result_time)
+    a_sh, a_sm   = _parse_time(a_settle_time)
+    hk_sh, hk_sm = _parse_time(hk_settle_time)
+    pred_h, pred_m = _parse_time(predict_time)
 
-    # Job A: Generate predictions (Mon-Fri, after market close)
+    # Job A: Settle A-share predictions (Mon-Fri 15:30, A市收盘后)
+    scheduler.add_job(
+        job_settle_a_shares,
+        CronTrigger(hour=a_sh, minute=a_sm, day_of_week="mon-fri", timezone="Asia/Shanghai"),
+        id="xbot_settle_a",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # Job B: Settle HK predictions (Mon-Fri 16:30, 港股收盘后)
+    scheduler.add_job(
+        job_settle_hk_shares,
+        CronTrigger(hour=hk_sh, minute=hk_sm, day_of_week="mon-fri", timezone="Asia/Shanghai"),
+        id="xbot_settle_hk",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+    # Job C: Generate next-day predictions (Mon-Fri 16:45, 两市均收盘)
     scheduler.add_job(
         job_generate_predictions,
-        CronTrigger(hour=predict_h, minute=predict_m, day_of_week="mon-fri", timezone="Asia/Shanghai"),
+        CronTrigger(hour=pred_h, minute=pred_m, day_of_week="mon-fri", timezone="Asia/Shanghai"),
         id="xbot_generate",
         replace_existing=True,
         misfire_grace_time=1800,
     )
 
-    # Job B: Auto-post approved predictions (Mon-Fri)
-    scheduler.add_job(
-        job_auto_post,
-        CronTrigger(hour=post_h, minute=post_m, day_of_week="mon-fri", timezone="Asia/Shanghai"),
-        id="xbot_post",
-        replace_existing=True,
-        misfire_grace_time=1800,
-    )
-
-    # Job C: Settle and post results next morning (Tue-Sat, after previous day settled)
-    scheduler.add_job(
-        job_settle_and_post_results,
-        CronTrigger(hour=result_h, minute=result_m, day_of_week="tue-sat", timezone="Asia/Shanghai"),
-        id="xbot_settle",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
-
-    # Job D: Sync tweet engagement metrics
-    scheduler.add_job(
-        job_sync_metrics,
-        CronTrigger(hour="*/6", timezone="Asia/Shanghai"),
-        id="xbot_metrics",
-        replace_existing=True,
-    )
-
     logger.info(
-        f"XBot jobs registered — predict: {predict_time}, post: {post_time}, result: {result_time} (CST)"
+        f"XBot jobs registered — settle_a: {a_settle_time}, settle_hk: {hk_settle_time}, predict: {predict_time} (CST)"
     )
 
 
 async def job_generate_predictions():
-    """Job A: Select hot stocks and generate AI predictions."""
+    """Job C: Select hot stocks and generate AI predictions for next trading day."""
     config = await _load_config()
     if not _is_enabled(config):
         return
 
-    count = int(config.get("xbot_stocks_count", 5))
-    logger.info(f"[XBot] Generating predictions for {count} stocks")
+    markets = [m.strip() for m in config.get("xbot_markets", "a,hk").split(",") if m.strip()]
+    count = int(config.get("xbot_hot_stock_count", 5))
+    logger.info(f"[XBot] Generating predictions for markets={markets}, count={count}")
 
-    from src.services.xbot.hot_stocks_service import get_hot_stocks
+    from src.services.xbot.hot_stocks_service import get_hot_stocks, get_hk_hot_stocks
     from src.services.xbot.prediction_service import generate_predictions
     from src.database.new_db import async_session
 
-    hot_stocks = await get_hot_stocks(count=count)
+    hot_stocks = []
+    if "a" in markets:
+        a_stocks = await get_hot_stocks(
+            count=count,
+            min_price=float(config.get("xbot_min_price_a", 5)),
+        )
+        hot_stocks.extend(a_stocks)
+    if "hk" in markets:
+        hk_stocks = await get_hk_hot_stocks(
+            count=count,
+            min_price=float(config.get("xbot_min_price_hk", 1)),
+        )
+        hot_stocks.extend(hk_stocks)
+
     if not hot_stocks:
         logger.warning("[XBot] No hot stocks fetched, aborting prediction job")
         return
@@ -110,34 +116,31 @@ async def job_generate_predictions():
     logger.info(f"[XBot] Created {len(created)} predictions")
 
 
-async def job_auto_post():
-    """Job B: Post approved predictions (only runs when auto_post=true)."""
+async def job_settle_a_shares():
+    """Job A: Settle A-share predictions and post result tweets (runs after A-share close)."""
+    await _settle_and_post_for_market("a")
+
+
+async def job_settle_hk_shares():
+    """Job B: Settle HK predictions and post result tweets (runs after HK close)."""
+    await _settle_and_post_for_market("hk")
+
+
+async def _settle_and_post_for_market(market: str):
+    """Settle predictions for a specific market and post result tweets."""
     config = await _load_config()
     if not _is_enabled(config):
         return
-    if config.get("xbot_auto_post", "false") != "true":
-        logger.info("[XBot] Auto-post disabled, skipping job B")
-        return
 
-    posted = await post_approved_predictions()
-    logger.info(f"[XBot] Auto-posted {posted} predictions")
-
-
-async def job_settle_and_post_results():
-    """Job C: Settle predictions and post result tweets."""
-    config = await _load_config()
-    if not _is_enabled(config):
-        return
-
-    from src.services.xbot.result_service import settle_predictions, get_accuracy_stats
+    from src.services.xbot.result_service import settle_predictions_for_market, get_accuracy_stats
     from src.services.xbot.x_publisher import get_publisher_from_settings
     from src.database.new_db import async_session
     from sqlalchemy import select
     from src.models.xbot import XBotPrediction
 
     async with async_session() as db:
-        settled_count = await settle_predictions(db)
-        logger.info(f"[XBot] Settled {settled_count} predictions")
+        settled_count = await settle_predictions_for_market(db, market)
+        logger.info(f"[XBot] Settled {settled_count} {market.upper()} predictions")
 
         if settled_count == 0:
             return
@@ -145,10 +148,10 @@ async def job_settle_and_post_results():
         stats = await get_accuracy_stats(db)
         brand_name = await _get_app_name_from_db(db)
 
-        # Fetch settled predictions without result tweet
         result = await db.execute(
             select(XBotPrediction).where(
                 XBotPrediction.status == "settled",
+                XBotPrediction.market == market,
                 XBotPrediction.result_tweet_id.is_(None),
             )
         )
@@ -176,39 +179,6 @@ async def job_settle_and_post_results():
             logger.error(f"[XBot] Failed to post result for {pred.symbol}: {e}")
 
 
-async def job_sync_metrics():
-    """Job D: Sync tweet engagement metrics."""
-    from src.services.xbot.x_publisher import get_publisher_from_settings
-    from src.database.new_db import async_session
-    from sqlalchemy import select, update
-    from src.models.xbot import XBotPrediction
-
-    publisher = await get_publisher_from_settings()
-    if not publisher:
-        return
-
-    async with async_session() as db:
-        result = await db.execute(
-            select(XBotPrediction).where(
-                XBotPrediction.prediction_tweet_id.is_not(None),
-            ).limit(50)
-        )
-        predictions = result.scalars().all()
-
-        for pred in predictions:
-            try:
-                if pred.prediction_tweet_id:
-                    m = publisher.get_tweet_metrics(pred.prediction_tweet_id)
-                    await db.execute(
-                        update(XBotPrediction)
-                        .where(XBotPrediction.id == pred.id)
-                        .values(likes_count=m["likes"], retweets_count=m["retweets"])
-                    )
-            except Exception:
-                pass
-        await db.commit()
-
-
 async def _post_prediction_thread(pred, publisher, config, stats, brand_name: str = "") -> str | None:
     """Post 2-tweet thread: promise card (single) → 4 data cards (2×2). Returns tweet1 id."""
     from src.services.xbot.card_service import generate_prediction_card_set
@@ -219,6 +189,7 @@ async def _post_prediction_thread(pred, publisher, config, stats, brand_name: st
         pred,
         product_url=product_url,
         brand_name=brand_name,
+        accuracy_all=stats.get("all", {}).get("label", "—"),
     )
 
     dir_cn = {"up": "看涨", "down": "看跌", "hold": "震荡"}.get(pred.predicted_direction or "", "")
@@ -232,10 +203,7 @@ async def _post_prediction_thread(pred, publisher, config, stats, brand_name: st
 
     await asyncio.sleep(2)
 
-    data_ids = publisher.upload_media_batch([
-        cards.get("data_conf"), cards.get("data_price"),
-        cards.get("data_heat"), cards.get("data_record"),
-    ])
+    data_ids = publisher.upload_media_batch([cards.get("data_record")])
     tweet2_text = f"为什么这么判断 ↓\n{product_url}" if product_url else "为什么这么判断 ↓"
     publisher.post_tweet(tweet2_text, media_ids=data_ids, reply_to_tweet_id=tweet1_id)
 
@@ -248,11 +216,11 @@ async def _post_result_thread(pred, publisher, config, stats, brand_name: str = 
 
     product_url = config.get("xbot_product_url", "")
     hashtags = config.get("xbot_hashtags", "#A股 #AI选股")
-    acc_30d = stats.get("30d", {})
+    acc_all = stats.get("all", {})
 
     cards = await generate_result_card_set(
         pred,
-        accuracy_30d=acc_30d.get("label", "—"),
+        accuracy_all=acc_all.get("label", "—"),
         product_url=product_url,
         brand_name=brand_name,
     )
@@ -268,10 +236,7 @@ async def _post_result_thread(pred, publisher, config, stats, brand_name: str = 
 
     await asyncio.sleep(2)
 
-    data_ids = publisher.upload_media_batch([
-        cards.get("data_conf"), cards.get("data_price"),
-        cards.get("data_heat"), cards.get("data_record"),
-    ])
+    data_ids = publisher.upload_media_batch([cards.get("data_record")])
     tweet2_text = f"完整分析\n{product_url}  {hashtags}" if product_url else f"完整分析  {hashtags}"
     publisher.post_tweet(tweet2_text, media_ids=data_ids, reply_to_tweet_id=tweet1_id)
 
@@ -328,9 +293,11 @@ async def _load_config() -> dict:
         from src.models.settings import SystemSetting
 
         xbot_keys = [
-            "xbot_enabled", "xbot_auto_post", "xbot_stocks_count",
-            "xbot_product_url", "xbot_predict_time", "xbot_post_time",
-            "xbot_result_time", "xbot_hashtags", "xbot_disclaimer",
+            "xbot_enabled", "xbot_markets", "xbot_hot_stock_count",
+            "xbot_min_price_a", "xbot_min_price_hk",
+            "xbot_product_url", "xbot_predict_time",
+            "xbot_a_settle_time", "xbot_hk_settle_time",
+            "xbot_settlement_mode", "xbot_hashtags", "xbot_disclaimer",
             "xbot_tweet_template", "xbot_result_template",
             "xbot_twitter_api_key", "xbot_twitter_api_secret",
             "xbot_twitter_access_token", "xbot_twitter_access_token_secret",

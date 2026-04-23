@@ -4,7 +4,7 @@ import { BRAND, C, h, txt, prettyDomain, parsePct, pctColor } from '../_helpers'
 export function renderDataRecord(p: CardPayload): any {
   const domain    = prettyDomain(p.product_url)
   const brandName = p.brand_name ?? BRAND.name
-  const pct30     = parsePct(p.accuracy_30d)
+  const pct30     = parsePct(p.accuracy_all)
   const wrColor   = pctColor(pct30)
 
   const parse = (s?: string) => {
@@ -12,7 +12,7 @@ export function renderDataRecord(p: CardPayload): any {
     const [a, b] = s.split('/').map(Number)
     return (!isNaN(a) && !isNaN(b) && b > 0) ? { hit: a, total: b } : null
   }
-  const s30  = parse(p.accuracy_30d)
+  const s30  = parse(p.accuracy_all)
   const dots = s30 ? Array.from({ length: Math.min(s30.total, 12) }, (_, i) => i < s30.hit) : []
 
   const MONO   = 'NotoSansSC'

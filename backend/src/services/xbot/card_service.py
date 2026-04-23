@@ -49,7 +49,7 @@ async def generate_prediction_card(
 
 async def generate_result_card(
     prediction: XBotPrediction,
-    accuracy_30d: str,
+    accuracy_all: str,
     product_url: str = "",
 ) -> Optional[bytes]:
     """Generate result card PNG. Returns PNG bytes or None on failure."""
@@ -65,7 +65,7 @@ async def generate_result_card(
         "confidence": prediction.confidence,
         "actual_change_pct": prediction.actual_change_pct,
         "is_correct": prediction.is_correct,
-        "accuracy_30d": accuracy_30d,
+        "accuracy_all": accuracy_all,
         "product_url": product_url,
     }
     return await _post_card(payload)
@@ -74,10 +74,10 @@ async def generate_result_card(
 async def generate_prediction_card_set(
     prediction: XBotPrediction,
     product_url: str = "",
-    disclaimer: str = "⚠️ 仅供参考，非投资建议",
     brand_name: str = "",
+    accuracy_all: str = "—",
 ) -> dict:
-    """Concurrently generate 5 cards: promise + data×4. Returns dict keyed by variant name."""
+    """Concurrently generate 2 cards: promise + data_record. Returns dict keyed by variant name."""
     base = {
         "symbol": prediction.symbol,
         "symbol_name": prediction.symbol_name,
@@ -90,10 +90,11 @@ async def generate_prediction_card_set(
         "close_price": prediction.close_price,
         "target_price": prediction.target_price,
         "stop_loss": prediction.stop_loss,
+        "accuracy_all": accuracy_all,
         "product_url": product_url,
         "brand_name": brand_name or None,
     }
-    variants = ["promise", "data_conf", "data_price", "data_heat", "data_record"]
+    variants = ["promise", "data_record"]
     results = await asyncio.gather(*[
         _post_card({**base, "variant": v}) for v in variants
     ], return_exceptions=True)
@@ -105,11 +106,11 @@ async def generate_prediction_card_set(
 
 async def generate_result_card_set(
     prediction: XBotPrediction,
-    accuracy_30d: str = "—",
+    accuracy_all: str = "—",
     product_url: str = "",
     brand_name: str = "",
 ) -> dict:
-    """Concurrently generate 5 cards: proof + data×4. Returns dict keyed by variant name."""
+    """Concurrently generate 2 cards: proof + data_record. Returns dict keyed by variant name."""
     base = {
         "symbol": prediction.symbol,
         "symbol_name": prediction.symbol_name,
@@ -125,11 +126,11 @@ async def generate_result_card_set(
         "stop_loss": prediction.stop_loss,
         "actual_change_pct": prediction.actual_change_pct,
         "is_correct": prediction.is_correct,
-        "accuracy_30d": accuracy_30d,
+        "accuracy_all": accuracy_all,
         "product_url": product_url,
         "brand_name": brand_name or None,
     }
-    variants = ["proof", "data_conf", "data_price", "data_heat", "data_record"]
+    variants = ["proof", "data_record"]
     results = await asyncio.gather(*[
         _post_card({**base, "variant": v}) for v in variants
     ], return_exceptions=True)

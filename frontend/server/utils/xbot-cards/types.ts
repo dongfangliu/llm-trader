@@ -16,7 +16,7 @@ export interface CardPayload {
   close_price?: number
   target_price?: number
   stop_loss?: number
-  accuracy_30d?: string
+  accuracy_all?: string
   product_url?: string
   summary?: string
   market_diagnosis?: string

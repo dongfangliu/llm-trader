@@ -6,7 +6,7 @@ const props = defineProps<{ payload: CardPayload }>()
 
 const domain    = computed(() => prettyDomain(props.payload.product_url))
 const brandName = computed(() => props.payload.brand_name ?? BRAND.name)
-const pct30     = computed(() => parsePct(props.payload.accuracy_30d))
+const pct30     = computed(() => parsePct(props.payload.accuracy_all))
 const wrColor   = computed(() => pctColor(pct30.value))
 
 const parse = (s?: string) => {
@@ -14,7 +14,7 @@ const parse = (s?: string) => {
   const [a, b] = s.split('/').map(Number)
   return (!isNaN(a) && !isNaN(b) && b > 0) ? { hit: a, total: b } : null
 }
-const stats30 = computed(() => parse(props.payload.accuracy_30d))
+const stats30 = computed(() => parse(props.payload.accuracy_all))
 const dots    = computed(() => {
   if (!stats30.value) return []
   const { hit, total } = stats30.value

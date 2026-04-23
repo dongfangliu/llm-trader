@@ -26,7 +26,7 @@ const themeClass = computed(() => {
 const reportId  = computed(() => predictionReportId(props.payload))
 const domain    = computed(() => prettyDomain(props.payload.product_url))
 const brandName = computed(() => props.payload.brand_name ?? BRAND.name)
-const pct30     = computed(() => parsePct(props.payload.accuracy_30d))
+const pct30     = computed(() => parsePct(props.payload.accuracy_all))
 
 const upside = computed(() => {
   const { close_price: c, target_price: t } = props.payload

@@ -27,7 +27,7 @@ export function renderPromise(p: CardPayload): any {
   const reportId = predictionReportId(p)
   const domain   = prettyDomain(p.product_url)
   const brandName = p.brand_name ?? BRAND.name
-  const pct30    = parsePct(p.accuracy_30d)
+  const pct30    = parsePct(p.accuracy_all)
 
   const upside = (p.close_price != null && p.target_price != null && p.close_price !== 0)
     ? ((p.target_price - p.close_price) / p.close_price) * 100 : null

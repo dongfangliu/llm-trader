@@ -11,7 +11,7 @@ const BASE = {
   close_price: 315.20,
   target_price: 340.00,
   stop_loss: 305.00,
-  accuracy_30d: '21/30',
+  accuracy_all: '21/30',
   product_url: 'https://caicai.tech',
   summary: '比亚迪技术突破推动新能源汽车销量超预期，主力资金持续流入，短线看涨信号明确。',
   market_diagnosis: '大盘震荡走强，新能源板块资金流入明显，市场情绪偏多，短线做多窗口开启。',

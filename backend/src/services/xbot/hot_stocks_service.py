@@ -4,11 +4,10 @@ from typing import List, Dict
 from loguru import logger
 
 
-async def get_hot_stocks(count: int = 5) -> List[Dict]:
+async def get_hot_stocks(count: int = 5, min_price: float = 5.0) -> List[Dict]:
     """
-    Fetch top N hot stocks from EastMoney retail investor attention ranking.
+    Fetch top N hot A-share stocks from EastMoney retail investor attention ranking.
     Returns list of {symbol, market, name, hot_rank}.
-    Filters out ST stocks, delisted stocks, and price < 5 CNY.
     """
     import akshare as ak
     import asyncio
@@ -18,17 +17,13 @@ async def get_hot_stocks(count: int = 5) -> List[Dict]:
             None, ak.stock_hot_rank_em
         )
     except Exception as e:
-        logger.error(f"Failed to fetch hot stocks from EastMoney: {e}")
+        logger.error(f"Failed to fetch A-share hot stocks from EastMoney: {e}")
         return []
 
     if df is None or df.empty:
-        logger.warning("Hot stocks data is empty")
+        logger.warning("A-share hot stocks data is empty")
         return []
 
-    results = []
-    rank = 0
-
-    # EastMoney hot rank columns vary; normalize common variants
     name_col = _find_col(df, ["股票名称", "名称", "name"])
     code_col = _find_col(df, ["股票代码", "代码", "code"])
     price_col = _find_col(df, ["最新价", "现价", "price"])
@@ -37,6 +32,8 @@ async def get_hot_stocks(count: int = 5) -> List[Dict]:
         logger.error(f"Unexpected hot rank columns: {list(df.columns)}")
         return []
 
+    results = []
+    rank = 0
     for _, row in df.iterrows():
         if len(results) >= count:
             break
@@ -45,36 +42,80 @@ async def get_hot_stocks(count: int = 5) -> List[Dict]:
         name = str(row.get(name_col, "")).strip()
         code = str(row.get(code_col, "")).strip()
 
-        # Skip ST / delisted stocks
         if "ST" in name.upper() or "*" in name or "退" in name:
             continue
 
-        # Skip low-price stocks if price info available
-        if price_col:
+        if price_col and min_price > 0:
             try:
                 price = float(row.get(price_col, 0) or 0)
-                if 0 < price < 5:
+                if 0 < price < min_price:
                     continue
             except (ValueError, TypeError):
                 pass
 
-        # Determine market: 6xxxxx → Shanghai A, 0/3xxxxx → Shenzhen A
-        if code.startswith("6"):
-            market = "a"
-        elif code.startswith(("0", "3")):
+        if code.startswith(("6", "0", "3")):
             market = "a"
         else:
-            # Ignore other markets (US, HK) from this list
             continue
 
-        results.append({
-            "symbol": code,
-            "market": market,
-            "name": name,
-            "hot_rank": rank,
-        })
+        results.append({"symbol": code, "market": market, "name": name, "hot_rank": rank})
 
-    logger.info(f"Hot stocks fetched: {len(results)} stocks")
+    logger.info(f"A-share hot stocks fetched: {len(results)}")
+    return results
+
+
+async def get_hk_hot_stocks(count: int = 5, min_price: float = 1.0) -> List[Dict]:
+    """
+    Fetch top N hot HK stocks from EastMoney HK attention ranking.
+    Returns list of {symbol, market, name, hot_rank}.
+    """
+    import akshare as ak
+    import asyncio
+
+    try:
+        df = await asyncio.get_event_loop().run_in_executor(
+            None, ak.stock_hk_hot_rank_em
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch HK hot stocks from EastMoney: {e}")
+        return []
+
+    if df is None or df.empty:
+        logger.warning("HK hot stocks data is empty")
+        return []
+
+    name_col = _find_col(df, ["股票名称", "名称", "name"])
+    code_col = _find_col(df, ["股票代码", "代码", "code"])
+    price_col = _find_col(df, ["最新价", "现价", "price"])
+
+    if not name_col or not code_col:
+        logger.error(f"Unexpected HK hot rank columns: {list(df.columns)}")
+        return []
+
+    results = []
+    rank = 0
+    for _, row in df.iterrows():
+        if len(results) >= count:
+            break
+
+        rank += 1
+        name = str(row.get(name_col, "")).strip()
+        code = str(row.get(code_col, "")).strip()
+
+        if "ST" in name.upper() or "退" in name:
+            continue
+
+        if price_col and min_price > 0:
+            try:
+                price = float(row.get(price_col, 0) or 0)
+                if 0 < price < min_price:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+        results.append({"symbol": code, "market": "hk", "name": name, "hot_rank": rank})
+
+    logger.info(f"HK hot stocks fetched: {len(results)}")
     return results
 
 

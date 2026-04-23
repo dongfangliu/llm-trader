@@ -26,12 +26,15 @@ _Admin = Depends(get_admin_token_or_admin_user)
 
 class XBotSettingsUpdate(BaseModel):
     xbot_enabled: Optional[str] = None
-    xbot_auto_post: Optional[str] = None
-    xbot_stocks_count: Optional[str] = None
+    xbot_markets: Optional[str] = None
+    xbot_hot_stock_count: Optional[str] = None
+    xbot_min_price_a: Optional[str] = None
+    xbot_min_price_hk: Optional[str] = None
     xbot_product_url: Optional[str] = None
     xbot_predict_time: Optional[str] = None
-    xbot_post_time: Optional[str] = None
-    xbot_result_time: Optional[str] = None
+    xbot_a_settle_time: Optional[str] = None
+    xbot_hk_settle_time: Optional[str] = None
+    xbot_settlement_mode: Optional[str] = None
     xbot_hashtags: Optional[str] = None
     xbot_disclaimer: Optional[str] = None
     xbot_tweet_template: Optional[str] = None
@@ -43,9 +46,11 @@ class XBotSettingsUpdate(BaseModel):
 
 
 _XBOT_KEYS = [
-    "xbot_enabled", "xbot_auto_post", "xbot_stocks_count",
-    "xbot_product_url", "xbot_predict_time", "xbot_post_time",
-    "xbot_result_time", "xbot_hashtags", "xbot_disclaimer",
+    "xbot_enabled", "xbot_markets", "xbot_hot_stock_count",
+    "xbot_min_price_a", "xbot_min_price_hk",
+    "xbot_product_url", "xbot_predict_time",
+    "xbot_a_settle_time", "xbot_hk_settle_time",
+    "xbot_settlement_mode", "xbot_hashtags", "xbot_disclaimer",
     "xbot_tweet_template", "xbot_result_template",
     "xbot_twitter_api_key", "xbot_twitter_api_secret",
     "xbot_twitter_access_token", "xbot_twitter_access_token_secret",
@@ -53,12 +58,15 @@ _XBOT_KEYS = [
 
 _DEFAULT_SETTINGS = {
     "xbot_enabled": "false",
-    "xbot_auto_post": "false",
-    "xbot_stocks_count": "5",
+    "xbot_markets": "a,hk",
+    "xbot_hot_stock_count": "5",
+    "xbot_min_price_a": "5",
+    "xbot_min_price_hk": "1",
     "xbot_product_url": "",
-    "xbot_predict_time": "16:15",
-    "xbot_post_time": "16:30",
-    "xbot_result_time": "09:30",
+    "xbot_predict_time": "16:45",
+    "xbot_a_settle_time": "15:30",
+    "xbot_hk_settle_time": "16:30",
+    "xbot_settlement_mode": "per_stock",
     "xbot_hashtags": "#A股 #AI选股 #股票预测",
     "xbot_disclaimer": "⚠️ 仅供参考，非投资建议",
     "xbot_tweet_template": "",
@@ -91,16 +99,18 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), _=_Admin):
     total_predictions = await _count(db)
     total_posted = await _count(db, XBotPrediction.prediction_tweet_id.is_not(None))
 
-    predict_time = config.get("xbot_predict_time", "16:15")
-    post_time = config.get("xbot_post_time", "16:30")
-    auto_post = config.get("xbot_auto_post", "false") == "true"
+    predict_time    = config.get("xbot_predict_time", "16:45")
+    a_settle_time   = config.get("xbot_a_settle_time", "15:30")
+    hk_settle_time  = config.get("xbot_hk_settle_time", "16:30")
+    markets         = config.get("xbot_markets", "a,hk")
     enabled = config.get("xbot_enabled", "false") == "true"
 
     return {
         "enabled": enabled,
-        "auto_post": auto_post,
+        "markets": markets,
         "predict_time": predict_time,
-        "post_time": post_time,
+        "a_settle_time": a_settle_time,
+        "hk_settle_time": hk_settle_time,
         "today": {
             "total": total_today,
             "pending": pending_today,
@@ -163,14 +173,13 @@ async def preview_card(
     stats = await get_accuracy_stats(db)
     product_url = config.get("xbot_product_url", "")
     brand_name = await _get_app_name(db)
-    acc_7d = stats.get("7d", {})
-    acc_30d = stats.get("30d", {})
+    acc_all = stats.get("all", {})
 
-    result_variants = {"proof", "data_conf", "data_price", "data_heat", "data_record"}
+    result_variants = {"proof", "data_record"}
     if variant in result_variants and pred.actual_change_pct is not None:
         cards = await generate_result_card_set(
             pred,
-            accuracy_30d=acc_30d.get("label", "—"),
+            accuracy_all=acc_all.get("label", "—"),
             product_url=product_url,
             brand_name=brand_name,
         )
@@ -179,6 +188,7 @@ async def preview_card(
             pred,
             product_url=product_url,
             brand_name=brand_name,
+            accuracy_all=acc_all.get("label", "—"),
         )
 
     png = cards.get(variant)
@@ -280,18 +290,82 @@ async def action_post_approved(_=_Admin):
 
 
 @router.post("/actions/settle")
-async def action_settle(db: AsyncSession = Depends(get_db), _=_Admin):
-    """Manually trigger settlement of yesterday's predictions."""
-    from src.services.xbot.scheduler import job_settle_and_post_results
+async def action_settle(
+    market: Optional[str] = Query(default=None, description="a or hk; omit for all"),
+    _=_Admin,
+):
+    """Manually trigger settlement of today's predictions (by market or all)."""
+    from src.services.xbot.scheduler import _settle_and_post_for_market, job_settle_a_shares, job_settle_hk_shares
     import asyncio
-    task = asyncio.create_task(job_settle_and_post_results())
+    if market == "a":
+        task = asyncio.create_task(job_settle_a_shares())
+    elif market == "hk":
+        task = asyncio.create_task(job_settle_hk_shares())
+    else:
+        async def _settle_all():
+            await job_settle_a_shares()
+            await job_settle_hk_shares()
+        task = asyncio.create_task(_settle_all())
     task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] settle task error: {t.exception()}"))
-    return {"ok": True, "message": "Settlement started in background"}
+    return {"ok": True, "message": f"Settlement started for market={market or 'all'}"}
 
 
 # ---------------------------------------------------------------------------
 # Accuracy stats
 # ---------------------------------------------------------------------------
+
+@router.get("/predictions/{prediction_id}/tweet-preview")
+async def tweet_preview(
+    prediction_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Return generated tweet texts and card preview URLs for a prediction."""
+    pred = await _get_prediction(db, prediction_id)
+    config = await _load_config(db)
+
+    from src.services.xbot.content_generator import render_prediction_tweet, render_result_tweet
+    from src.services.xbot.result_service import get_accuracy_stats
+
+    stats = await get_accuracy_stats(db)
+    acc_all = stats.get("all", {})
+    product_url = config.get("xbot_product_url", "")
+    hashtags = config.get("xbot_hashtags", "#A股 #AI选股 #股票预测")
+    disclaimer = config.get("xbot_disclaimer", "⚠️ 仅供参考，非投资建议")
+
+    is_result = pred.actual_change_pct is not None
+    if is_result:
+        tweet1 = render_result_tweet(
+            pred,
+            accuracy_all_label=acc_all.get("label", "—"),
+            accuracy_all_pct=acc_all.get("pct", 0),
+            template=config.get("xbot_result_template", ""),
+            product_url=product_url,
+            hashtags=hashtags,
+        )
+        tweet2 = f"完整分析\n{product_url}  {hashtags}" if product_url else f"完整分析  {hashtags}"
+        card1_variant = "proof"
+    else:
+        tweet1 = render_prediction_tweet(
+            pred,
+            template=config.get("xbot_tweet_template", ""),
+            product_url=product_url,
+            hashtags=hashtags,
+            disclaimer=disclaimer,
+        )
+        tweet2 = f"为什么这么判断 ↓\n{product_url}" if product_url else "为什么这么判断 ↓"
+        card1_variant = "promise"
+
+    return {
+        "tweet1_text": tweet1,
+        "tweet2_text": tweet2,
+        "card1_variant": card1_variant,
+        "card2_variant": "data_record",
+        "card1_url": f"/api/admin/xbot/predictions/{prediction_id}/card-preview?variant={card1_variant}",
+        "card2_url": f"/api/admin/xbot/predictions/{prediction_id}/card-preview?variant=data_record",
+        "is_result": is_result,
+    }
+
 
 @router.get("/accuracy")
 async def get_accuracy(db: AsyncSession = Depends(get_db), _=_Admin):
@@ -393,9 +467,20 @@ async def test_card(
 # Helpers
 # ---------------------------------------------------------------------------
 
+async def ensure_default_settings(db: AsyncSession) -> None:
+    """Write default values for any missing xbot settings. Called on app startup."""
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key.in_(_XBOT_KEYS)))
+    existing = {row.key for row in result.scalars().all()}
+    for key, default_val in _DEFAULT_SETTINGS.items():
+        if key not in existing:
+            db.add(SystemSetting(key=key, value=default_val))
+    await db.commit()
+
+
 async def _load_config(db: AsyncSession) -> dict:
     result = await db.execute(select(SystemSetting).where(SystemSetting.key.in_(_XBOT_KEYS)))
-    return {row.key: row.value for row in result.scalars().all()}
+    rows = {row.key: row.value for row in result.scalars().all()}
+    return {k: rows.get(k, _DEFAULT_SETTINGS.get(k, "")) for k in _XBOT_KEYS}
 
 
 async def _get_app_name(db: AsyncSession) -> str:

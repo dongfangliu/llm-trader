@@ -12,29 +12,35 @@ from src.models.xbot import XBotPrediction
 
 
 async def settle_predictions(db: AsyncSession) -> int:
+    """Settle all posted predictions with target_date = today (market-agnostic)."""
+    return await settle_predictions_for_market(db, market=None)
+
+
+async def settle_predictions_for_market(db: AsyncSession, market: str | None) -> int:
     """
-    Fetch actual close prices for posted predictions with target_date = yesterday.
-    Updates actual_close, actual_change_pct, is_correct.
+    Fetch actual close prices for posted predictions with target_date = today.
+    When market is None, settles all markets.
     Returns number of settled predictions.
     """
-    yesterday = _prev_trading_day(date.today())
-    result = await db.execute(
-        select(XBotPrediction).where(
-            XBotPrediction.target_date == yesterday,
-            XBotPrediction.status == "posted",
-            XBotPrediction.actual_close.is_(None),
-        )
+    today = date.today()
+    q = select(XBotPrediction).where(
+        XBotPrediction.target_date == today,
+        XBotPrediction.status == "posted",
+        XBotPrediction.actual_close.is_(None),
     )
+    if market:
+        q = q.where(XBotPrediction.market == market)
+    result = await db.execute(q)
     predictions = result.scalars().all()
 
     if not predictions:
-        logger.info("No predictions to settle for yesterday")
+        logger.info(f"No predictions to settle for market={market or 'all'}")
         return 0
 
     settled = 0
     for pred in predictions:
         try:
-            actual_close = await _fetch_actual_close(pred.symbol, pred.market, yesterday)
+            actual_close = await _fetch_actual_close(pred.symbol, pred.market, today)
             if actual_close is None or pred.close_price is None or pred.close_price <= 0:
                 continue
 
