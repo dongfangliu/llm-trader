@@ -1,6 +1,15 @@
 export type Direction = 'up' | 'down' | 'hold'
 export type Market = 'A' | 'HK' | 'US'
-export type CardVariant = 'promise' | 'proof' | 'data_record'
+export type CardVariant = 'promise' | 'proof' | 'data_record' | 'summary'
+
+/** One stock row in a market-summary settlement card */
+export interface SummaryItem {
+  symbol: string
+  symbol_name: string
+  predicted_direction: Direction
+  actual_change_pct: number | null
+  is_correct: boolean | null
+}
 
 export interface CardPayload {
   variant: CardVariant
@@ -27,4 +36,8 @@ export interface CardPayload {
   actual_change_pct?: number
   is_correct?: boolean
   brand_name?: string
+  /** Summary-card specific */
+  summary_items?: SummaryItem[]
+  summary_market?: string    // 'A' | 'HK' | 'US'
+  summary_date?: string      // YYYY-MM-DD
 }

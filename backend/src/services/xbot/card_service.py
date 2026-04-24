@@ -140,6 +140,50 @@ async def generate_result_card_set(
     }
 
 
+async def generate_summary_card(
+    predictions: list,
+    market: str,
+    settle_date: str,
+    accuracy_all: str = "—",
+    product_url: str = "",
+    brand_name: str = "",
+) -> Optional[bytes]:
+    """Generate a market-summary settlement card (one card for all stocks in one market).
+
+    Args:
+        predictions: List of XBotPrediction ORM objects (must all be same market, already settled)
+        market: 'a' or 'hk'
+        settle_date: YYYY-MM-DD string
+        accuracy_all: e.g. '21/30'
+        product_url: for footer
+        brand_name: for footer
+    """
+    items = []
+    for pred in predictions:
+        items.append({
+            "symbol": pred.symbol,
+            "symbol_name": pred.symbol_name,
+            "predicted_direction": pred.predicted_direction,
+            "actual_change_pct": pred.actual_change_pct,
+            "is_correct": pred.is_correct,
+        })
+
+    payload = {
+        "variant": "summary",
+        "symbol": "",
+        "symbol_name": "",
+        "market": market.upper(),
+        "summary_market": market.upper(),
+        "summary_date": settle_date,
+        "prediction_date": settle_date,
+        "accuracy_all": accuracy_all,
+        "product_url": product_url,
+        "brand_name": brand_name or None,
+        "summary_items": items,
+    }
+    return await _post_card(payload)
+
+
 async def _post_card(payload: dict) -> Optional[bytes]:
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

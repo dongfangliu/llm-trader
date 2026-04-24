@@ -15,6 +15,7 @@ from src.database.new_db import init_db
 from src.api.routers import auth, analyze, subscription, market, admin
 from src.api.routers import config as config_router
 from src.api.routers import xbot as xbot_router
+from src.api.routers import push as push_router
 from src.worker.redis_client import get_redis_settings
 
 
@@ -68,3 +69,5 @@ app.include_router(subscription.router)
 app.include_router(market.router)
 app.include_router(admin.router)
 app.include_router(xbot_router.router)
+app.include_router(xbot_router.public_router)
+app.include_router(push_router.router)

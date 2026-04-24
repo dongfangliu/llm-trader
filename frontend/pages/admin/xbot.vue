@@ -45,7 +45,7 @@ async function loadTodayPreds() {
   try {
     const today = new Date().toISOString().split('T')[0]
     const res = await api.get('/api/admin/xbot/predictions', {
-      params: { prediction_date: today, limit: 20 },
+      params: { prediction_date: today, limit: 50 },
       headers: getAdminHeaders(),
     })
     todayPreds.value = res.data
@@ -53,6 +53,12 @@ async function loadTodayPreds() {
     showMsg(e.response?.data?.detail || '加载预测失败', 'error')
   } finally { predsLoading.value = false }
 }
+
+// Split today's preds into queue buckets
+const pendingPreds   = computed(() => todayPreds.value.filter(p => p.status === 'pending'))
+const approvedPreds  = computed(() => todayPreds.value.filter(p => p.status === 'approved'))
+const postedPreds    = computed(() => todayPreds.value.filter(p => p.status === 'posted' || p.status === 'settled'))
+const rejectedPreds  = computed(() => todayPreds.value.filter(p => p.status === 'rejected'))
 
 // ─── History ───────────────────────────────────────────────────────────────────
 const historyPreds = ref<any[]>([])
@@ -89,7 +95,10 @@ async function saveSettings() {
   settingsSaving.value = true
   try {
     await api.put('/api/admin/xbot/settings', settings.value, { headers: getAdminHeaders() })
-    showMsg('设置已保存')
+    // Auto-reload scheduler so enable/disable + time changes take effect immediately
+    await api.post('/api/admin/xbot/actions/reload-scheduler', {}, { headers: getAdminHeaders() }).catch(() => {})
+    showMsg('设置已保存，调度器已同步')
+    await loadDashboard()
   } catch (e: any) {
     showMsg(e.response?.data?.detail || '保存失败', 'error')
   } finally { settingsSaving.value = false }
@@ -454,62 +463,92 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Today's predictions list -->
+      <!-- Today's predictions — queue buckets -->
       <div style="background:#fff;border-radius:16px;padding:16px 20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div style="font-size:15px;font-weight:600">今日预测</div>
+          <div style="font-size:15px;font-weight:600">今日任务队列</div>
           <button @click="loadTodayPreds" style="font-size:13px;color:#007aff;background:none;border:none;cursor:pointer">刷新</button>
         </div>
 
         <div v-if="predsLoading" style="text-align:center;padding:40px 0;color:#8e8e93">加载中...</div>
-        <div v-else-if="!todayPreds.length" style="text-align:center;padding:40px 0;color:#8e8e93">暂无今日预测</div>
+        <div v-else-if="!todayPreds.length" style="text-align:center;padding:40px 0;color:#8e8e93">暂无今日预测，点击"立即生成预测"开始</div>
 
-        <div v-for="pred in todayPreds" :key="pred.id"
-          style="border-bottom:1px solid #f2f2f7;padding:14px 0;display:flex;align-items:center;gap:10px">
-          <!-- Stock info -->
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <span style="font-size:15px;font-weight:600">{{ pred.symbol_name }}</span>
-              <span style="font-size:12px;color:#8e8e93">{{ pred.symbol }}</span>
-              <span v-if="pred.hot_rank" style="font-size:11px;background:#fff7ed;color:#c2410c;border-radius:6px;padding:2px 6px">
-                热度 #{{ pred.hot_rank }}
-              </span>
+        <template v-else>
+          <!-- ① 待审核 bucket -->
+          <div v-if="pendingPreds.length" style="margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:#ff9500;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
+              ⏳ 待审核（{{ pendingPreds.length }}）
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span :style="`font-size:13px;font-weight:600;color:${directionColor[pred.predicted_direction] || '#636366'}`">
-                {{ directionLabel[pred.predicted_direction] || pred.predicted_direction }}
-              </span>
-              <span v-if="pred.confidence" style="font-size:12px;color:#8e8e93">{{ Math.round(pred.confidence) }}%</span>
-              <span :style="`font-size:11px;border-radius:6px;padding:2px 8px;background:${statusColor[pred.status]}20;color:${statusColor[pred.status]}`">
-                {{ statusLabel[pred.status] || pred.status }}
-              </span>
+            <div v-for="pred in pendingPreds" :key="pred.id" style="border:1.5px solid #ff950030;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                  <span style="font-size:15px;font-weight:600">{{ pred.symbol_name }}</span>
+                  <span style="font-size:12px;color:#8e8e93">{{ pred.symbol }}</span>
+                  <span v-if="pred.hot_rank" style="font-size:11px;background:#fff7ed;color:#c2410c;border-radius:6px;padding:2px 6px">热度 #{{ pred.hot_rank }}</span>
+                </div>
+                <span :style="`font-size:13px;font-weight:600;color:${directionColor[pred.predicted_direction]||'#636366'}`">
+                  {{ directionLabel[pred.predicted_direction] || pred.predicted_direction }}
+                </span>
+                <span v-if="pred.confidence" style="font-size:12px;color:#8e8e93;margin-left:6px">{{ Math.round(pred.confidence) }}%</span>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0">
+                <button @click="openPreview(pred)" style="height:32px;padding:0 12px;border-radius:8px;background:#007aff;color:#fff;border:none;font-size:12px;font-weight:600;cursor:pointer">预览发推</button>
+                <button @click="rejectPred(pred)" :disabled="!!actionLoading[pred.id]" style="height:32px;padding:0 10px;border-radius:8px;background:#ff3b3015;color:#ff3b30;border:1px solid #ff3b3030;font-size:12px;cursor:pointer">🗑 废弃</button>
+              </div>
             </div>
           </div>
 
-          <!-- Action buttons -->
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button @click="openPreview(pred)"
-              style="height:32px;padding:0 10px;border-radius:8px;background:#f2f2f7;color:#007aff;border:none;font-size:12px;cursor:pointer">
-              预览
-            </button>
-            <button v-if="pred.status === 'pending'" @click="approvePred(pred)" :disabled="!!actionLoading[pred.id]"
-              style="height:32px;padding:0 10px;border-radius:8px;background:#34c75920;color:#34c759;border:none;font-size:12px;cursor:pointer">
-              {{ actionLoading[pred.id] === 'approve' ? '...' : '通过' }}
-            </button>
-            <button v-if="pred.status === 'pending' || pred.status === 'approved'" @click="rejectPred(pred)" :disabled="!!actionLoading[pred.id]"
-              style="height:32px;padding:0 10px;border-radius:8px;background:#ff3b3020;color:#ff3b30;border:none;font-size:12px;cursor:pointer">
-              {{ actionLoading[pred.id] === 'reject' ? '...' : '拒绝' }}
-            </button>
-            <button v-if="pred.status === 'approved'" @click="postPred(pred)" :disabled="!!actionLoading[pred.id]"
-              style="height:32px;padding:0 10px;border-radius:8px;background:#007aff;color:#fff;border:none;font-size:12px;cursor:pointer">
-              {{ actionLoading[pred.id] === 'post' ? '发布中...' : '发布' }}
-            </button>
-            <a v-if="pred.prediction_tweet_id" :href="`https://x.com/i/web/status/${pred.prediction_tweet_id}`" target="_blank"
-              style="height:32px;padding:0 10px;border-radius:8px;background:#f2f2f7;color:#5856d6;border:none;font-size:12px;cursor:pointer;display:flex;align-items:center;text-decoration:none">
-              查看推文
-            </a>
+          <!-- ② 已通过 bucket -->
+          <div v-if="approvedPreds.length" style="margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:#34c759;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
+              ✅ 已通过（{{ approvedPreds.length }}）
+            </div>
+            <div v-for="pred in approvedPreds" :key="pred.id" style="border:1.5px solid #34c75930;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+              <div style="flex:1">
+                <span style="font-size:15px;font-weight:600">{{ pred.symbol_name }}</span>
+                <span style="font-size:12px;color:#8e8e93;margin-left:8px">{{ pred.symbol }}</span>
+                <span :style="`font-size:13px;font-weight:600;color:${directionColor[pred.predicted_direction]||'#636366'};margin-left:10px`">{{ directionLabel[pred.predicted_direction] }}</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button @click="postPred(pred)" :disabled="!!actionLoading[pred.id]" style="height:32px;padding:0 12px;border-radius:8px;background:#34c759;color:#fff;border:none;font-size:12px;font-weight:600;cursor:pointer">
+                  {{ actionLoading[pred.id] === 'post' ? '发布中...' : '🚀 立即发布' }}
+                </button>
+                <button @click="rejectPred(pred)" :disabled="!!actionLoading[pred.id]" style="height:32px;padding:0 10px;border-radius:8px;background:#ff3b3015;color:#ff3b30;border:1px solid #ff3b3030;font-size:12px;cursor:pointer">🗑 废弃</button>
+              </div>
+            </div>
           </div>
-        </div>
+
+          <!-- ③ 已发布/结算 bucket -->
+          <div v-if="postedPreds.length" style="margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:#5856d6;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
+              🚀 已完成（{{ postedPreds.length }}）
+            </div>
+            <div v-for="pred in postedPreds" :key="pred.id" style="border:1px solid #f2f2f7;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;opacity:0.7">
+              <div style="flex:1">
+                <span style="font-size:15px;font-weight:600">{{ pred.symbol_name }}</span>
+                <span :style="`font-size:13px;font-weight:600;color:${directionColor[pred.predicted_direction]||'#636366'};margin-left:10px`">{{ directionLabel[pred.predicted_direction] }}</span>
+                <span :style="`font-size:11px;border-radius:6px;padding:2px 8px;background:${statusColor[pred.status]}20;color:${statusColor[pred.status]};margin-left:8px`">{{ statusLabel[pred.status] }}</span>
+              </div>
+              <a v-if="pred.prediction_tweet_id" :href="`https://x.com/i/web/status/${pred.prediction_tweet_id}`" target="_blank"
+                style="height:30px;padding:0 10px;border-radius:8px;background:#f2f2f7;color:#5856d6;font-size:12px;display:flex;align-items:center;text-decoration:none">查看推文</a>
+            </div>
+          </div>
+
+          <!-- ④ 废弃箱 bucket -->
+          <div v-if="rejectedPreds.length">
+            <div style="font-size:11px;font-weight:700;color:#8e8e93;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+              🗑 废弃箱（{{ rejectedPreds.length }}）
+            </div>
+            <div v-for="pred in rejectedPreds" :key="pred.id" style="border:1px solid #f2f2f7;border-radius:12px;padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:0.45">
+              <div style="flex:1;font-size:14px">
+                <span style="font-weight:600">{{ pred.symbol_name }}</span>
+                <span style="color:#8e8e93;margin-left:8px;font-size:12px">{{ pred.symbol }}</span>
+                <span :style="`font-size:13px;color:${directionColor[pred.predicted_direction]||'#636366'};margin-left:10px`">{{ directionLabel[pred.predicted_direction] }}</span>
+              </div>
+              <button @click="approvePred(pred)" style="height:28px;padding:0 10px;border-radius:7px;background:#f2f2f7;color:#636366;border:none;font-size:11px;cursor:pointer">↩ 恢复</button>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
 

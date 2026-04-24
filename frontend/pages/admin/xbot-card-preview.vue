@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { CardPayload } from '~/server/utils/xbot-cards/types'
-import { MOCK_PREDICTION, MOCK_RESULT } from '~/server/utils/xbot-cards/mock'
+import { MOCK_PREDICTION, MOCK_RESULT, MOCK_SUMMARY_A, MOCK_SUMMARY_HK } from '~/server/utils/xbot-cards/mock'
 
 import XBotCardPromise    from '~/components/xbot-cards/XBotCardPromise.vue'
 import XBotCardProof      from '~/components/xbot-cards/XBotCardProof.vue'
 import XBotCardDataRecord from '~/components/xbot-cards/XBotCardDataRecord.vue'
+import XBotCardSummary    from '~/components/xbot-cards/XBotCardSummary.vue'
 
 const SCALE = 0.42   // cards scale for on-screen review
 
@@ -27,6 +28,9 @@ const resultMissPayload = (): CardPayload => ({
   is_correct: false,
   actual_change_pct: -2.4,
 })
+
+const summaryAPayload  = computed((): CardPayload => ({ ...MOCK_SUMMARY_A,  variant: 'summary', brand_name: brandName.value, product_url: productUrl.value }))
+const summaryHKPayload = computed((): CardPayload => ({ ...MOCK_SUMMARY_HK, variant: 'summary', brand_name: brandName.value, product_url: productUrl.value }))
 
 async function downloadPng(payload: CardPayload) {
   const res = await $fetch('/api/og/card', {
@@ -140,6 +144,40 @@ async function downloadPng(payload: CardPayload) {
         <div class="card-frame" :style="{ width: 1080*SCALE+'px', height: 1350*SCALE+'px' }">
           <div class="card-scale-wrap" :style="{ transform: `scale(${SCALE})`, transformOrigin: 'top left', width:'1080px', height:'1350px' }">
             <XBotCardProof :payload="resultMissPayload()" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Set -->
+    <div class="section-header">
+      <div class="section-label">📋 市场汇总兑现图 — Summary Settlement Card</div>
+      <div class="section-sub">按市场合并发一张结算图，左 A股 右 港股</div>
+    </div>
+
+    <div class="card-grid">
+      <div class="card-slot hero-slot">
+        <div class="slot-label">
+          <span class="variant-name">summary · A股</span>
+          <span class="slot-dim">1080 × 1350</span>
+          <button class="dl-btn" @click="downloadPng(summaryAPayload)">↓ PNG</button>
+        </div>
+        <div class="card-frame" :style="{ width: 1080*SCALE+'px', height: 1350*SCALE+'px' }">
+          <div class="card-scale-wrap" :style="{ transform: `scale(${SCALE})`, transformOrigin: 'top left', width:'1080px', height:'1350px' }">
+            <XBotCardSummary :payload="summaryAPayload" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card-slot hero-slot">
+        <div class="slot-label">
+          <span class="variant-name">summary · 港股</span>
+          <span class="slot-dim">1080 × 1350</span>
+          <button class="dl-btn" @click="downloadPng(summaryHKPayload)">↓ PNG</button>
+        </div>
+        <div class="card-frame" :style="{ width: 1080*SCALE+'px', height: 1350*SCALE+'px' }">
+          <div class="card-scale-wrap" :style="{ transform: `scale(${SCALE})`, transformOrigin: 'top left', width:'1080px', height:'1350px' }">
+            <XBotCardSummary :payload="summaryHKPayload" />
           </div>
         </div>
       </div>

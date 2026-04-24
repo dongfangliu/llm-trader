@@ -27,6 +27,7 @@ async def settle_predictions_for_market(db: AsyncSession, market: str | None) ->
         XBotPrediction.target_date == today,
         XBotPrediction.status == "posted",
         XBotPrediction.actual_close.is_(None),
+        XBotPrediction.prediction_tweet_id.is_not(None),   # 只结算真正发过推的
     )
     if market:
         q = q.where(XBotPrediction.market == market)

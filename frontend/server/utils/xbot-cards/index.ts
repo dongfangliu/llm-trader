@@ -6,17 +6,20 @@ import type { CardPayload } from './types'
 import { renderPromise } from './variants/promise'
 import { renderProof } from './variants/proof'
 import { renderDataRecord } from './variants/data_record'
+import { renderSummary } from './variants/summary'
 
 const DIMS: Record<string, { w: number; h: number }> = {
   promise:     { w: 1080, h: 1350 },
   proof:       { w: 1080, h: 1350 },
   data_record: { w: 1080, h: 1080 },
+  summary:     { w: 1080, h: 1350 },
 }
 
 const RENDERERS: Record<string, (p: CardPayload) => any> = {
   promise:     renderPromise,
   proof:       renderProof,
   data_record: renderDataRecord,
+  summary:     renderSummary,
 }
 
 let _fontCache: ArrayBuffer | null = null

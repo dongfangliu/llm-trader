@@ -282,6 +282,23 @@ async def post_approved_predictions() -> int:
         except Exception as e:
             logger.error(f"[XBot] Failed to post prediction for {pred.symbol}: {e}")
 
+    # Send Web Push notification if any predictions were posted
+    if posted > 0:
+        try:
+            from src.services.push_service import send_push_to_all
+            product_url = config.get("xbot_product_url", "/predictions")
+            push_body = f"今日 AI 选股预测已发布，共 {posted} 只"
+            async with async_session() as db:
+                await send_push_to_all(
+                    db,
+                    title="📈 新预测发布",
+                    body=push_body,
+                    url=product_url or "/predictions",
+                )
+            logger.info(f"[XBot] Web Push sent for {posted} predictions")
+        except Exception as e:
+            logger.warning(f"[XBot] Web Push failed (non-critical): {e}")
+
     return posted
 
 

@@ -17,7 +17,69 @@ from src.models.xbot import XBotPrediction
 from src.models.settings import SystemSetting
 
 router = APIRouter(prefix="/api/admin/xbot", tags=["xbot"])
+public_router = APIRouter(prefix="/api/public", tags=["public"])
 _Admin = Depends(get_admin_token_or_admin_user)
+
+
+# ---------------------------------------------------------------------------
+# Public endpoints (no auth required)
+# ---------------------------------------------------------------------------
+
+@public_router.get("/predictions")
+async def public_list_predictions(
+    limit: int = Query(default=20, le=50),
+    market: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public feed: latest posted/settled predictions (no auth)."""
+    filters = [
+        XBotPrediction.status.in_(["posted", "settled"]),
+        XBotPrediction.prediction_tweet_id.is_not(None),
+    ]
+    if market:
+        filters.append(XBotPrediction.market == market.lower())
+
+    q = (
+        select(XBotPrediction)
+        .where(*filters)
+        .order_by(XBotPrediction.prediction_date.desc(), XBotPrediction.hot_rank.asc())
+        .limit(limit)
+    )
+    result = await db.execute(q)
+    predictions = result.scalars().all()
+
+    from src.services.xbot.result_service import get_accuracy_stats
+    stats = await get_accuracy_stats(db)
+    config = await _load_config(db)
+
+    return {
+        "predictions": [_public_pred_dict(p, config) for p in predictions],
+        "accuracy": stats.get("all", {}),
+    }
+
+
+def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
+    product_url = config.get("xbot_product_url", "")
+    return {
+        "id": p.id,
+        "symbol": p.symbol,
+        "market": p.market,
+        "symbol_name": p.symbol_name,
+        "hot_rank": p.hot_rank,
+        "prediction_date": str(p.prediction_date),
+        "target_date": str(p.target_date) if p.target_date else None,
+        "predicted_direction": p.predicted_direction,
+        "confidence": p.confidence,
+        "target_price": p.target_price,
+        "stop_loss": p.stop_loss,
+        "close_price": p.close_price,
+        "analysis_summary": p.analysis_summary,
+        "status": p.status,
+        "prediction_tweet_id": p.prediction_tweet_id,
+        "actual_change_pct": p.actual_change_pct,
+        "is_correct": p.is_correct,
+        "product_url": product_url,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +349,23 @@ async def action_post_approved(_=_Admin):
     from src.services.xbot.scheduler import post_approved_predictions
     posted = await post_approved_predictions()
     return {"ok": True, "posted": posted}
+
+
+@router.post("/actions/reload-scheduler")
+async def action_reload_scheduler(db: AsyncSession = Depends(get_db), _=_Admin):
+    """Reload scheduler jobs from current DB settings (call after changing times or toggling enabled)."""
+    from src.services.xbot.scheduler import get_scheduler, _load_config, _register_jobs, _is_enabled
+    config = await _load_config()
+    scheduler = get_scheduler()
+    if not _is_enabled(config):
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+            return {"ok": True, "message": "Scheduler stopped (xbot disabled)"}
+        return {"ok": True, "message": "Scheduler already stopped"}
+    if not scheduler.running:
+        scheduler.start()
+    _register_jobs(scheduler, config)
+    return {"ok": True, "message": "Scheduler jobs reloaded with latest config"}
 
 
 @router.post("/actions/settle")

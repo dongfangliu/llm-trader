@@ -32,3 +32,35 @@ export const MOCK_RESULT: Omit<CardPayload, 'variant'> = {
   actual_change_pct: 3.8,
   is_correct: true,
 }
+
+export const MOCK_SUMMARY_A: Omit<CardPayload, 'variant'> = {
+  ...BASE,
+  summary_market: 'A',
+  summary_date: '2026-04-24',
+  accuracy_all: '21/30',
+  product_url: 'https://caicai.tech',
+  summary_items: [
+    { symbol: '002594', symbol_name: '比亚迪',   predicted_direction: 'up',   actual_change_pct:  3.82, is_correct: true  },
+    { symbol: '600519', symbol_name: '贵州茅台', predicted_direction: 'down', actual_change_pct: -1.24, is_correct: true  },
+    { symbol: '300750', symbol_name: '宁德时代', predicted_direction: 'up',   actual_change_pct: -0.88, is_correct: false },
+    { symbol: '688981', symbol_name: '中芯国际', predicted_direction: 'down', actual_change_pct: -2.11, is_correct: true  },
+    { symbol: '600036', symbol_name: '招商银行', predicted_direction: 'up',   actual_change_pct:  1.20, is_correct: true  },
+  ],
+}
+
+export const MOCK_SUMMARY_HK: Omit<CardPayload, 'variant'> = {
+  ...BASE,
+  symbol: '0700',
+  symbol_name: '腾讯控股',
+  market: 'HK' as const,
+  summary_market: 'HK',
+  summary_date: '2026-04-24',
+  accuracy_all: '21/30',
+  product_url: 'https://caicai.tech',
+  summary_items: [
+    { symbol: '0700', symbol_name: '腾讯控股', predicted_direction: 'up',   actual_change_pct:  1.57, is_correct: true  },
+    { symbol: '1810', symbol_name: '小米集团', predicted_direction: 'down', actual_change_pct:  0.43, is_correct: false },
+    { symbol: '3690', symbol_name: '美团',     predicted_direction: 'up',   actual_change_pct:  2.31, is_correct: true  },
+    { symbol: '9988', symbol_name: '阿里巴巴', predicted_direction: 'down', actual_change_pct: -1.80, is_correct: true  },
+  ],
+}

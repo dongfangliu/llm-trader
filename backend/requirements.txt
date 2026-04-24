@@ -56,3 +56,6 @@ redis[hiredis]>=5.0.0
 # ========== X Bot ==========
 tweepy>=4.14.0
 apscheduler>=3.10.0
+
+# ========== Web Push ==========
+pywebpush>=2.0.0
