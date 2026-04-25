@@ -608,6 +608,8 @@ def _build_default_settings() -> dict:
             "model": settings.llm_model,
             "max_tokens": settings.llm_max_tokens,
             "temperature": settings.llm_temperature,
+            "thinking_enabled": settings.llm_thinking_enabled,
+            "thinking_effort": settings.llm_thinking_effort,
         },
         "afdian": {
             "webhook_token": settings.afdian_webhook_token,

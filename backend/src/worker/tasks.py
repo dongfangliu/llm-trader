@@ -366,6 +366,8 @@ async def analyze_task(
         model = _settings.llm_model
         max_tokens = _settings.llm_max_tokens
         temperature = _settings.llm_temperature
+        thinking_enabled = getattr(_settings, 'llm_thinking_enabled', False)
+        thinking_effort = getattr(_settings, 'llm_thinking_effort', 'high')
 
         result = await analyze_with_llm(
             df=df,
@@ -377,6 +379,8 @@ async def analyze_task(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            thinking_enabled=thinking_enabled,
+            thinking_effort=thinking_effort,
             user_context={
                 "holding_quantity": holding_quantity,
                 "cost_price": cost_price,

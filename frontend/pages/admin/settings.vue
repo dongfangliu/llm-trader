@@ -310,11 +310,49 @@ async function onFileChange(e: Event) {
                   step="0.1"
                   min="0"
                   max="2"
+                  :disabled="!!getField('llm','thinking_enabled')"
                   :value="getField('llm','temperature')"
                   @input="setField('llm','temperature',Number(($event.target as HTMLInputElement).value))"
                   placeholder="0.7"
-                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  :style="{
+                    width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:'8px',
+                    border:'1px solid rgba(0,0,0,0.12)',fontSize:'15px',outline:'none',
+                    opacity: getField('llm','thinking_enabled') ? 0.4 : 1,
+                    background: getField('llm','thinking_enabled') ? '#f2f2f7' : '#fff',
+                  }"
                 />
+                <p v-if="getField('llm','thinking_enabled')" style="margin:4px 0 0;font-size:12px;color:#8e8e93;">Thinking 模式开启时 temperature 参数无效</p>
+              </div>
+
+              <!-- Thinking Mode Toggle -->
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">
+                <div style="flex:1;">
+                  <label style="font-size:13px;font-weight:600;color:#1c1c1e;">DeepSeek Thinking 模式</label>
+                  <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;line-height:1.4;">适用于 deepseek-v4-pro / deepseek-reasoner，开启后 temperature 自动忽略，max_tokens 仍有效</p>
+                </div>
+                <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;flex-shrink:0;margin-top:2px;">
+                  <input
+                    type="checkbox"
+                    :checked="!!getField('llm','thinking_enabled')"
+                    @change="setField('llm','thinking_enabled',($event.target as HTMLInputElement).checked)"
+                    style="opacity:0;width:0;height:0;"
+                  />
+                  <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm','thinking_enabled')?'#007aff':'rgba(120,120,128,0.32)'}" />
+                  <span :style="{position:'absolute',top:'3px',left:getField('llm','thinking_enabled')?'21px':'3px',width:'20px',height:'20px',borderRadius:'50%',background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.3)',transition:'left 0.2s'}" />
+                </label>
+              </div>
+
+              <!-- Reasoning Effort (only when thinking enabled) -->
+              <div v-if="getField('llm','thinking_enabled')">
+                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Reasoning Effort</label>
+                <select
+                  :value="getField('llm','thinking_effort') || 'high'"
+                  @change="setField('llm','thinking_effort',($event.target as HTMLSelectElement).value)"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;background:#fff;appearance:none;-webkit-appearance:none;"
+                >
+                  <option value="high">high（默认）</option>
+                  <option value="max">max（更深度推理）</option>
+                </select>
               </div>
             </div>
           </template>

@@ -35,6 +35,8 @@ async def analyze_with_llm(
     temperature: float = 0.7,
     user_context: Optional[Dict[str, Any]] = None,
     timeout: float = 90.0,
+    thinking_enabled: bool = False,
+    thinking_effort: str = "high",
 ) -> Dict[str, Any]:
     """Analyze market data using LLM.
 
@@ -88,6 +90,8 @@ async def analyze_with_llm(
                     user_prompt=prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    thinking_enabled=thinking_enabled,
+                    thinking_effort=thinking_effort,
                 ),
                 timeout=timeout,
             )
@@ -121,21 +125,33 @@ async def _call_openai(
     user_prompt: str,
     max_tokens: int,
     temperature: float,
+    thinking_enabled: bool = False,
+    thinking_effort: str = "high",
 ) -> str:
     """Call OpenAI compatible API."""
     client = AsyncOpenAI(api_key=api_key, base_url=base_url or "https://api.openai.com/v1")
 
-    response = await client.chat.completions.create(
+    kwargs: Dict[str, Any] = dict(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
         max_tokens=max_tokens,
-        temperature=temperature,
     )
+    if thinking_enabled:
+        kwargs["extra_body"] = {
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": thinking_effort,
+        }
+    else:
+        kwargs["temperature"] = temperature
 
-    return response.choices[0].message.content
+    response = await client.chat.completions.create(**kwargs)
+    msg = response.choices[0].message
+    if thinking_enabled and hasattr(msg, "reasoning_content") and msg.reasoning_content:
+        logger.debug("DeepSeek thinking used, reasoning chars: %d", len(msg.reasoning_content))
+    return msg.content
 
 
 async def _call_anthropic(
