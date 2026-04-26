@@ -110,6 +110,7 @@ POST /api/admin/settings
     "base_url": "https://api.deepseek.com/v1",
     "model": "deepseek-chat",
     "max_tokens": 1500,
+    "timeout_seconds": 300,
     "temperature": 0.7
   },
   "pricing": {

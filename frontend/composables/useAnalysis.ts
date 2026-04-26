@@ -13,6 +13,18 @@ export interface AnalysisResult {
   error?: string
 }
 
+const DEFAULT_ANALYZE_TIMEOUT_MS = 300000
+
+async function getAnalyzeTimeoutMs(): Promise<number> {
+  return api.get('/api/config')
+    .then((res) => {
+      const seconds = Number(res.data?.analyze_timeout_seconds)
+      if (!Number.isFinite(seconds) || seconds <= 0) return DEFAULT_ANALYZE_TIMEOUT_MS
+      return seconds * 1000
+    })
+    .catch(() => DEFAULT_ANALYZE_TIMEOUT_MS)
+}
+
 export function useAnalysis() {
   const { getDeviceId } = useDevice()
   const auth = useAuthStore()
@@ -91,6 +103,8 @@ export function useAnalysis() {
   }
 
   async function trySSE(tId: string): Promise<any> {
+    const timeoutMs = await getAnalyzeTimeoutMs()
+
     return new Promise((resolve, reject) => {
       // SSE uses relative path — Nuxt proxy forwards to backend
       let url = `/api/task/${tId}/stream`
@@ -100,11 +114,10 @@ export function useAnalysis() {
       }
 
       const eventSource = new EventSource(url)
-
       const timeout = setTimeout(() => {
         eventSource.close()
         reject(new Error('SSE timeout'))
-      }, 180000)  // 3 min timeout
+      }, timeoutMs)
 
       eventSource.onmessage = (event) => {
         try {
@@ -128,7 +141,7 @@ export function useAnalysis() {
             progress.value = Math.min(85, progress.value + 5)
             statusMessage.value = data.message || '正在分析中...'
           }
-        } catch (e) {
+        } catch {
           // ignore parse errors
         }
       }

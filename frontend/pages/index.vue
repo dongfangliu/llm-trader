@@ -172,6 +172,12 @@ const PERIOD_OPTIONS = [
   { value: '1', label: '1分' },
 ]
 
+const analyzeTimeoutMs = computed(() => {
+  const seconds = Number(appConfig.value?.analyze_timeout_seconds)
+  if (!Number.isFinite(seconds) || seconds <= 0) return 300000
+  return seconds * 1000
+})
+
 function toggleAuxPeriod(p: string) {
   if (p === '__clear__') { auxiliaryPeriods.value = []; return }
   const idx = auxiliaryPeriods.value.indexOf(p)
@@ -349,7 +355,7 @@ watch(isAnalyzing, (analyzing) => {
       activePanel.value = 'loading'
       narrativeIdx.value = 0
       startNarrativeLoop()
-      analyzeTimeoutTimer = setTimeout(() => { analyzeTimedOut.value = true }, 180000)
+      analyzeTimeoutTimer = setTimeout(() => { analyzeTimedOut.value = true }, analyzeTimeoutMs.value)
     }
   } else {
     isBackgroundMode.value = false

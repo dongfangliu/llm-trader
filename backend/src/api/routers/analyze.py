@@ -31,6 +31,11 @@ from src.services.quota_service import (
     get_deep_usage_for_device, increment_deep_usage_for_device,
 )
 from src.services.analysis_service import submit_analysis, get_task_status, get_history, delete_history_item, toggle_favorite
+from src.services.llm.llm_service import (
+    DEFAULT_LLM_TIMEOUT_SECONDS,
+    WORKER_JOB_TIMEOUT_BUFFER_SECONDS,
+    normalize_timeout_seconds,
+)
 import src.services.user.user_service as user_service
 from src.config import settings
 
@@ -66,6 +71,19 @@ async def _get_basic_deep_daily(db: AsyncSession) -> int:
     except Exception:
         pass
     return settings.pricing_basic_deep_daily
+
+
+async def _get_llm_timeout_seconds(db: AsyncSession) -> int:
+    """Load LLM timeout from DB settings, fallback to config."""
+    try:
+        from src.models.settings import SystemSetting
+        row = await db.get(SystemSetting, "llm")
+        if row:
+            data = json.loads(row.value)
+            return normalize_timeout_seconds(data.get("timeout_seconds"))
+    except Exception:
+        pass
+    return normalize_timeout_seconds(getattr(settings, "llm_timeout_seconds", DEFAULT_LLM_TIMEOUT_SECONDS))
 
 
 async def _get_or_create_device(db: AsyncSession, device_id: str) -> Device:
@@ -324,12 +342,15 @@ async def get_task(task_id: str, request: Request):
 
 
 @router.get("/task/{task_id}/stream")
-async def stream_task(task_id: str, request: Request):
+async def stream_task(task_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """SSE stream for task progress."""
     redis_pool = request.app.state.redis
+    llm_timeout_seconds = await _get_llm_timeout_seconds(db)
+    stream_timeout_seconds = llm_timeout_seconds + WORKER_JOB_TIMEOUT_BUFFER_SECONDS
+    max_ticks = max(1, int(stream_timeout_seconds / 0.5))
 
     async def event_generator():
-        for _ in range(600):  # max 5 minutes at 0.5s interval
+        for _ in range(max_ticks):
             if await request.is_disconnected():
                 break
 

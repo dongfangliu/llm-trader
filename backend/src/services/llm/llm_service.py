@@ -16,11 +16,26 @@ except ImportError:
     AsyncAnthropic = None
 
 
+DEFAULT_LLM_TIMEOUT_SECONDS = 300
+MIN_LLM_TIMEOUT_SECONDS = 30
+MAX_LLM_TIMEOUT_SECONDS = 1800
+WORKER_JOB_TIMEOUT_BUFFER_SECONDS = 30
+
+
 # Backtest-aligned system prompt
 SYSTEM_PROMPT = (
     "你是经验丰富的交易分析师。"
     "请遵循用户给出的四步决策框架进行分析，并严格只输出JSON。"
 )
+
+
+def normalize_timeout_seconds(value: Any) -> int:
+    """Normalize timeout config to a bounded integer number of seconds."""
+    try:
+        timeout = int(value)
+    except (TypeError, ValueError):
+        timeout = DEFAULT_LLM_TIMEOUT_SECONDS
+    return max(MIN_LLM_TIMEOUT_SECONDS, min(MAX_LLM_TIMEOUT_SECONDS, timeout))
 
 
 async def get_llm_config_from_db() -> dict:
@@ -48,6 +63,7 @@ async def get_llm_config_from_db() -> dict:
         "model": cfg.get("model", ""),
         "max_tokens": int(cfg.get("max_tokens", 1500)),
         "temperature": float(cfg.get("temperature", 0.7)),
+        "timeout_seconds": normalize_timeout_seconds(cfg.get("timeout_seconds")),
         "thinking_enabled": bool(cfg.get("thinking_enabled", False)),
         "thinking_effort": cfg.get("thinking_effort", "high"),
     }

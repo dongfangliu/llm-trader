@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     llm_model: str = "deepseek-chat"
     llm_max_tokens: int = 1500
     llm_temperature: float = 0.7
+    llm_timeout_seconds: int = 300
     llm_thinking_enabled: bool = False
     llm_thinking_effort: str = "high"  # "high" or "max"
 

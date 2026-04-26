@@ -323,6 +323,19 @@ async function onFileChange(e: Event) {
                 />
                 <p v-if="getField('llm','thinking_enabled')" style="margin:4px 0 0;font-size:12px;color:#8e8e93;">Thinking 模式开启时 temperature 参数无效</p>
               </div>
+              <div>
+                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">最长查询超时时间（秒）</label>
+                <input
+                  type="number"
+                  min="30"
+                  max="1800"
+                  :value="getField('llm','timeout_seconds')"
+                  @input="setField('llm','timeout_seconds',Number(($event.target as HTMLInputElement).value))"
+                  placeholder="300"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                />
+                <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">作用于分析任务的 LLM 调用与前端等待时间，范围 30-1800 秒</p>
+              </div>
 
               <!-- Thinking Mode Toggle -->
               <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">

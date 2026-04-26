@@ -11,6 +11,10 @@ from arq import run_worker
 from src.worker.redis_client import REDIS_SETTINGS
 from src.worker.tasks import analyze_task
 from src.database.new_db import init_db
+from src.services.llm.llm_service import (
+    MAX_LLM_TIMEOUT_SECONDS,
+    WORKER_JOB_TIMEOUT_BUFFER_SECONDS,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +62,7 @@ class WorkerSettings:
     on_shutdown = shutdown
     redis_settings = REDIS_SETTINGS()  # call to get RedisSettings instance (arq 0.27 requires instance, not callable)
     max_jobs = 5           # max concurrent LLM calls
-    job_timeout = 300      # 5 minutes per job
+    job_timeout = MAX_LLM_TIMEOUT_SECONDS + WORKER_JOB_TIMEOUT_BUFFER_SECONDS
     keep_result = 3600     # keep job result in Redis for 1h
     retry_jobs = False     # don't retry failed LLM calls (cost safety)
 

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.database.new_db import get_db
 from src.models.settings import SystemSetting
+from src.services.llm.llm_service import normalize_timeout_seconds
 
 router = APIRouter(prefix="/api", tags=["config"])
 
@@ -34,9 +35,10 @@ async def get_config(db: AsyncSession = Depends(get_db)):
     pricing_premium_daily = settings.pricing_premium_daily
     afdian_basic_link = settings.afdian_basic_link
     afdian_premium_link = settings.afdian_premium_link
+    analyze_timeout_seconds = normalize_timeout_seconds(settings.llm_timeout_seconds)
 
     # Overlay with DB settings
-    for section_key, apply in (("app", None), ("pricing", None), ("afdian", None)):
+    for section_key in ("app", "pricing", "afdian", "llm"):
         row = await db.get(SystemSetting, section_key)
         if not row:
             continue
@@ -61,6 +63,8 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         elif section_key == "afdian":
             afdian_basic_link = data.get("basic_link", afdian_basic_link)
             afdian_premium_link = data.get("premium_link", afdian_premium_link)
+        elif section_key == "llm":
+            analyze_timeout_seconds = normalize_timeout_seconds(data.get("timeout_seconds"))
 
     return {
         "app_name": app_name,
@@ -73,6 +77,7 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         "pricing_basic_deep_daily": pricing_basic_deep_daily,
         "pricing_premium_price": pricing_premium_price,
         "pricing_premium_daily": pricing_premium_daily,
+        "analyze_timeout_seconds": analyze_timeout_seconds,
         "afdian_basic_link": afdian_basic_link,
         "afdian_premium_link": afdian_premium_link,
         "markets": [

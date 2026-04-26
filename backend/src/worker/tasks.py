@@ -369,6 +369,7 @@ async def analyze_task(
             model=llm_cfg["model"],
             max_tokens=llm_cfg["max_tokens"],
             temperature=llm_cfg["temperature"],
+            timeout=llm_cfg["timeout_seconds"],
             thinking_enabled=llm_cfg["thinking_enabled"],
             thinking_effort=llm_cfg["thinking_effort"],
             user_context={

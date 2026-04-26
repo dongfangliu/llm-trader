@@ -20,6 +20,7 @@ from src.models.logs import UsageLog
 from src.models.market import SymbolName
 from src.models.settings import SystemSetting
 from src.models.user import User
+from src.services.llm.llm_service import normalize_timeout_seconds
 from src.services.quota_service import USER_LIMITS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -608,6 +609,7 @@ def _build_default_settings() -> dict:
             "model": settings.llm_model,
             "max_tokens": settings.llm_max_tokens,
             "temperature": settings.llm_temperature,
+            "timeout_seconds": normalize_timeout_seconds(settings.llm_timeout_seconds),
             "thinking_enabled": settings.llm_thinking_enabled,
             "thinking_effort": settings.llm_thinking_effort,
         },
@@ -733,7 +735,10 @@ async def admin_update_settings(
         else:
             for k, v in data.items():
                 if v is not None:
-                    existing[k] = v
+                    if section == "llm" and k == "timeout_seconds":
+                        existing[k] = normalize_timeout_seconds(v)
+                    else:
+                        existing[k] = v
 
         if row:
             row.value = json.dumps(existing)
