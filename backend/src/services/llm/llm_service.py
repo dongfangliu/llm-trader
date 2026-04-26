@@ -61,6 +61,14 @@ async def analyze_with_llm(
     if df.empty:
         raise ValueError("No market data available for analysis")
 
+    logger.info(
+        "LLM analyze start | symbol=%s market=%s provider=%s model=%s "
+        "max_tokens=%d temperature=%s thinking=%s effort=%s",
+        symbol, market, provider, model, max_tokens,
+        temperature if not thinking_enabled else "N/A(thinking)",
+        thinking_enabled, thinking_effort if thinking_enabled else "N/A",
+    )
+
     # Build backtest-aligned enhanced prompt
     prompt = _build_enhanced_prompt(df, symbol=symbol, market=market, user_context=user_context)
 
@@ -105,8 +113,13 @@ async def analyze_with_llm(
     if not raw_result or not raw_result.strip():
         raise RuntimeError("LLM 返回了空响应，请重试")
 
+    logger.debug("LLM raw response | symbol=%s length=%d first_200=%s",
+                 symbol, len(raw_result), raw_result[:200].replace("\n", "\\n"))
+
     analysis = _parse_llm_json(raw_result)
     if analysis is not None:
+        logger.info("LLM analyze success | symbol=%s action=%s confidence=%s",
+                    symbol, analysis.get("action"), analysis.get("confidence"))
         return analysis
 
     # JSON parse failed — log the raw response for debugging
@@ -129,7 +142,8 @@ async def _call_openai(
     thinking_effort: str = "high",
 ) -> str:
     """Call OpenAI compatible API."""
-    client = AsyncOpenAI(api_key=api_key, base_url=base_url or "https://api.openai.com/v1")
+    effective_base_url = base_url or "https://api.openai.com/v1"
+    client = AsyncOpenAI(api_key=api_key, base_url=effective_base_url)
 
     kwargs: Dict[str, Any] = dict(
         model=model,
@@ -144,13 +158,30 @@ async def _call_openai(
             "thinking": {"type": "enabled"},
             "reasoning_effort": thinking_effort,
         }
+        logger.info("OpenAI call | base_url=%s model=%s max_tokens=%d thinking=enabled effort=%s",
+                    effective_base_url, model, max_tokens, thinking_effort)
     else:
         kwargs["temperature"] = temperature
+        logger.info("OpenAI call | base_url=%s model=%s max_tokens=%d temperature=%s",
+                    effective_base_url, model, max_tokens, temperature)
 
     response = await client.chat.completions.create(**kwargs)
     msg = response.choices[0].message
-    if thinking_enabled and hasattr(msg, "reasoning_content") and msg.reasoning_content:
-        logger.debug("DeepSeek thinking used, reasoning chars: %d", len(msg.reasoning_content))
+    usage = getattr(response, "usage", None)
+    if usage:
+        logger.info("OpenAI usage | prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+                    getattr(usage, "prompt_tokens", "?"),
+                    getattr(usage, "completion_tokens", "?"),
+                    getattr(usage, "total_tokens", "?"))
+    if thinking_enabled:
+        reasoning = getattr(msg, "reasoning_content", None)
+        if reasoning:
+            logger.info("DeepSeek thinking active | reasoning_chars=%d content_chars=%d",
+                        len(reasoning), len(msg.content or ""))
+            logger.debug("DeepSeek reasoning preview: %s", reasoning[:300].replace("\n", "\\n"))
+        else:
+            logger.warning("DeepSeek thinking enabled but reasoning_content is empty — "
+                           "check model name (expected deepseek-v4-pro / deepseek-reasoner)")
     return msg.content
 
 
