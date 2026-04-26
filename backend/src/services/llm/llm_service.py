@@ -23,6 +23,36 @@ SYSTEM_PROMPT = (
 )
 
 
+async def get_llm_config_from_db() -> dict:
+    """Read LLM config exclusively from admin-configured DB settings.
+
+    Raises RuntimeError if not configured, so callers get a clear error
+    rather than silently falling back to empty/env values.
+    """
+    import json as _json
+    from src.database.db import async_session, SystemSetting
+
+    async with async_session() as _db:
+        _row = await _db.get(SystemSetting, "llm")
+        if not _row:
+            raise RuntimeError("LLM 未配置，请在管理后台 Admin → Settings → LLM 中配置")
+        cfg = _json.loads(_row.value)
+
+    if not cfg.get("api_key"):
+        raise RuntimeError("LLM API Key 未配置，请在管理后台 Admin → Settings → LLM 中配置")
+
+    return {
+        "provider": cfg.get("provider", "openai"),
+        "api_key": cfg["api_key"],
+        "base_url": cfg.get("base_url", ""),
+        "model": cfg.get("model", ""),
+        "max_tokens": int(cfg.get("max_tokens", 1500)),
+        "temperature": float(cfg.get("temperature", 0.7)),
+        "thinking_enabled": bool(cfg.get("thinking_enabled", False)),
+        "thinking_effort": cfg.get("thinking_effort", "high"),
+    }
+
+
 async def analyze_with_llm(
     df,
     symbol: str = "",

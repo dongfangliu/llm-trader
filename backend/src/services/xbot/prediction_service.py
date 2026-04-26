@@ -69,8 +69,7 @@ async def _analyze_stock(
     target_date: date,
 ) -> XBotPrediction:
     from src.services.data.data_service import fetch_market_data
-    from src.services.llm.llm_service import analyze_with_llm
-    from src.database.db import settings as _settings
+    from src.services.llm.llm_service import analyze_with_llm, get_llm_config_from_db
 
     df = await fetch_market_data(
         symbol=symbol,
@@ -83,16 +82,17 @@ async def _analyze_stock(
     if df is None or df.empty:
         raise ValueError(f"No market data for {symbol}")
 
+    llm_cfg = await get_llm_config_from_db()
     result = await analyze_with_llm(
         df=df,
         symbol=symbol,
         market=market,
-        provider=_settings.llm_provider,
-        api_key=_settings.llm_api_key,
-        base_url=_settings.llm_base_url,
-        model=_settings.llm_model,
-        max_tokens=_settings.llm_max_tokens,
-        temperature=_settings.llm_temperature,
+        provider=llm_cfg["provider"],
+        api_key=llm_cfg["api_key"],
+        base_url=llm_cfg["base_url"],
+        model=llm_cfg["model"],
+        max_tokens=llm_cfg["max_tokens"],
+        temperature=llm_cfg["temperature"],
     )
 
     direction = _map_action_to_direction(result.get("action", "hold"))

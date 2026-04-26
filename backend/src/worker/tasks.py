@@ -355,30 +355,22 @@ async def analyze_task(
             return {"status": "failed", "error": f'未找到 "{symbol}" 的市场数据'}
 
         # --- LLM analysis ---
-        from src.services.llm.llm_service import analyze_with_llm
-        from src.database.db import settings as _settings
+        from src.services.llm.llm_service import analyze_with_llm, get_llm_config_from_db
 
-        provider = _settings.llm_provider
-        api_key = _settings.llm_api_key
-        base_url = _settings.llm_base_url
-        model = _settings.llm_model
-        max_tokens = _settings.llm_max_tokens
-        temperature = _settings.llm_temperature
-        thinking_enabled = getattr(_settings, 'llm_thinking_enabled', False)
-        thinking_effort = getattr(_settings, 'llm_thinking_effort', 'high')
+        llm_cfg = await get_llm_config_from_db()
 
         result = await analyze_with_llm(
             df=df,
             symbol=symbol,
             market=market,
-            provider=provider,
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            thinking_enabled=thinking_enabled,
-            thinking_effort=thinking_effort,
+            provider=llm_cfg["provider"],
+            api_key=llm_cfg["api_key"],
+            base_url=llm_cfg["base_url"],
+            model=llm_cfg["model"],
+            max_tokens=llm_cfg["max_tokens"],
+            temperature=llm_cfg["temperature"],
+            thinking_enabled=llm_cfg["thinking_enabled"],
+            thinking_effort=llm_cfg["thinking_effort"],
             user_context={
                 "holding_quantity": holding_quantity,
                 "cost_price": cost_price,
