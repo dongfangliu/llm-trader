@@ -53,8 +53,7 @@ def _register_jobs(scheduler: AsyncIOScheduler, config: dict):
         CronTrigger(hour=a_sh, minute=a_sm, day_of_week="mon-fri", timezone="Asia/Shanghai"),
         id="xbot_settle_a",
         replace_existing=True,
-        misfire_grace_time=1,  # drop misfired runs on restart
-        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     # Job B: Settle HK predictions (Mon-Fri 16:30, 港股收盘后)
@@ -63,8 +62,7 @@ def _register_jobs(scheduler: AsyncIOScheduler, config: dict):
         CronTrigger(hour=hk_sh, minute=hk_sm, day_of_week="mon-fri", timezone="Asia/Shanghai"),
         id="xbot_settle_hk",
         replace_existing=True,
-        misfire_grace_time=1,  # drop misfired runs on restart
-        coalesce=True,
+        misfire_grace_time=3600,
     )
 
     # Job C: Generate next-day predictions (Mon-Fri 16:45, 两市均收盘)
@@ -73,8 +71,7 @@ def _register_jobs(scheduler: AsyncIOScheduler, config: dict):
         CronTrigger(hour=pred_h, minute=pred_m, day_of_week="mon-fri", timezone="Asia/Shanghai"),
         id="xbot_generate",
         replace_existing=True,
-        misfire_grace_time=1,  # drop misfired runs on restart
-        coalesce=True,
+        misfire_grace_time=1800,
     )
 
     logger.info(
