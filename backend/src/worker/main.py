@@ -5,13 +5,40 @@ Run with:
 or via docker-compose worker service.
 """
 import logging
+import sys
+from loguru import logger
 from arq import run_worker
 from src.worker.redis_client import REDIS_SETTINGS
 from src.worker.tasks import analyze_task
 from src.database.new_db import init_db
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Logging setup: route all standard logging through loguru so that
+# third-party libraries (arq, httpx, sqlalchemy, etc.) and tasks.py logs
+# all appear in the same unified stream.
+# ---------------------------------------------------------------------------
+class _InterceptHandler(logging.Handler):
+    """Forward stdlib logging records to loguru."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+        frame, depth = sys._getframe(6), 6
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+# Replace the root handler; force=True removes any basicConfig handlers first
+logging.basicConfig(handlers=[_InterceptHandler()], level=logging.DEBUG, force=True)
+
+# Also quiet noisy libraries to INFO level
+for _noisy in ("httpx", "httpcore", "asyncio", "arq"):
+    logging.getLogger(_noisy).setLevel(logging.INFO)
 
 
 async def startup(ctx: dict):

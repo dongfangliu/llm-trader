@@ -2,14 +2,12 @@
 import copy
 import json
 import hashlib
-import logging
 import re
 from datetime import datetime
 from typing import Any, Optional
 
 from arq import ArqRedis
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 def _position_hash(holding_quantity, cost_price, max_position) -> str:

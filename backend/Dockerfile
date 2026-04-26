@@ -3,6 +3,9 @@ FROM docker.m.daocloud.io/library/python:3.11-slim
 
 WORKDIR /app
 
+# Ensure Python output is unbuffered so logs appear immediately
+ENV PYTHONUNBUFFERED=1
+
 # Use Aliyun apt mirror for faster downloads in China
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
     sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
