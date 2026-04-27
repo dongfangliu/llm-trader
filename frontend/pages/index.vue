@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useHead } from '#app'
 import { useRouter } from 'vue-router'
 import api from '~/lib/api'
-import { preloadAll, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
+import { preloadAll, preloadMarket, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
 import { useAnalysis } from '~/composables/useAnalysis'
 import { useQuota } from '~/composables/useQuota'
 import { useTrial } from '~/composables/useTrial'
@@ -56,6 +56,7 @@ const multiPeriodEnabled = ref(false)
 const auxiliaryPeriods = ref<string[]>([])
 const symbolWarning = ref<string | null>(null)
 const symbolInput = ref<HTMLInputElement | null>(null)
+const symbolPreloadRequested = new Set<string>()
 
 // ── Autocomplete ──
 const suggestions = ref<Array<{ symbol: string; name: string; market: string }>>([])
@@ -277,14 +278,17 @@ async function loadHistory() {
   } catch {}
 }
 
-onMounted(async () => {
-  checkDesktop()
-  window.addEventListener('resize', checkDesktop)
-  await Promise.all([fetchQuota(), loadHistory(), loadAppConfig(), loadPricing()])
-  loadHotStocks()
-  preloadAll() // background — no await, loads cache for autocomplete
+function scheduleIdle(task: () => void, timeout = 1200) {
+  if (typeof window === 'undefined') return
+  const requestIdle = (window as any).requestIdleCallback
+  if (typeof requestIdle === 'function') {
+    requestIdle(task, { timeout })
+    return
+  }
+  window.setTimeout(task, 350)
+}
 
-  // Show correct trial state on page load
+function syncTrialPrompts() {
   if (!auth.isLoggedIn) {
     if (trialState.value === 'available') {
       showProTrialWelcomeModal.value = true
@@ -301,6 +305,35 @@ onMounted(async () => {
       handleRegisteredTrialExpired()
     }
   }
+}
+
+function ensureMarketSymbols(m: string, rerunQuery = '') {
+  if (m === 'us' || symbolPreloadRequested.has(m)) return
+  symbolPreloadRequested.add(m)
+  preloadMarket(m).then(() => {
+    const currentQuery = symbol.value.toUpperCase()
+    if (rerunQuery && market.value === m && currentQuery === rerunQuery.toUpperCase()) {
+      _runSearch(rerunQuery)
+    }
+  }).catch(() => {})
+}
+
+onMounted(() => {
+  checkDesktop()
+  window.addEventListener('resize', checkDesktop)
+  loadHotStocks()
+
+  loadAppConfig()
+  fetchQuota().finally(syncTrialPrompts)
+
+  scheduleIdle(() => {
+    loadHistory()
+    loadPricing()
+  })
+
+  scheduleIdle(() => {
+    preloadAll().catch(() => {})
+  }, 3000)
 })
 
 // ── Watch analysis result ──
@@ -448,6 +481,9 @@ function _runSearch(q: string) {
   suggestions.value = searchSymbols(q, market.value)
   showSuggestions.value = suggestions.value.length > 0
   activeSuggIdx.value = -1
+  if (!suggestions.value.length) {
+    ensureMarketSymbols(market.value, q)
+  }
 }
 
 function onSymbolInput(e: Event) {

@@ -4,6 +4,11 @@ const CACHE_NAME = 'xbot-v1'
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))
 
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return
+  event.respondWith(fetch(event.request))
+})
+
 self.addEventListener('push', event => {
   let data = { title: '新预测', body: '今日预测已发布', url: '/predictions' }
   try { data = { ...data, ...event.data.json() } } catch {}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const props = withDefaults(defineProps<{
@@ -9,7 +10,32 @@ const props = withDefaults(defineProps<{
   variant: 'row',
 })
 
-const { canShowInstall, showIosGuide, install, dismiss } = usePwaInstall()
+const { canShowInstall, showIosGuide, showInstallGuide, installGuideKind, install, dismiss } = usePwaInstall()
+
+const guideText = computed(() => {
+  if (installGuideKind.value === 'wechat') {
+    return {
+      title: '用浏览器打开后添加',
+      steps: ['点击右上角菜单', '选择“在浏览器打开”', '再通过浏览器菜单添加到桌面'],
+    }
+  }
+  if (installGuideKind.value === 'ios-other') {
+    return {
+      title: '请用 Safari 添加到主屏幕',
+      steps: ['复制当前页面链接', '用 Safari 打开', '点击分享按钮并选择“添加到主屏幕”'],
+    }
+  }
+  if (installGuideKind.value === 'android-browser') {
+    return {
+      title: '通过浏览器菜单添加',
+      steps: ['点击浏览器菜单按钮', '选择“添加到桌面”或“安装应用”', '确认后即可从桌面快速打开'],
+    }
+  }
+  return {
+    title: '安装到桌面',
+    steps: ['点击浏览器地址栏或菜单中的安装入口', '如果没有安装入口，请确认使用 HTTPS 或 localhost', '也可以通过浏览器菜单创建桌面快捷方式'],
+  }
+})
 </script>
 
 <template>
@@ -60,6 +86,17 @@ const { canShowInstall, showIosGuide, install, dismiss } = usePwaInstall()
           <p style="font-size: 15px; color: #1c1c1e; margin: 0;">3. 确认名称后点击“添加”</p>
         </div>
         <button type="button" style="width: 100%; height: 50px; border: none; border-radius: 12px; background: #007aff; color: white; font-size: 17px; font-weight: 700;" @click="showIosGuide = false">知道了</button>
+      </div>
+    </div>
+
+    <div v-if="showInstallGuide" @click.self="showInstallGuide = false" style="position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.42);">
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; background: white; border-radius: 20px 20px 0 0; padding: 10px 20px calc(24px + env(safe-area-inset-bottom, 0px));">
+        <div style="width: 36px; height: 4px; background: #e5e5ea; border-radius: 2px; margin: 0 auto 18px;" />
+        <h2 style="font-size: 18px; font-weight: 800; color: #000; margin: 0 0 12px;">{{ guideText.title }}</h2>
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px;">
+          <p v-for="(step, idx) in guideText.steps" :key="step" style="font-size: 15px; color: #1c1c1e; margin: 0;">{{ idx + 1 }}. {{ step }}</p>
+        </div>
+        <button type="button" style="width: 100%; height: 50px; border: none; border-radius: 12px; background: #007aff; color: white; font-size: 17px; font-weight: 700;" @click="showInstallGuide = false">知道了</button>
       </div>
     </div>
   </Teleport>
