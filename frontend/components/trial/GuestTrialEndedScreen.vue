@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { DEFAULT_APP_NAME } from '~/constants/app'
+
 const props = defineProps<{
   appName?: string
 }>()
@@ -26,7 +28,7 @@ const DEFAULT_PERKS = [
     <!-- App hero -->
     <div style="width: 100%; max-width: 480px; display: flex; flex-direction: column; align-items: center; padding: 48px 16px 24px; text-align: center;">
       <div style="width: 80px; height: 80px; background: linear-gradient(145deg, #007aff, #5856d6); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 40px; box-shadow: 0 8px 24px rgba(0,122,255,0.3); margin-bottom: 16px;">📈</div>
-      <h1 style="font-size: 28px; font-weight: 700; letter-spacing: -0.5px; color: #000; margin: 0 0 6px;">{{ props.appName || 'AI 选股' }}</h1>
+      <h1 style="font-size: 28px; font-weight: 700; letter-spacing: -0.5px; color: #000; margin: 0 0 6px;">{{ props.appName || DEFAULT_APP_NAME }}</h1>
       <p style="font-size: 15px; color: #8e8e93; margin: 0;">AI 驱动的专业技术分析平台</p>
     </div>
 
@@ -74,6 +76,8 @@ const DEFAULT_PERKS = [
         </div>
         <NuxtLink to="/upgrade" style="font-size: 13px; font-weight: 600; color: #007aff; text-decoration: none; white-space: nowrap;">了解套餐 →</NuxtLink>
       </div>
+
+      <PwaInstallButton :appName="props.appName || DEFAULT_APP_NAME" variant="card" />
 
       <p style="font-size: 12px; color: #aeaeb2; text-align: center; line-height: 1.6; margin: 4px 0 0;">
         注册即表示同意

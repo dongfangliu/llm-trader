@@ -10,6 +10,7 @@ import { useTrial } from '~/composables/useTrial'
 import { useAuthStore } from '~/stores/auth'
 import { useAnalysisStore } from '~/stores/analysis'
 import { useDevice } from '~/composables/useDevice'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -107,7 +108,7 @@ let analyzeTimedOut = ref(false)
 let analyzeTimeoutTimer: any = null
 
 // ── App config ──
-const appName = ref('AI 选股')
+const appName = ref(DEFAULT_APP_NAME)
 const pricing = ref<any>(null)
 const appConfig = ref<any>(null)
 
@@ -556,6 +557,9 @@ function handleLogout() {
         <div style="width: 100%; max-width: 540px;">
           <!-- Pro trial ended info banner (registered users, desktop) -->
           <TrialProTrialEndedBanner v-if="showProTrialEndedBanner" @dismiss="dismissProTrialEndedBanner" />
+          <div style="margin: 0 0 16px;">
+            <PwaInstallButton :appName="appName" variant="card" />
+          </div>
           <div style="display: flex; align-items: center; gap: 10px; margin: 0 0 24px;">
             <h1 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0; letter-spacing: -0.3px;">分析一支股票</h1>
             <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #7c3aed; background: #ede9fe; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px;">专业版体验中</span>
@@ -988,6 +992,9 @@ function handleLogout() {
             <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.8px; color: #1c1c1e; margin: 0; line-height: 1.1;">今天分析哪只？</h2>
             <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #7c3aed; background: #ede9fe; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px; line-height: 1.4;">专业版体验中</span>
           </div>
+          <div style="margin-bottom: 16px;">
+            <PwaInstallButton :appName="appName" variant="card" />
+          </div>
           <div class="segmented">
             <button v-for="m in [{ v: 'a', l: 'A股' }, { v: 'hk', l: '港股' }, { v: 'us', l: '美股' }, { v: 'futures', l: '期货' }]" :key="m.v" class="segmented-item" :class="{ active: market === m.v }" @click="market = m.v">{{ m.l }}</button>
           </div>
@@ -1287,6 +1294,7 @@ function handleLogout() {
             <span style="font-size: 16px; color: #1c1c1e; font-weight: 500;">升级套餐</span>
             <svg style="margin-left: auto;" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
+          <PwaInstallButton :appName="appName" variant="row" />
           <button @click="handleLogout" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
             <div style="width: 32px; height: 32px; border-radius: 9px; background: #fff2f2; display: flex; align-items: center; justify-content: center; font-size: 16px;">🚪</div>
             <span style="font-size: 16px; color: #ff3b30; font-weight: 500;">退出登录</span>

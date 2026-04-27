@@ -3,10 +3,11 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { navigateTo, useHead } from '#app'
 import api from '~/lib/api'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const auth = useAuthStore()
 
-const appName = ref('AI 股票分析')
+const appName = ref(DEFAULT_APP_NAME)
 useHead({ title: appName })
 
 const email = ref('')

@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from '#app'
 import { useAuthStore } from '~/stores/auth'
 import api from '~/lib/api'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,7 +22,7 @@ interface PricingData {
 }
 
 const pricing = ref<PricingData | null>(null)
-const appName = ref('')
+const appName = ref(DEFAULT_APP_NAME)
 const afdianBasicLink = ref('https://afdian.net')
 const afdianPremiumLink = ref('https://afdian.net')
 const orderNo = ref('')
@@ -121,7 +122,7 @@ const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
     <div style="position: sticky; top: 0; z-index: 100; width: 100%; background: rgba(249,249,249,0.94); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 0.5px solid rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: center; height: 44px;">
       <div style="width: 100%; max-width: 600px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px;">
       <NuxtLink to="/" style="font-size: 17px; color: #007aff; text-decoration: none; display: flex; align-items: center; gap: 2px;">‹ 返回</NuxtLink>
-      <span style="font-size: 17px; font-weight: 600; color: #000;">{{ appName || '解锁权益' }}</span>
+      <span style="font-size: 17px; font-weight: 600; color: #000;">{{ appName }}</span>
       <span v-if="tier" style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 9999px;"
         :style="tier === 'premium' ? { background: '#f3e8ff', color: '#7c3aed' } : tier === 'basic' ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f2f2f7', color: '#8e8e93' }">
         {{ tier === 'free' ? '免费版' : tier === 'basic' ? '标准版' : '专业版' }}

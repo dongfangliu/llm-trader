@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from '#app'
 import { useAuthStore } from '~/stores/auth'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -62,7 +63,7 @@ const tierColor: Record<string, string> = {
             <line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
             <line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span style="font-size: 15px; font-weight: 700; color: #1c1c1e; letter-spacing: -0.3px;">AI 股票分析</span>
+          <span style="font-size: 15px; font-weight: 700; color: #1c1c1e; letter-spacing: -0.3px;">{{ DEFAULT_APP_NAME }}</span>
         </div>
         <p style="margin: 5px 0 0 26px; font-size: 11px; color: #8e8e93;">股票智能研判</p>
       </div>

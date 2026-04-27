@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     afdian_api_token: str = ""  # API token from afdian.net/dashboard/dev
 
     # App branding (can be overridden via APP_NAME env var)
-    app_name: str = "财财技术洞见"
+    app_name: str = "K线AI分析助手"
 
     # Pricing display + daily limits (guests = unauthenticated, free = logged-in free tier)
     pricing_period: str = "月"
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
 
     # Email — Resend (https://resend.com)
     resend_api_key: str = ""        # RESEND_API_KEY env var
-    email_from: str = ""            # e.g. "财财技术洞见 <noreply@yourdomain.com>"
+    email_from: str = ""            # e.g. "K线AI分析助手 <noreply@yourdomain.com>"
 
     # Base URL of the frontend app (used to build verification links)
     app_base_url: str = "http://localhost:3000"

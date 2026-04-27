@@ -129,7 +129,7 @@ _DEFAULT_SETTINGS = {
     "xbot_a_settle_time": "15:30",
     "xbot_hk_settle_time": "16:30",
     "xbot_settlement_mode": "per_stock",
-    "xbot_hashtags": "#A股 #AI选股 #股票预测",
+    "xbot_hashtags": "#A股 #K线AI分析 #股票预测",
     "xbot_disclaimer": "⚠️ 仅供参考，非投资建议",
     "xbot_tweet_template": "",
     "xbot_result_template": "",
@@ -409,7 +409,7 @@ async def tweet_preview(
     stats = await get_accuracy_stats(db)
     acc_all = stats.get("all", {})
     product_url = config.get("xbot_product_url", "")
-    hashtags = config.get("xbot_hashtags", "#A股 #AI选股 #股票预测")
+    hashtags = config.get("xbot_hashtags", "#A股 #K线AI分析 #股票预测")
     disclaimer = config.get("xbot_disclaimer", "⚠️ 仅供参考，非投资建议")
 
     is_result = pred.actual_change_pct is not None

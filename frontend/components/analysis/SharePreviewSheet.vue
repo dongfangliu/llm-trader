@@ -2,6 +2,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { generatePredictionCardBlob, generateStatementCardBlob } from '~/lib/shareCards/index'
 import type { PredictionCardParams } from '~/lib/shareCards/index'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const props = defineProps<{
   modelValue: boolean
@@ -110,7 +111,7 @@ function buildCardParams(): PredictionCardParams {
     reasonExcerpt: (r?.result?.reason || '').slice(0, 120),
     analyzedAt: analyzedAt.value,
     tier: props.tier || 'free',
-    appName: props.appName || 'AI 股票分析',
+    appName: props.appName || DEFAULT_APP_NAME,
     appBaseUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
     marketDiagnosis: r?.result?.narrative?.market_diagnosis || r?.result?.market_diagnosis || '',
     opportunityAssessment: r?.result?.narrative?.opportunity_assessment || r?.result?.opportunity_assessment || '',

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // Public prediction feed — no auth required
+import { DEFAULT_APP_NAME } from '~/constants/app'
+
 definePageMeta({ layout: false })
 
 const API_BASE = '/api/public'
@@ -9,6 +11,7 @@ const predictions = ref<any[]>([])
 const accuracy    = ref<any>(null)
 const loading     = ref(true)
 const market      = ref<'all' | 'a' | 'hk'>('all')
+const appName     = ref(DEFAULT_APP_NAME)
 
 async function loadPredictions() {
   loading.value = true
@@ -24,6 +27,13 @@ async function loadPredictions() {
   }
 }
 
+async function loadAppConfig() {
+  try {
+    const res = await $fetch<any>('/api/config')
+    if (res?.app_name) appName.value = res.app_name
+  } catch {}
+}
+
 // ── Web Push ───────────────────────────────────────────────────────────────
 const pushSupported  = ref(false)
 const pushGranted    = ref(false)
@@ -31,7 +41,7 @@ const pushLoading    = ref(false)
 const pushMsg        = ref('')
 
 onMounted(async () => {
-  await loadPredictions()
+  await Promise.all([loadPredictions(), loadAppConfig()])
   if ('serviceWorker' in navigator && 'PushManager' in window) {
     pushSupported.value = true
     const reg = await navigator.serviceWorker.getRegistration('/sw.js')
@@ -126,9 +136,9 @@ function pctColor(v: number | null) {
     <!-- ── Hero header ── -->
     <div class="hero">
       <div class="hero-inner">
-        <div class="hero-brand">⬢ 财财技术洞见</div>
+        <div class="hero-brand">⬢ {{ appName }}</div>
         <h1 class="hero-title">AI 预测追踪</h1>
-        <p class="hero-sub">每日 AI 选股分析，公开兑现记录，不藏不蒙</p>
+        <p class="hero-sub">每日 K 线 AI 分析，公开兑现记录，不藏不蒙</p>
 
         <!-- Accuracy badge -->
         <div v-if="accuracy && accuracy.total > 0" class="acc-badge">

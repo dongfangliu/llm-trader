@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import api from '~/lib/api'
-const appName = ref('AI 选股')
+import { DEFAULT_APP_NAME } from '~/constants/app'
+const appName = ref(DEFAULT_APP_NAME)
 onMounted(async () => {
   try {
     const res = await api.get('/api/config')

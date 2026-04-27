@@ -3,10 +3,11 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { navigateTo } from '#app'
 import api from '~/lib/api'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const auth = useAuthStore()
 
-const appName = ref('')
+const appName = ref(DEFAULT_APP_NAME)
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -180,7 +181,7 @@ function handleInviteCodeInput(e: Event) {
           marginBottom: '14px',
         }">📈</div>
         <h1 :style="{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.4px', color: '#000', margin: '0 0 5px' }">
-          {{ appName || '创建账号' }}
+          {{ appName }}
         </h1>
         <p :style="{ fontSize: '14px', color: '#8e8e93', margin: 0 }">
           注册即解锁完整分析功能

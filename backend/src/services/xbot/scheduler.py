@@ -215,7 +215,7 @@ async def _post_result_thread(pred, publisher, config, stats, brand_name: str = 
     from src.services.xbot.card_service import generate_result_card_set
 
     product_url = config.get("xbot_product_url", "")
-    hashtags = config.get("xbot_hashtags", "#A股 #AI选股")
+    hashtags = config.get("xbot_hashtags", "#A股 #K线AI分析")
     acc_all = stats.get("all", {})
 
     cards = await generate_result_card_set(
@@ -287,7 +287,7 @@ async def post_approved_predictions() -> int:
         try:
             from src.services.push_service import send_push_to_all
             product_url = config.get("xbot_product_url", "/predictions")
-            push_body = f"今日 AI 选股预测已发布，共 {posted} 只"
+            push_body = f"今日预测已发布，共 {posted} 只"
             async with async_session() as db:
                 await send_push_to_all(
                     db,

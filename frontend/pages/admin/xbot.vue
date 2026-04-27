@@ -618,7 +618,7 @@ onMounted(async () => {
         </div>
         <div style="margin-bottom:14px">
           <div style="font-size:13px;color:#8e8e93;margin-bottom:6px">固定标签（用空格分隔）</div>
-          <input v-model="settings.xbot_hashtags" type="text" placeholder="#A股 #AI选股 #股票预测"
+          <input v-model="settings.xbot_hashtags" type="text" placeholder="#A股 #K线AI分析 #股票预测"
             style="width:100%;height:44px;padding:0 14px;border-radius:10px;border:1px solid #e5e5ea;font-size:15px;background:#f2f2f7;box-sizing:border-box">
         </div>
         <div>

@@ -35,7 +35,7 @@ def render_prediction_tweet(
     prediction: XBotPrediction,
     template: str = "",
     product_url: str = "",
-    hashtags: str = "#A股 #AI选股 #股票预测",
+    hashtags: str = "#A股 #K线AI分析 #股票预测",
     disclaimer: str = "⚠️ 仅供参考，非投资建议",
 ) -> str:
     tpl = template.strip() if template.strip() else _DEFAULT_PREDICTION_TEMPLATE
@@ -78,7 +78,7 @@ def render_result_tweet(
     accuracy_all_pct: int,
     template: str = "",
     product_url: str = "",
-    hashtags: str = "#A股 #AI选股",
+    hashtags: str = "#A股 #K线AI分析",
 ) -> str:
     tpl = template.strip() if template.strip() else _DEFAULT_RESULT_TEMPLATE
     direction = prediction.predicted_direction or "hold"

@@ -5,7 +5,7 @@ self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))
 
 self.addEventListener('push', event => {
-  let data = { title: '新预测', body: '今日 AI 选股预测已发布', url: '/predictions' }
+  let data = { title: '新预测', body: '今日预测已发布', url: '/predictions' }
   try { data = { ...data, ...event.data.json() } } catch {}
 
   event.waitUntil(

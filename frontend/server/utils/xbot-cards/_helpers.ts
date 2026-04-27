@@ -7,7 +7,7 @@ import type { CardPayload, Direction } from './types'
 
 // ── Brand / product identity ────────────────────────────────────
 export const BRAND = {
-  name: '财财技术洞见',          // must match backend settings.app_name
+  name: 'K线AI分析助手',        // must match backend settings.app_name
   tagline: '技术面 AI 研判',      // subtle, non-promotional
   fallbackDomain: 'caicai.tech', // used only if payload.product_url missing
 } as const

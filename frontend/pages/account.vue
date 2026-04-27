@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from '#app'
 import { useAuthStore } from '~/stores/auth'
 import api from '~/lib/api'
+import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -14,6 +15,7 @@ const inviteInput = ref('')
 const inviteMsg = ref<{ type: 'ok' | 'err'; text: string } | null>(null)
 const inviteLoading = ref(false)
 const copiedInvite = ref(false)
+const appName = ref(DEFAULT_APP_NAME)
 
 const TIER_LABELS: Record<string, string> = { free: '免费版', basic: '标准版', premium: '专业版' }
 
@@ -33,6 +35,7 @@ onMounted(async () => {
     const res = await api.get('/api/config')
     if (res.data.afdian_basic_link) afdianBasicLink.value = res.data.afdian_basic_link
     if (res.data.afdian_premium_link) afdianPremiumLink.value = res.data.afdian_premium_link
+    if (res.data.app_name) appName.value = res.data.app_name
   } catch {}
 })
 
@@ -217,6 +220,7 @@ const tierLabel = computed(() => TIER_LABELS[tier.value] ?? tier.value)
             </div>
             <span style="font-size: 18px; color: #c7c7cc;">›</span>
           </NuxtLink>
+          <PwaInstallButton :appName="appName" variant="row" />
         </div>
 
         <!-- Logout button -->
