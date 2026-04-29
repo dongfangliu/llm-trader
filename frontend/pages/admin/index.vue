@@ -169,8 +169,8 @@ function saveAdminToken() {
           </NuxtLink>
           <NuxtLink to="/admin/xbot" style="text-decoration: none; background: linear-gradient(135deg, #007aff 0%, #5856d6 100%); border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,122,255,0.3);">
             <span style="font-size: 24px;">🤖</span>
-            <span style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">X Bot 运营</span>
-            <span style="font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.4;">自动发推 · 选股预测 · 涨粉</span>
+            <span style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">模型复盘档案</span>
+            <span style="font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.4;">自动记录 · 结算复盘 · SEO素材</span>
           </NuxtLink>
         </div>
       </template>

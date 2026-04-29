@@ -1,1 +1,1 @@
-"""XBot services for automated X (Twitter) stock prediction posting."""
+"""Internal model-record services for prediction generation and settlement."""

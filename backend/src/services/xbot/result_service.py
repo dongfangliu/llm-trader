@@ -1,4 +1,4 @@
-"""Settle yesterday's predictions and post result tweets."""
+"""Settle approved model predictions."""
 
 import asyncio
 from datetime import date, timedelta
@@ -12,22 +12,21 @@ from src.models.xbot import XBotPrediction
 
 
 async def settle_predictions(db: AsyncSession) -> int:
-    """Settle all posted predictions with target_date = today (market-agnostic)."""
+    """Settle all approved predictions with target_date = today (market-agnostic)."""
     return await settle_predictions_for_market(db, market=None)
 
 
 async def settle_predictions_for_market(db: AsyncSession, market: str | None) -> int:
     """
-    Fetch actual close prices for posted predictions with target_date = today.
+    Fetch actual close prices for approved/legacy-posted predictions with target_date = today.
     When market is None, settles all markets.
     Returns number of settled predictions.
     """
     today = date.today()
     q = select(XBotPrediction).where(
         XBotPrediction.target_date == today,
-        XBotPrediction.status == "posted",
+        XBotPrediction.status.in_(["approved", "posted"]),
         XBotPrediction.actual_close.is_(None),
-        XBotPrediction.prediction_tweet_id.is_not(None),   # 只结算真正发过推的
     )
     if market:
         q = q.where(XBotPrediction.market == market)

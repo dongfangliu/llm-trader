@@ -31,10 +31,9 @@ async def public_list_predictions(
     market: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public feed: latest posted/settled predictions (no auth)."""
+    """Public feed: latest settled model records (no auth)."""
     filters = [
-        XBotPrediction.status.in_(["posted", "settled"]),
-        XBotPrediction.prediction_tweet_id.is_not(None),
+        XBotPrediction.status == "settled",
     ]
     if market:
         filters.append(XBotPrediction.market == market.lower())
@@ -58,6 +57,73 @@ async def public_list_predictions(
     }
 
 
+@public_router.get("/research")
+async def public_research_index(
+    limit: int = Query(default=100, le=300),
+    market: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """SEO-safe index of settled model records."""
+    return await public_list_predictions(limit=limit, market=market, db=db)
+
+
+@public_router.get("/research/{market}/{symbol}")
+async def public_research_symbol(
+    market: str,
+    symbol: str,
+    limit: int = Query(default=50, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    q = (
+        select(XBotPrediction)
+        .where(
+            XBotPrediction.status == "settled",
+            XBotPrediction.market == market.lower(),
+            XBotPrediction.symbol == symbol.upper(),
+        )
+        .order_by(XBotPrediction.prediction_date.desc())
+        .limit(limit)
+    )
+    result = await db.execute(q)
+    predictions = result.scalars().all()
+    config = await _load_config(db)
+    from src.services.xbot.result_service import get_accuracy_stats
+    stats = await get_accuracy_stats(db)
+    return {
+        "symbol": symbol.upper(),
+        "market": market.lower(),
+        "records": [_public_pred_dict(p, config) for p in predictions],
+        "accuracy": stats.get("all", {}),
+    }
+
+
+@public_router.get("/research/{market}/{symbol}/{prediction_date}")
+async def public_research_detail(
+    market: str,
+    symbol: str,
+    prediction_date: str,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        pred_date = date.fromisoformat(prediction_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+
+    result = await db.execute(
+        select(XBotPrediction).where(
+            XBotPrediction.status == "settled",
+            XBotPrediction.market == market.lower(),
+            XBotPrediction.symbol == symbol.upper(),
+            XBotPrediction.prediction_date == pred_date,
+        )
+    )
+    pred = result.scalar_one_or_none()
+    if not pred:
+        raise HTTPException(status_code=404, detail="Record not found")
+    config = await _load_config(db)
+    return {"record": _public_pred_dict(pred, config)}
+
+
 def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
     product_url = config.get("xbot_product_url", "")
     return {
@@ -70,13 +136,15 @@ def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
         "target_date": str(p.target_date) if p.target_date else None,
         "predicted_direction": p.predicted_direction,
         "confidence": p.confidence,
-        "target_price": p.target_price,
-        "stop_loss": p.stop_loss,
         "close_price": p.close_price,
         "analysis_summary": p.analysis_summary,
+        "market_diagnosis": p.market_diagnosis,
+        "opportunity_assessment": p.opportunity_assessment,
+        "risk_analysis": p.risk_analysis,
+        "execution_plan": p.execution_plan,
         "status": p.status,
-        "prediction_tweet_id": p.prediction_tweet_id,
         "actual_change_pct": p.actual_change_pct,
+        "actual_close": p.actual_close,
         "is_correct": p.is_correct,
         "product_url": product_url,
     }
@@ -88,6 +156,7 @@ def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
 
 class XBotSettingsUpdate(BaseModel):
     xbot_enabled: Optional[str] = None
+    xbot_operation_mode: Optional[str] = None
     xbot_markets: Optional[str] = None
     xbot_hot_stock_count: Optional[str] = None
     xbot_min_price_a: Optional[str] = None
@@ -99,27 +168,19 @@ class XBotSettingsUpdate(BaseModel):
     xbot_settlement_mode: Optional[str] = None
     xbot_hashtags: Optional[str] = None
     xbot_disclaimer: Optional[str] = None
-    xbot_tweet_template: Optional[str] = None
-    xbot_result_template: Optional[str] = None
-    xbot_twitter_api_key: Optional[str] = None
-    xbot_twitter_api_secret: Optional[str] = None
-    xbot_twitter_access_token: Optional[str] = None
-    xbot_twitter_access_token_secret: Optional[str] = None
 
 
 _XBOT_KEYS = [
-    "xbot_enabled", "xbot_markets", "xbot_hot_stock_count",
+    "xbot_enabled", "xbot_operation_mode", "xbot_markets", "xbot_hot_stock_count",
     "xbot_min_price_a", "xbot_min_price_hk",
     "xbot_product_url", "xbot_predict_time",
     "xbot_a_settle_time", "xbot_hk_settle_time",
     "xbot_settlement_mode", "xbot_hashtags", "xbot_disclaimer",
-    "xbot_tweet_template", "xbot_result_template",
-    "xbot_twitter_api_key", "xbot_twitter_api_secret",
-    "xbot_twitter_access_token", "xbot_twitter_access_token_secret",
 ]
 
 _DEFAULT_SETTINGS = {
     "xbot_enabled": "false",
+    "xbot_operation_mode": "manual",
     "xbot_markets": "a,hk",
     "xbot_hot_stock_count": "5",
     "xbot_min_price_a": "5",
@@ -131,12 +192,6 @@ _DEFAULT_SETTINGS = {
     "xbot_settlement_mode": "per_stock",
     "xbot_hashtags": "#A股 #K线AI分析 #股票预测",
     "xbot_disclaimer": "⚠️ 仅供参考，非投资建议",
-    "xbot_tweet_template": "",
-    "xbot_result_template": "",
-    "xbot_twitter_api_key": "",
-    "xbot_twitter_api_secret": "",
-    "xbot_twitter_access_token": "",
-    "xbot_twitter_access_token_secret": "",
 }
 
 
@@ -153,22 +208,24 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), _=_Admin):
     total_today = await _count(db, XBotPrediction.prediction_date == today)
     pending_today = await _count(db, XBotPrediction.prediction_date == today, XBotPrediction.status == "pending")
     approved_today = await _count(db, XBotPrediction.prediction_date == today, XBotPrediction.status == "approved")
-    posted_today = await _count(db, XBotPrediction.prediction_date == today, XBotPrediction.status == "posted")
+    settled_today = await _count(db, XBotPrediction.prediction_date == today, XBotPrediction.status == "settled")
 
     from src.services.xbot.result_service import get_accuracy_stats
     accuracy = await get_accuracy_stats(db)
 
     total_predictions = await _count(db)
-    total_posted = await _count(db, XBotPrediction.prediction_tweet_id.is_not(None))
+    total_settled = await _count(db, XBotPrediction.status == "settled")
 
     predict_time    = config.get("xbot_predict_time", "16:45")
     a_settle_time   = config.get("xbot_a_settle_time", "15:30")
     hk_settle_time  = config.get("xbot_hk_settle_time", "16:30")
     markets         = config.get("xbot_markets", "a,hk")
     enabled = config.get("xbot_enabled", "false") == "true"
+    operation_mode = config.get("xbot_operation_mode", "manual")
 
     return {
         "enabled": enabled,
+        "operation_mode": operation_mode,
         "markets": markets,
         "predict_time": predict_time,
         "a_settle_time": a_settle_time,
@@ -177,12 +234,12 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), _=_Admin):
             "total": total_today,
             "pending": pending_today,
             "approved": approved_today,
-            "posted": posted_today,
+            "settled": settled_today,
         },
         "accuracy": accuracy,
         "totals": {
             "predictions": total_predictions,
-            "posted": total_posted,
+            "settled": total_settled,
         },
     }
 
@@ -295,40 +352,6 @@ async def reject_prediction(
     return {"ok": True, "status": "rejected"}
 
 
-@router.post("/predictions/{prediction_id}/post")
-async def post_single_prediction(
-    prediction_id: int,
-    db: AsyncSession = Depends(get_db),
-    _=_Admin,
-):
-    """Immediately post one prediction (auto-approves if pending)."""
-    pred = await _get_prediction(db, prediction_id)
-    if pred.status in ("posted", "settled"):
-        raise HTTPException(status_code=400, detail="Already posted")
-
-    config = await _load_config(db)
-    from src.services.xbot.x_publisher import get_publisher_from_settings
-    from src.services.xbot.scheduler import _post_prediction_thread
-    from src.services.xbot.result_service import get_accuracy_stats
-
-    publisher = await get_publisher_from_settings()
-    if not publisher:
-        raise HTTPException(status_code=503, detail="Twitter API not configured")
-
-    stats = await get_accuracy_stats(db)
-    tweet_id = await _post_prediction_thread(pred, publisher, config, stats)
-
-    if not tweet_id:
-        raise HTTPException(status_code=502, detail="Tweet posting failed")
-
-    await db.execute(
-        update(XBotPrediction).where(XBotPrediction.id == prediction_id)
-        .values(status="posted", prediction_tweet_id=tweet_id)
-    )
-    await db.commit()
-    return {"ok": True, "tweet_id": tweet_id}
-
-
 # ---------------------------------------------------------------------------
 # Bulk actions
 # ---------------------------------------------------------------------------
@@ -338,29 +361,21 @@ async def action_generate(_=_Admin):
     """Manually trigger hot stock selection + prediction generation."""
     from src.services.xbot.scheduler import job_generate_predictions
     import asyncio
-    task = asyncio.create_task(job_generate_predictions())
+    task = asyncio.create_task(job_generate_predictions(force=True))
     task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] generate task error: {t.exception()}"))
     return {"ok": True, "message": "Prediction generation started in background"}
-
-
-@router.post("/actions/post-approved")
-async def action_post_approved(_=_Admin):
-    """Post all approved predictions immediately."""
-    from src.services.xbot.scheduler import post_approved_predictions
-    posted = await post_approved_predictions()
-    return {"ok": True, "posted": posted}
 
 
 @router.post("/actions/reload-scheduler")
 async def action_reload_scheduler(db: AsyncSession = Depends(get_db), _=_Admin):
     """Reload scheduler jobs from current DB settings (call after changing times or toggling enabled)."""
-    from src.services.xbot.scheduler import get_scheduler, _load_config, _register_jobs, _is_enabled
+    from src.services.xbot.scheduler import get_scheduler, _load_config, _register_jobs, _is_auto_enabled
     config = await _load_config()
     scheduler = get_scheduler()
-    if not _is_enabled(config):
+    if not _is_auto_enabled(config):
         if scheduler.running:
             scheduler.shutdown(wait=False)
-            return {"ok": True, "message": "Scheduler stopped (xbot disabled)"}
+            return {"ok": True, "message": "Scheduler stopped (manual mode or disabled)"}
         return {"ok": True, "message": "Scheduler already stopped"}
     if not scheduler.running:
         scheduler.start()
@@ -374,16 +389,16 @@ async def action_settle(
     _=_Admin,
 ):
     """Manually trigger settlement of today's predictions (by market or all)."""
-    from src.services.xbot.scheduler import _settle_and_post_for_market, job_settle_a_shares, job_settle_hk_shares
+    from src.services.xbot.scheduler import job_settle_a_shares, job_settle_hk_shares
     import asyncio
     if market == "a":
-        task = asyncio.create_task(job_settle_a_shares())
+        task = asyncio.create_task(job_settle_a_shares(force=True))
     elif market == "hk":
-        task = asyncio.create_task(job_settle_hk_shares())
+        task = asyncio.create_task(job_settle_hk_shares(force=True))
     else:
         async def _settle_all():
-            await job_settle_a_shares()
-            await job_settle_hk_shares()
+            await job_settle_a_shares(force=True)
+            await job_settle_hk_shares(force=True)
         task = asyncio.create_task(_settle_all())
     task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] settle task error: {t.exception()}"))
     return {"ok": True, "message": f"Settlement started for market={market or 'all'}"}
@@ -392,59 +407,6 @@ async def action_settle(
 # ---------------------------------------------------------------------------
 # Accuracy stats
 # ---------------------------------------------------------------------------
-
-@router.get("/predictions/{prediction_id}/tweet-preview")
-async def tweet_preview(
-    prediction_id: int,
-    db: AsyncSession = Depends(get_db),
-    _=_Admin,
-):
-    """Return generated tweet texts and card preview URLs for a prediction."""
-    pred = await _get_prediction(db, prediction_id)
-    config = await _load_config(db)
-
-    from src.services.xbot.content_generator import render_prediction_tweet, render_result_tweet
-    from src.services.xbot.result_service import get_accuracy_stats
-
-    stats = await get_accuracy_stats(db)
-    acc_all = stats.get("all", {})
-    product_url = config.get("xbot_product_url", "")
-    hashtags = config.get("xbot_hashtags", "#A股 #K线AI分析 #股票预测")
-    disclaimer = config.get("xbot_disclaimer", "⚠️ 仅供参考，非投资建议")
-
-    is_result = pred.actual_change_pct is not None
-    if is_result:
-        tweet1 = render_result_tweet(
-            pred,
-            accuracy_all_label=acc_all.get("label", "—"),
-            accuracy_all_pct=acc_all.get("pct", 0),
-            template=config.get("xbot_result_template", ""),
-            product_url=product_url,
-            hashtags=hashtags,
-        )
-        tweet2 = f"完整分析\n{product_url}  {hashtags}" if product_url else f"完整分析  {hashtags}"
-        card1_variant = "proof"
-    else:
-        tweet1 = render_prediction_tweet(
-            pred,
-            template=config.get("xbot_tweet_template", ""),
-            product_url=product_url,
-            hashtags=hashtags,
-            disclaimer=disclaimer,
-        )
-        tweet2 = f"为什么这么判断 ↓\n{product_url}" if product_url else "为什么这么判断 ↓"
-        card1_variant = "promise"
-
-    return {
-        "tweet1_text": tweet1,
-        "tweet2_text": tweet2,
-        "card1_variant": card1_variant,
-        "card2_variant": "data_record",
-        "card1_url": f"/api/admin/xbot/predictions/{prediction_id}/card-preview?variant={card1_variant}",
-        "card2_url": f"/api/admin/xbot/predictions/{prediction_id}/card-preview?variant=data_record",
-        "is_result": is_result,
-    }
-
 
 @router.get("/accuracy")
 async def get_accuracy(db: AsyncSession = Depends(get_db), _=_Admin):
@@ -459,13 +421,7 @@ async def get_accuracy(db: AsyncSession = Depends(get_db), _=_Admin):
 @router.get("/settings")
 async def get_settings(db: AsyncSession = Depends(get_db), _=_Admin):
     config = await _load_config(db)
-    # Mask secret keys in response
-    masked = dict(config)
-    for secret_key in ("xbot_twitter_api_key", "xbot_twitter_api_secret",
-                       "xbot_twitter_access_token", "xbot_twitter_access_token_secret"):
-        if masked.get(secret_key):
-            masked[secret_key] = "•" * 8
-    return {k: masked.get(k, _DEFAULT_SETTINGS.get(k, "")) for k in _XBOT_KEYS}
+    return {k: config.get(k, _DEFAULT_SETTINGS.get(k, "")) for k in _XBOT_KEYS}
 
 
 @router.put("/settings")
@@ -476,9 +432,6 @@ async def update_settings(
 ):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     for key, value in updates.items():
-        # Don't overwrite credentials with masked placeholder
-        if value == "•" * 8:
-            continue
         existing = await db.get(SystemSetting, key)
         if existing:
             existing.value = value
@@ -486,23 +439,6 @@ async def update_settings(
             db.add(SystemSetting(key=key, value=value))
     await db.commit()
     return {"ok": True, "updated": list(updates.keys())}
-
-
-# ---------------------------------------------------------------------------
-# Twitter connectivity test
-# ---------------------------------------------------------------------------
-
-@router.post("/test-twitter")
-async def test_twitter(_=_Admin):
-    from src.services.xbot.x_publisher import get_publisher_from_settings
-    publisher = await get_publisher_from_settings()
-    if not publisher:
-        raise HTTPException(status_code=400, detail="Twitter API credentials not configured")
-    try:
-        info = publisher.verify_credentials()
-        return {"ok": True, "account": info}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Twitter API error: {e}")
 
 
 @router.post("/test-card")
@@ -607,12 +543,8 @@ def _pred_dict(p: XBotPrediction) -> dict:
         "risk_analysis": p.risk_analysis,
         "execution_plan": p.execution_plan,
         "status": p.status,
-        "prediction_tweet_id": p.prediction_tweet_id,
-        "result_tweet_id": p.result_tweet_id,
         "actual_close": p.actual_close,
         "actual_change_pct": p.actual_change_pct,
         "is_correct": p.is_correct,
-        "likes_count": p.likes_count,
-        "retweets_count": p.retweets_count,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }

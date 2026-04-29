@@ -1,4 +1,4 @@
-"""Generate AI predictions for xbot, reusing existing LLM analysis pipeline."""
+"""Generate internal model records, reusing the existing LLM analysis pipeline."""
 
 import json
 from datetime import date, datetime, timedelta
@@ -16,7 +16,7 @@ async def generate_predictions(
     db: AsyncSession,
 ) -> List[XBotPrediction]:
     """
-    For each hot stock, run AI analysis and save a pending XBotPrediction.
+    For each hot stock, run AI analysis and save a pending internal record.
     Skips stocks that already have a prediction for today.
     Returns list of created predictions.
     """

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useHead } from '#app'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import api from '~/lib/api'
 import { preloadAll, preloadMarket, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
 import { useAnalysis } from '~/composables/useAnalysis'
@@ -13,6 +13,7 @@ import { useDevice } from '~/composables/useDevice'
 import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const analysisStore = useAnalysisStore()
 const { getDeviceId } = useDevice()
@@ -321,6 +322,16 @@ function ensureMarketSymbols(m: string, rerunQuery = '') {
 onMounted(() => {
   checkDesktop()
   window.addEventListener('resize', checkDesktop)
+  const queryMarket = typeof route.query.market === 'string' ? route.query.market : ''
+  const querySymbol = typeof route.query.symbol === 'string' ? route.query.symbol : ''
+  if (queryMarket && ['a', 'hk', 'us', 'futures'].includes(queryMarket)) {
+    market.value = queryMarket
+    analysisStore.setMarket(queryMarket)
+  }
+  if (querySymbol) {
+    symbol.value = querySymbol.toUpperCase()
+    analysisStore.setSymbol(symbol.value)
+  }
   loadHotStocks()
 
   loadAppConfig()
