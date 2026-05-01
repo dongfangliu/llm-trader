@@ -24,24 +24,42 @@ const RENDERERS: Record<string, (p: CardPayload) => any> = {
 
 let _fontCache: ArrayBuffer | null = null
 
-function loadFont(): ArrayBuffer {
+// Candidate CDN URLs for NotoSansSC TTF (tried in order, first success wins)
+const FONT_URLS = [
+  'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansSC/hinted/ttf/NotoSansSC-Regular.ttf',
+  'https://github.com/notofonts/noto-cjk/raw/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf',
+]
+
+async function loadFont(): Promise<ArrayBuffer> {
   if (_fontCache) return _fontCache
-  const paths = [
+
+  // 1. Try local file first
+  const localPaths = [
     resolve('./public/fonts/NotoSansSC-Regular.ttf'),
     resolve('./public/fonts/NotoSansSC.ttf'),
   ]
-  for (const p of paths) {
+  for (const p of localPaths) {
     if (existsSync(p)) {
       const buf = readFileSync(p)
       _fontCache = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
       return _fontCache
     }
   }
-  throw new Error(
-    'Missing font for XBot card generation.\n' +
-    'Please place NotoSansSC-Regular.ttf in frontend/public/fonts/\n' +
-    'Download: https://fonts.google.com/noto/specimen/Noto+Sans+SC'
-  )
+
+  // 2. Download from CDN
+  for (const url of FONT_URLS) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
+      if (res.ok) {
+        _fontCache = await res.arrayBuffer()
+        return _fontCache
+      }
+    } catch {
+      // try next URL
+    }
+  }
+
+  throw new Error('Failed to load NotoSansSC font from both local paths and CDN. Check network connectivity.')
 }
 
 export async function renderCard(payload: CardPayload): Promise<Uint8Array> {
@@ -52,12 +70,7 @@ export async function renderCard(payload: CardPayload): Promise<Uint8Array> {
   const { w, h } = DIMS[variant]
   const vnode = renderer(payload)
 
-  let fontData: ArrayBuffer
-  try {
-    fontData = loadFont()
-  } catch (e: any) {
-    throw new Error(e.message)
-  }
+  const fontData = await loadFont()
 
   const svg = await satori(vnode, {
     width: w,

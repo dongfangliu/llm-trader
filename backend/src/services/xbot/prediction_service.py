@@ -126,6 +126,29 @@ async def _analyze_stock(
     )
 
 
+async def generate_single_prediction(stock: Dict, db: AsyncSession) -> Optional[XBotPrediction]:
+    """Generate AI prediction for a single stock dict and save it. Returns the prediction or None on failure."""
+    today = date.today()
+    target = _next_trading_day(today)
+    try:
+        prediction = await _analyze_stock(
+            symbol=stock["symbol"],
+            market=stock["market"],
+            symbol_name=stock["name"],
+            hot_rank=stock.get("hot_rank", 0),
+            prediction_date=today,
+            target_date=target,
+        )
+        db.add(prediction)
+        await db.commit()
+        await db.refresh(prediction)
+        logger.info(f"[Single] Created prediction for {stock['symbol']} ({stock['name']}): {prediction.predicted_direction}")
+        return prediction
+    except Exception as e:
+        logger.error(f"[Single] Failed to analyze {stock['symbol']}: {e}")
+        return None
+
+
 def _next_trading_day(d: date) -> date:
     next_day = d + timedelta(days=1)
     # Skip weekends

@@ -371,9 +371,73 @@ async def reject_prediction(
 # Bulk actions
 # ---------------------------------------------------------------------------
 
+@router.get("/candidates")
+async def get_candidates(db: AsyncSession = Depends(get_db), _=_Admin):
+    """Scan hot stocks and return candidate list WITHOUT generating predictions."""
+    from src.services.xbot.hot_stocks_service import get_hot_stocks, get_hk_hot_stocks
+    config = await _load_config(db)
+    markets = [m.strip() for m in config.get("xbot_markets", "a,hk").split(",") if m.strip()]
+    count = int(config.get("xbot_hot_stock_count", 5))
+
+    candidates = []
+    if "a" in markets:
+        candidates.extend(await get_hot_stocks(count=count, min_price=float(config.get("xbot_min_price_a", 5))))
+    if "hk" in markets:
+        candidates.extend(await get_hk_hot_stocks(count=count, min_price=float(config.get("xbot_min_price_hk", 1))))
+
+    # Mark which candidates already have a prediction today
+    today = date.today()
+    existing = {}
+    if candidates:
+        symbols = [c["symbol"] for c in candidates]
+        q = select(XBotPrediction).where(
+            XBotPrediction.prediction_date == today,
+            XBotPrediction.symbol.in_(symbols),
+        )
+        result = await db.execute(q)
+        for p in result.scalars().all():
+            existing[p.symbol] = p.status
+
+    return {
+        "candidates": [
+            {**c, "already_generated": c["symbol"] in existing, "existing_status": existing.get(c["symbol"])}
+            for c in candidates
+        ]
+    }
+
+
+class GenerateSingleRequest(BaseModel):
+    symbol: str
+    market: str
+    name: str
+    hot_rank: int = 0
+
+
+@router.post("/actions/generate-single")
+async def action_generate_single(body: GenerateSingleRequest, db: AsyncSession = Depends(get_db), _=_Admin):
+    """Generate AI prediction for a single candidate stock."""
+    from src.services.xbot.prediction_service import generate_single_prediction
+
+    today = date.today()
+    existing = await db.execute(
+        select(XBotPrediction).where(
+            XBotPrediction.prediction_date == today,
+            XBotPrediction.symbol == body.symbol,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"{body.symbol} 今日预测已存在")
+
+    stock = {"symbol": body.symbol, "market": body.market, "name": body.name, "hot_rank": body.hot_rank}
+    pred = await generate_single_prediction(stock, db)
+    if pred is None:
+        raise HTTPException(status_code=500, detail=f"{body.symbol} 分析生成失败")
+    return _pred_dict(pred)
+
+
 @router.post("/actions/generate")
 async def action_generate(_=_Admin):
-    """Manually trigger hot stock selection + prediction generation."""
+    """Manually trigger hot stock selection + prediction generation (legacy, generates all at once)."""
     from src.services.xbot.scheduler import job_generate_predictions
     import asyncio
     task = asyncio.create_task(job_generate_predictions(force=True))
@@ -429,12 +493,12 @@ async def action_bulk_approve(
     db: AsyncSession = Depends(get_db),
     _=_Admin,
 ):
-    """Bulk approve pending predictions by ID list."""
+    """Bulk approve pending/rejected predictions by ID list."""
     if not body.ids:
         return {"ok": True, "approved": 0}
     await db.execute(
         update(XBotPrediction)
-        .where(XBotPrediction.id.in_(body.ids), XBotPrediction.status == "pending")
+        .where(XBotPrediction.id.in_(body.ids), XBotPrediction.status.in_(["pending", "rejected"]))
         .values(status="approved")
     )
     await db.commit()

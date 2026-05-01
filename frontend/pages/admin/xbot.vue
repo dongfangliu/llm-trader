@@ -21,6 +21,41 @@ const historyStatus = ref('')
 const previewUrl = ref('')
 const previewVisible = ref(false)
 
+// ─── Candidates ────────────────────────────────────────────────────────────────
+const candidates = ref<any[]>([])
+const candidatesLoading = ref(false)
+const generatingSymbols = ref<Set<string>>(new Set())
+function isGenerating(symbol: string) { return generatingSymbols.value.has(symbol) }
+
+async function scanCandidates() {
+  candidatesLoading.value = true
+  try {
+    const res = await api.get('/api/admin/xbot/candidates', { headers: getAdminHeaders() })
+    candidates.value = res.data.candidates || []
+    if (!candidates.value.length) showMsg('未扫描到备选标的', 'err')
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '扫描失败', 'err')
+  } finally { candidatesLoading.value = false }
+}
+
+async function generateSingle(c: any) {
+  generatingSymbols.value = new Set([...generatingSymbols.value, c.symbol])
+  try {
+    await api.post('/api/admin/xbot/actions/generate-single', {
+      symbol: c.symbol, market: c.market, name: c.name, hot_rank: c.hot_rank ?? 0,
+    }, { headers: getAdminHeaders() })
+    showMsg(`${c.name} 分析生成成功`)
+    candidates.value = candidates.value.map(x => x.symbol === c.symbol ? { ...x, already_generated: true, existing_status: 'pending' } : x)
+    await loadTodayPreds()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || `${c.name} 生成失败`, 'err')
+  } finally {
+    const s = new Set(generatingSymbols.value)
+    s.delete(c.symbol)
+    generatingSymbols.value = s
+  }
+}
+
 const pendingPreds  = computed(() => todayPreds.value.filter(p => p.status === 'pending'))
 const approvedPreds = computed(() => todayPreds.value.filter(p => p.status === 'approved'))
 const settledPreds  = computed(() => todayPreds.value.filter(p => p.status === 'settled' || p.status === 'posted'))
@@ -194,6 +229,8 @@ function toggleSelectAll(preds: any[], e: Event) {
 }
 const selectedPendingIds  = computed(() => pendingPreds.value.filter(p => selectedSet.value.has(p.id)).map(p => p.id))
 const selectedApprovedIds = computed(() => approvedPreds.value.filter(p => selectedSet.value.has(p.id)).map(p => p.id))
+const selectedHistoryIds  = computed(() => historyPreds.value.filter(p => selectedSet.value.has(p.id)).map(p => p.id))
+const selectedHistoryRejectedIds = computed(() => historyPreds.value.filter(p => selectedSet.value.has(p.id) && p.status === 'rejected').map(p => p.id))
 
 const batchLoading = ref('')
 async function bulkApproveSelected() {
@@ -219,6 +256,34 @@ async function bulkRejectSelected(sourceIds: number[]) {
     const idSet = new Set(sourceIds)
     selectedIds.value = selectedIds.value.filter(id => !idSet.has(id))
     await loadTodayPreds()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '批量操作失败', 'err')
+  } finally { batchLoading.value = '' }
+}
+
+async function bulkRestoreHistory(ids: number[]) {
+  if (!ids.length) return
+  batchLoading.value = 'restore'
+  try {
+    await api.post('/api/admin/xbot/actions/bulk-approve', { ids }, { headers: getAdminHeaders() })
+    showMsg(`${ids.length} 条记录已恢复为已通过`)
+    const idSet = new Set(ids)
+    selectedIds.value = selectedIds.value.filter(id => !idSet.has(id))
+    await loadHistory()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '批量操作失败', 'err')
+  } finally { batchLoading.value = '' }
+}
+
+async function bulkRejectHistory(ids: number[]) {
+  if (!ids.length) return
+  batchLoading.value = 'histReject'
+  try {
+    await api.post('/api/admin/xbot/actions/bulk-reject', { ids }, { headers: getAdminHeaders() })
+    showMsg(`${ids.length} 条记录已废弃`)
+    const idSet = new Set(ids)
+    selectedIds.value = selectedIds.value.filter(id => !idSet.has(id))
+    await loadHistory()
   } catch (e: any) {
     showMsg(e.response?.data?.detail || '批量操作失败', 'err')
   } finally { batchLoading.value = '' }
@@ -255,13 +320,35 @@ onMounted(refreshAll)
         </div>
 
         <div class="actions">
-          <button class="primary" :disabled="loading === 'generate'" @click="generatePredictions">
-            {{ loading === 'generate' ? '生成中...' : '生成内部记录' }}
+          <button class="primary" :disabled="candidatesLoading" @click="scanCandidates">
+            {{ candidatesLoading ? '扫描中...' : '扫描备选标的' }}
           </button>
           <button class="secondary" @click="approveAll">全部通过</button>
           <button class="secondary" :disabled="loading === 'settle'" @click="settleRecords">
             {{ loading === 'settle' ? '结算中...' : '结算记录' }}
           </button>
+        </div>
+
+        <!-- 备选标的 bucket -->
+        <div v-if="candidates.length" class="group">
+          <div class="group-title" style="margin-bottom:10px">
+            备选标的 <span>{{ candidates.length }}</span>
+            <span style="font-size:11px;color:#6b7280;margin-left:6px">逐条确认后生成 AI 分析</span>
+          </div>
+          <div v-for="c in candidates" :key="c.symbol" class="record" style="cursor:default">
+            <div class="record-main">
+              <strong>{{ c.name }}</strong>
+              <span>{{ c.market.toUpperCase() }} / {{ c.symbol }} / 热度排名 {{ c.hot_rank ?? '-' }}</span>
+            </div>
+            <div class="record-actions">
+              <span v-if="c.already_generated" :style="`color:${statusColor[c.existing_status] ?? '#6b7280'};font-size:12px;font-weight:600`">
+                {{ statusLabel[c.existing_status] ?? '已生成' }}
+              </span>
+              <button v-else class="small ok" :disabled="isGenerating(c.symbol)" @click="generateSingle(c)">
+                {{ isGenerating(c.symbol) ? '生成中...' : '确认生成' }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- 待审核 bucket (inline with checkboxes) -->
@@ -349,6 +436,22 @@ onMounted(refreshAll)
             <option value="rejected">已拒绝</option>
           </select>
         </div>
+        <!-- 历史档案批量操作栏 -->
+        <div v-if="historyPreds.length" style="display:flex;align-items:center;gap:8px;padding:10px 0 6px;flex-wrap:wrap">
+          <input type="checkbox" :checked="isAllSelected(historyPreds)" @change="toggleSelectAll(historyPreds, $event)" style="width:15px;height:15px;cursor:pointer;accent-color:#2563eb">
+          <span style="font-size:13px;color:#6b7280">{{ selectedHistoryIds.length ? `已选 ${selectedHistoryIds.length} 条` : '全选' }}</span>
+          <template v-if="selectedHistoryIds.length">
+            <button class="small ok" :disabled="!selectedHistoryRejectedIds.length || batchLoading === 'restore'"
+              @click="bulkRestoreHistory(selectedHistoryRejectedIds)">
+              {{ batchLoading === 'restore' ? '...' : `恢复已拒绝(${selectedHistoryRejectedIds.length})` }}
+            </button>
+            <button class="small danger" :disabled="batchLoading === 'histReject'"
+              @click="bulkRejectHistory(selectedHistoryIds)">
+              {{ batchLoading === 'histReject' ? '...' : `批量废弃(${selectedHistoryIds.length})` }}
+            </button>
+          </template>
+        </div>
+
         <div class="table">
           <div v-for="p in historyPreds" :key="p.id" class="row history-row" @click="openDetail(p)">
             <input type="checkbox" :checked="isSelected(p.id)" @change="toggleSelect(p.id, $event)" @click.stop style="width:15px;height:15px;cursor:pointer;accent-color:#2563eb">
