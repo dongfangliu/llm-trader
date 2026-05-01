@@ -154,6 +154,10 @@ def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+class BulkActionRequest(BaseModel):
+    ids: List[int]
+
+
 class XBotSettingsUpdate(BaseModel):
     xbot_enabled: Optional[str] = None
     xbot_operation_mode: Optional[str] = None
@@ -273,6 +277,17 @@ async def list_predictions(
     result = await db.execute(q)
     predictions = result.scalars().all()
     return [_pred_dict(p) for p in predictions]
+
+
+@router.get("/predictions/{prediction_id}")
+async def get_prediction_detail(
+    prediction_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Return full detail for a single prediction."""
+    pred = await _get_prediction(db, prediction_id)
+    return _pred_dict(pred)
 
 
 @router.get("/predictions/{prediction_id}/card-preview")
@@ -402,6 +417,46 @@ async def action_settle(
         task = asyncio.create_task(_settle_all())
     task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] settle task error: {t.exception()}"))
     return {"ok": True, "message": f"Settlement started for market={market or 'all'}"}
+
+
+# ---------------------------------------------------------------------------
+# Bulk approve / reject
+# ---------------------------------------------------------------------------
+
+@router.post("/actions/bulk-approve")
+async def action_bulk_approve(
+    body: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Bulk approve pending predictions by ID list."""
+    if not body.ids:
+        return {"ok": True, "approved": 0}
+    await db.execute(
+        update(XBotPrediction)
+        .where(XBotPrediction.id.in_(body.ids), XBotPrediction.status == "pending")
+        .values(status="approved")
+    )
+    await db.commit()
+    return {"ok": True, "approved": len(body.ids)}
+
+
+@router.post("/actions/bulk-reject")
+async def action_bulk_reject(
+    body: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Bulk reject pending/approved predictions by ID list."""
+    if not body.ids:
+        return {"ok": True, "rejected": 0}
+    await db.execute(
+        update(XBotPrediction)
+        .where(XBotPrediction.id.in_(body.ids), XBotPrediction.status.in_(["pending", "approved"]))
+        .values(status="rejected")
+    )
+    await db.commit()
+    return {"ok": True, "rejected": len(body.ids)}
 
 
 # ---------------------------------------------------------------------------
