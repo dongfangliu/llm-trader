@@ -20,14 +20,16 @@ export function renderDataRecord(p: CardPayload): any {
   const DIM    = 'rgba(17,17,17,0.62)'
   const DIMMER = 'rgba(17,17,17,0.44)'
   const BORDER = 'rgba(17,17,17,0.18)'
-  const BRAND  = '#3D4FA8'
-  const bg     = `linear-gradient(160deg, rgba(138,104,32,0.09) 0%, transparent 40%), #F0EDE6`
+  const BRAND_COLOR = '#3D4FA8'
+  const BG_COLOR = '#F0EDE6'
+  const BG_IMAGE = 'linear-gradient(160deg, rgba(138,104,32,0.09) 0%, transparent 40%)'
 
   return h('div', {
     display: 'flex', flexDirection: 'column',
     width: '100%', height: '100%',
     padding: '52px 64px 48px',
-    background: bg,
+    backgroundColor: BG_COLOR,
+    backgroundImage: BG_IMAGE,
     fontFamily: MONO, color: TEXT, boxSizing: 'border-box',
   },
 
@@ -37,7 +39,7 @@ export function renderDataRecord(p: CardPayload): any {
       marginBottom: '16px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '10px' },
-        h('div', { color: BRAND, fontSize: '20px' }, txt('⬢')),
+        h('div', { color: BRAND_COLOR, fontSize: '20px' }, txt('⬢')),
         h('div', { fontSize: '22px', fontWeight: '700', letterSpacing: '3px' }, txt(brandName)),
         h('div', { color: 'rgba(17,17,17,0.30)' }, txt('·')),
         h('div', { fontSize: '20px', letterSpacing: '3px', color: DIM }, txt('战绩报告')),
@@ -90,10 +92,10 @@ export function renderDataRecord(p: CardPayload): any {
       borderTop: `1px solid ${BORDER}`, paddingTop: '18px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' },
-        h('div', { color: BRAND, fontSize: '16px' }, txt('⬢')),
+        h('div', { color: BRAND_COLOR, fontSize: '16px' }, txt('⬢')),
         h('div', { fontWeight: '700', letterSpacing: '3px', color: TEXT }, txt(brandName)),
         h('div', { opacity: '0.3' }, txt('·')),
-        h('div', { color: BRAND, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),
+        h('div', { color: BRAND_COLOR, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),
       ),
       h('div', { fontSize: '16px', letterSpacing: '2px', color: DIMMER }, txt('仅供研究参考，不构成投资建议')),
     ),

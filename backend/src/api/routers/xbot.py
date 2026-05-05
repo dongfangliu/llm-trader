@@ -109,19 +109,83 @@ async def public_research_detail(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date")
 
+    pred = await _get_public_settled_prediction(db, market, symbol, pred_date)
+    config = await _load_config(db)
+    return {"record": _public_pred_dict(pred, config)}
+
+
+@public_router.get("/research/{market}/{symbol}/{prediction_date}/card")
+async def public_research_card(
+    market: str,
+    symbol: str,
+    prediction_date: str,
+    variant: str = Query(default="promise", pattern="^(promise|proof)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public image for a settled research record.
+
+    Only settled records can render here, so pending/internal predictions never
+    get a public image URL.
+    """
+    try:
+        pred_date = date.fromisoformat(prediction_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+
+    pred = await _get_public_settled_prediction(db, market, symbol, pred_date)
+    config = await _load_config(db)
+
+    from src.services.xbot.card_service import generate_prediction_card_set, generate_result_card_set
+    from src.services.xbot.result_service import get_accuracy_stats
+
+    stats = await get_accuracy_stats(db)
+    acc_all = stats.get("all", {})
+    product_url = config.get("xbot_product_url", "")
+    brand_name = await _get_app_name(db)
+
+    if variant == "proof":
+        cards = await generate_result_card_set(
+            pred,
+            accuracy_all=acc_all.get("label", "—"),
+            product_url=product_url,
+            brand_name=brand_name,
+        )
+    else:
+        cards = await generate_prediction_card_set(
+            pred,
+            product_url=product_url,
+            brand_name=brand_name,
+            accuracy_all=acc_all.get("label", "—"),
+        )
+
+    png = cards.get(variant)
+    if not png:
+        raise HTTPException(status_code=502, detail=f"Card generation failed for variant: {variant}")
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+async def _get_public_settled_prediction(
+    db: AsyncSession,
+    market: str,
+    symbol: str,
+    prediction_date: date,
+) -> XBotPrediction:
     result = await db.execute(
         select(XBotPrediction).where(
             XBotPrediction.status == "settled",
             XBotPrediction.market == market.lower(),
             XBotPrediction.symbol == symbol.upper(),
-            XBotPrediction.prediction_date == pred_date,
+            XBotPrediction.prediction_date == prediction_date,
         )
     )
     pred = result.scalar_one_or_none()
     if not pred:
         raise HTTPException(status_code=404, detail="Record not found")
-    config = await _load_config(db)
-    return {"record": _public_pred_dict(pred, config)}
+    return pred
 
 
 def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
@@ -137,6 +201,8 @@ def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
         "predicted_direction": p.predicted_direction,
         "confidence": p.confidence,
         "close_price": p.close_price,
+        "target_price": p.target_price,
+        "stop_loss": p.stop_loss,
         "analysis_summary": p.analysis_summary,
         "market_diagnosis": p.market_diagnosis,
         "opportunity_assessment": p.opportunity_assessment,

@@ -9,9 +9,10 @@ export function renderPromise(p: CardPayload): any {
   const dir     = getDir(p)
   const isLight = dir === 'up'
   const T       = isLight ? CL : { ...C, text: C.TEXT, dim: C.DIM, dimmer: C.DIMMER, border: C.BORDER }
-  const bg      = isLight
-    ? `linear-gradient(180deg, rgba(194,53,53,0.07) 0%, transparent 35%), ${CL.BG}`
-    : `linear-gradient(180deg, rgba(107,127,212,0.06) 0%, transparent 35%), ${C.BG}`
+  const bgColor = isLight ? CL.BG : C.BG
+  const bgImage = isLight
+    ? 'linear-gradient(180deg, rgba(194,53,53,0.07) 0%, transparent 35%)'
+    : 'linear-gradient(180deg, rgba(107,127,212,0.06) 0%, transparent 35%)'
   const sigColor = isLight
     ? (dir === 'up' ? CL.UP : dir === 'down' ? CL.DOWN : CL.HOLD)
     : (dir === 'up' ? C.UP  : dir === 'down' ? C.DOWN  : C.HOLD)
@@ -40,7 +41,8 @@ export function renderPromise(p: CardPayload): any {
     display: 'flex', flexDirection: 'column',
     width: '100%', height: '100%',
     padding: '52px 64px',
-    background: bg,
+    backgroundColor: bgColor,
+    backgroundImage: bgImage,
     fontFamily: MONO,
     color: textColor,
     boxSizing: 'border-box',

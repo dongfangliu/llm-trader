@@ -27,10 +27,11 @@ export function renderProof(p: CardPayload): any {
   const DIM    = 'rgba(17,17,17,0.62)'
   const DIMMER = 'rgba(17,17,17,0.44)'
   const BORDER = 'rgba(17,17,17,0.18)'
-  const BRAND  = '#3D4FA8'
-  const bg     = correct
-    ? `linear-gradient(160deg, rgba(26,122,74,0.06) 0%, transparent 45%), #F5F2EC`
-    : `linear-gradient(160deg, rgba(194,53,53,0.06) 0%, transparent 45%), #F5F2EC`
+  const BRAND_COLOR = '#3D4FA8'
+  const BG_COLOR = '#F5F2EC'
+  const BG_IMAGE = correct
+    ? 'linear-gradient(160deg, rgba(26,122,74,0.06) 0%, transparent 45%)'
+    : 'linear-gradient(160deg, rgba(194,53,53,0.06) 0%, transparent 45%)'
   const textColor = '#111111'
   const date = p.target_date ?? p.prediction_date
 
@@ -38,7 +39,8 @@ export function renderProof(p: CardPayload): any {
     display: 'flex', flexDirection: 'column',
     width: '100%', height: '100%',
     padding: '52px 64px',
-    background: bg,
+    backgroundColor: BG_COLOR,
+    backgroundImage: BG_IMAGE,
     fontFamily: MONO, color: textColor, boxSizing: 'border-box',
   },
 
@@ -128,10 +130,10 @@ export function renderProof(p: CardPayload): any {
       borderTop: `1px solid ${BORDER}`, paddingTop: '18px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' },
-        h('div', { color: BRAND, fontSize: '16px' }, txt('⬢')),
+        h('div', { color: BRAND_COLOR, fontSize: '16px' }, txt('⬢')),
         h('div', { fontWeight: '700', letterSpacing: '3px', color: textColor }, txt(brandName)),
         h('div', { opacity: '0.3' }, txt('·')),
-        h('div', { color: BRAND, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),
+        h('div', { color: BRAND_COLOR, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),
       ),
       h('div', { fontSize: '16px', letterSpacing: '2px', color: DIMMER }, txt('仅供研究参考，不构成投资建议')),
     ),

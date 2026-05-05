@@ -41,11 +41,12 @@ export function renderSummary(p: CardPayload): any {
                  : 'A  股'
 
   // Background gradient per market
-  const bg = summaryMarket === 'HK'
-    ? `linear-gradient(180deg, rgba(43,200,132,0.07) 0%, transparent 38%), ${CL.BG}`
+  const bgColor = CL.BG
+  const bgImage = summaryMarket === 'HK'
+    ? 'linear-gradient(180deg, rgba(43,200,132,0.07) 0%, transparent 38%)'
     : summaryMarket === 'US'
-    ? `linear-gradient(180deg, rgba(107,127,212,0.07) 0%, transparent 38%), ${CL.BG}`
-    : `linear-gradient(180deg, rgba(194,53,53,0.07) 0%, transparent 38%), ${CL.BG}`
+    ? 'linear-gradient(180deg, rgba(107,127,212,0.07) 0%, transparent 38%)'
+    : 'linear-gradient(180deg, rgba(194,53,53,0.07) 0%, transparent 38%)'
 
   const TEXT    = '#111111'
   const DIM     = 'rgba(17,17,17,0.50)'
@@ -114,7 +115,8 @@ export function renderSummary(p: CardPayload): any {
     display: 'flex', flexDirection: 'column',
     width: '100%', height: '100%',
     padding: '52px 64px',
-    background: bg,
+    backgroundColor: bgColor,
+    backgroundImage: bgImage,
     fontFamily: MONO,
     color: TEXT,
     boxSizing: 'border-box',
