@@ -15,6 +15,7 @@ const inviteInput = ref('')
 const inviteMsg = ref<{ type: 'ok' | 'err'; text: string } | null>(null)
 const inviteLoading = ref(false)
 const copiedInvite = ref(false)
+const copiedInviteLink = ref(false)
 const appName = ref(DEFAULT_APP_NAME)
 
 const TIER_LABELS: Record<string, string> = { free: '免费版', basic: '标准版', premium: '专业版' }
@@ -70,6 +71,22 @@ function handleLogout() {
 
 const tier = computed(() => auth.user?.tier ?? 'free')
 const tierLabel = computed(() => TIER_LABELS[tier.value] ?? tier.value)
+const inviteLink = computed(() => {
+  if (typeof window === 'undefined' || !auth.user?.invite_code) return ''
+  const url = new URL('/', window.location.origin)
+  url.searchParams.set('market', 'a')
+  url.searchParams.set('symbol', '600519')
+  url.searchParams.set('invite', auth.user.invite_code)
+  return url.toString()
+})
+
+function copyInviteLink() {
+  if (!inviteLink.value) return
+  navigator.clipboard?.writeText(inviteLink.value).then(() => {
+    copiedInviteLink.value = true
+    setTimeout(() => { copiedInviteLink.value = false }, 2000)
+  })
+}
 </script>
 
 <template>
@@ -164,6 +181,17 @@ const tierLabel = computed(() => TIER_LABELS[tier.value] ?? tier.value)
                 {{ copiedInvite ? '已复制 ✓' : '复制' }}
               </button>
             </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <p style="font-size: 12px; color: #8e8e93; margin: 0 0 6px;">默认邀请链接</p>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="flex: 1; min-width: 0; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 10px; font-size: 12px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ inviteLink }}</div>
+              <button @click="copyInviteLink" style="height: 40px; padding: 0 16px; background: #007aff; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
+                {{ copiedInviteLink ? '已复制 ✓' : '复制链接' }}
+              </button>
+            </div>
+            <p style="font-size: 12px; color: #8e8e93; margin: 6px 0 0;">分享分析结果时会自动换成对应股票链接，并携带你的邀请码。</p>
           </div>
 
           <!-- Use friend's invite code -->

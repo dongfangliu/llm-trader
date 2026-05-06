@@ -119,7 +119,7 @@ export async function generateStatementCardBlob(p: PredictionCardParams): Promis
   if (typeof window === 'undefined') throw new Error('SSR not supported')
 
   const { stockName, stockCode, market, action, confidence, latestPrice, targetPrice, stopLoss,
-    opportunityGrade, reasonExcerpt, analyzedAt, tier, appName } = p
+    opportunityGrade, reasonExcerpt, analyzedAt, tier, appName, appBaseUrl } = p
 
   const isBuy  = action === 'buy'
   const isSell = action === 'sell'
@@ -366,8 +366,8 @@ export async function generateStatementCardBlob(p: PredictionCardParams): Promis
   }
 
   // ── VIRAL HOOK ────────────────────────────────────────────────
-  const hookLine1 = isBuy ? '我看好它了' : isSell ? '我已锁定收益' : '我选择等待'
-  const hookLine2 = isBuy ? '你的判断呢？' : isSell ? '你的策略呢？' : '这个机会值得等'
+  const hookLine1 = isBuy ? '我在看技术面' : isSell ? '我在观察风险' : '我选择等待'
+  const hookLine2 = isBuy ? '你的判断呢？' : isSell ? '你的策略呢？' : '这个形态值得复盘'
   ctx.font = `500 17px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.68)'
   ctx.fillText(hookLine1, W / 2, 645)
   ctx.font = `900 32px ${F}`; ctx.fillStyle = '#ffffff'
@@ -375,7 +375,7 @@ export async function generateStatementCardBlob(p: PredictionCardParams): Promis
   ctx.fillText(hookLine2, W / 2, 690)
   ctx.shadowBlur = 0
 
-  // ── BRANDING ──────────────────────────────────────────────────
+  // ── QR + BRANDING ─────────────────────────────────────────────
   const divG = ctx.createLinearGradient(0, 0, W, 0)
   divG.addColorStop(0, 'rgba(255,255,255,0)')
   divG.addColorStop(0.2, 'rgba(255,255,255,0.2)')
@@ -384,14 +384,46 @@ export async function generateStatementCardBlob(p: PredictionCardParams): Promis
   ctx.strokeStyle = divG; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(0, 722); ctx.lineTo(W, 722); ctx.stroke()
 
-  ctx.font = `700 14px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.9)'
-  ctx.fillText(appName, W / 2, 750)
-  ctx.font = `400 12px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.4)'
-  ctx.fillText(formatDate(analyzedAt), W / 2, 770)
+  const qrUrl = appBaseUrl || (typeof window !== 'undefined' ? window.location.origin : 'https://example.com')
+  const qrSize = 92
+  const qrX = 56
+  const qrY = 744
+  try {
+    const QRCode = (await import('qrcode')) as typeof import('qrcode')
+    const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+      width: qrSize * DPR,
+      margin: 1,
+      color: { dark: '#1C1C1E', light: '#FFFFFF' },
+    })
+    await new Promise<void>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => { ctx.drawImage(img, qrX, qrY, qrSize, qrSize); resolve() }
+      img.onerror = reject
+      img.src = qrDataUrl
+    })
+  } catch {
+    drawQR(ctx, qrX, qrY, qrSize, '#1C1C1E', '#FFFFFF')
+  }
+
+  const ctaX = qrX + qrSize + 28
+  ctx.textAlign = 'left'
+  ctx.font = `800 24px ${F}`; ctx.fillStyle = '#ffffff'
+  ctx.fillText('扫码分析同一只股票', ctaX, qrY + 26)
+  ctx.font = `500 14px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.72)'
+  ctx.fillText(qrUrl.includes('invite=') ? '注册后双方各得 +10 次分析额度' : '打开后自动填入标的代码', ctaX, qrY + 52)
+  ctx.font = `700 13px ${F}`; ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.fillText(appName, ctaX, qrY + 78)
+
+  ctx.font = `400 11px ${M}`; ctx.fillStyle = 'rgba(255,255,255,0.42)'
+  const shownUrl = qrUrl.length > 44 ? `${qrUrl.slice(0, 41)}...` : qrUrl
+  ctx.fillText(shownUrl, ctaX, qrY + 96)
+
+  ctx.font = `400 12px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.36)'
+  ctx.fillText(formatDate(analyzedAt), W / 2, 842)
 
   // ── DISCLAIMER ────────────────────────────────────────────────
   ctx.font = `400 10px ${F}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.22)'
-  ctx.fillText('AI 生成 · 仅供技术分析参考 · 不构成投资建议 · 投资有风险，入市须谨慎', W / 2, 852)
+  ctx.fillText('AI 生成 · 仅供技术分析参考 · 不构成投资建议 · 投资有风险，入市须谨慎', W / 2, 866)
 
   // ── BOTTOM STRIP ──────────────────────────────────────────────
   ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(0, 896, W, 4)
@@ -804,13 +836,13 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
   }
 
   ctx.font = `800 40px ${F}`; ctx.textAlign = 'left'; ctx.fillStyle = '#1C1C1E'
-  ctx.fillText('我已布局，你呢？', ctaX, qrStartY + 46)
+  ctx.fillText('一起看技术面', ctaX, qrStartY + 46)
 
   ctx.font = `400 22px ${F}`; ctx.fillStyle = '#636366'
-  ctx.fillText('比分析师早 3 小时拿到信号', ctaX, qrStartY + 86)
+  ctx.fillText('扫码分析同一只股票', ctaX, qrStartY + 86)
 
   ctx.font = `600 22px ${F}`; ctx.fillStyle = accentText
-  ctx.fillText('→  免费解锁每日 AI 研判', ctaX, qrStartY + 128)
+  ctx.fillText('→  输出仅作研究参考', ctaX, qrStartY + 128)
 
   ctx.font = `400 15px ${M}`; ctx.fillStyle = '#AEAEB2'
   ctx.fillText(qrUrl, ctaX, qrStartY + 156)

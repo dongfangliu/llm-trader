@@ -7,11 +7,14 @@ const symbol = computed(() => String(route.params.symbol || '').toUpperCase())
 const { data } = await useAsyncData(`research-${market.value}-${symbol.value}`, () =>
   $fetch<any>(`/api/public/research/${market.value}/${symbol.value}`).catch(() => ({ records: [] }))
 )
+if (!(data.value?.records || []).length) {
+  throw createError({ statusCode: 404, statusMessage: '暂无已结算复盘记录' })
+}
 const first = computed(() => data.value?.records?.[0])
 const requestUrl = useRequestURL()
 const displayName = computed(() => first.value?.symbol_name || symbol.value)
-const title = computed(() => `${displayName.value}(${symbol.value}) 模型复盘历史记录`)
-const description = computed(() => `${displayName.value} ${symbol.value} 的已结算模型复盘历史，展示历史方向、实际涨跌和命中情况，可进入AI分析工具自行研究。`)
+const title = computed(() => `${displayName.value}(${symbol.value}) AI K线分析复盘/技术面历史记录`)
+const description = computed(() => `${displayName.value} ${symbol.value} 的已结算AI K线分析复盘，展示历史技术面方向、实际涨跌、命中与失误记录，可进入AI分析工具自行研究。`)
 usePublicSeo({
   title,
   description,
@@ -29,7 +32,7 @@ useJsonLd('research-symbol-breadcrumb-jsonld', () => breadcrumbJsonLd(requestUrl
     <header class="hero">
       <NuxtLink to="/research" class="back">复盘档案</NuxtLink>
       <h1>{{ first?.symbol_name || symbol }} <span>{{ symbol }}</span></h1>
-      <p>{{ MARKET_LABELS[market] || market }} 已结算模型复盘记录。页面只展示历史结果，不提供未结算预测。</p>
+      <p>{{ MARKET_LABELS[market] || market }} 已结算AI K线分析复盘记录。页面只展示历史结果，命中和失误都会保留，不提供未结算预测。</p>
       <div class="actions">
         <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>

@@ -30,6 +30,7 @@ def _user_to_out(user: User) -> UserOut:
         is_admin=bool(user.is_admin),
         bonus_quota=user.bonus_quota or 0,
         invite_code=user.invite_code,
+        used_invite_code=user.used_invite_code,
     )
 
 

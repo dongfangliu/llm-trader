@@ -3,6 +3,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { generatePredictionCardBlob, generateStatementCardBlob } from '~/lib/shareCards/index'
 import type { PredictionCardParams } from '~/lib/shareCards/index'
 import { DEFAULT_APP_NAME } from '~/constants/app'
+import { useAuthStore } from '~/stores/auth'
 
 const props = defineProps<{
   modelValue: boolean
@@ -18,6 +19,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
 }>()
 
+const auth = useAuthStore()
+
 // ── State ──────────────────────────────────────────────────────────────────
 const closing = ref(false)
 const socialBlob = ref<Blob | null>(null)
@@ -32,6 +35,7 @@ const swipeStartX = ref<number | null>(null)
 const generatingSocial = ref(false)
 const generatingArchive = ref(false)
 const savedCardParams = ref<PredictionCardParams | null>(null)
+const copiedLink = ref(false)
 
 // ── Object URL lifecycle ────────────────────────────────────────────────────
 let socialUrlRef: string | null = null
@@ -74,6 +78,20 @@ const actionColor = computed(() =>
 )
 const confidence = computed<number | null>(() => props.result?.result?.confidence ?? null)
 const stockName = computed(() => props.result?.data?.name || props.result?.data?.symbol || '')
+const landingUrl = computed(() => {
+  if (typeof window === 'undefined') return ''
+  const r = props.result
+  const m = props.market || r?.data?.market || 'a'
+  const s = props.symbol || r?.data?.symbol || ''
+  const url = new URL('/', window.location.origin)
+  if (m) url.searchParams.set('market', String(m).toLowerCase())
+  if (s) url.searchParams.set('symbol', String(s).toUpperCase())
+  if (auth.isLoggedIn && auth.user?.invite_code) {
+    url.searchParams.set('invite', auth.user.invite_code)
+  }
+  return url.toString()
+})
+const hasInviteReward = computed(() => landingUrl.value.includes('invite='))
 
 const activeImageUrl = computed(() =>
   mode.value === 'archive' ? archiveImageUrl.value : socialImageUrl.value
@@ -112,7 +130,7 @@ function buildCardParams(): PredictionCardParams {
     analyzedAt: analyzedAt.value,
     tier: props.tier || 'free',
     appName: props.appName || DEFAULT_APP_NAME,
-    appBaseUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
+    appBaseUrl: landingUrl.value || (typeof window !== 'undefined' ? window.location.origin : undefined),
     marketDiagnosis: r?.result?.narrative?.market_diagnosis || r?.result?.market_diagnosis || '',
     opportunityAssessment: r?.result?.narrative?.opportunity_assessment || r?.result?.opportunity_assessment || '',
     riskAnalysis: r?.result?.narrative?.risk_analysis || r?.result?.risk_analysis || '',
@@ -221,6 +239,13 @@ async function handleSave(isArchive = false) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+async function handleCopyLink() {
+  if (!landingUrl.value) return
+  await navigator.clipboard?.writeText(landingUrl.value)
+  copiedLink.value = true
+  setTimeout(() => { copiedLink.value = false }, 1800)
+}
 </script>
 
 <template>
@@ -289,6 +314,22 @@ async function handleSave(isArchive = false) {
 
         <!-- Social mode -->
         <template v-if="mode === 'social'">
+          <div style="margin: 0 20px 10px; padding: 10px 12px; background: rgba(60,60,67,0.06); border-radius: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+              <div style="min-width: 0;">
+                <div style="font-size: 13px; font-weight: 700; color: #1c1c1e;">扫码分析同一只股票</div>
+                <div style="font-size: 12px; color: #8e8e93; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ landingUrl }}</div>
+              </div>
+              <button
+                type="button"
+                @click="handleCopyLink"
+                style="height: 34px; padding: 0 12px; border: none; border-radius: 9px; background: #fff; color: #007aff; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0;"
+              >
+                {{ copiedLink ? '已复制' : '复制链接' }}
+              </button>
+            </div>
+            <div v-if="hasInviteReward" style="font-size: 12px; color: #16a34a; margin-top: 6px; font-weight: 600;">注册后双方各得 +10 次分析额度</div>
+          </div>
           <button
             class="sps2-primary-btn sps2-cta-shimmer"
             :style="{ background: `linear-gradient(135deg, ${actionColor}bb 0%, ${actionColor} 100%)` }"

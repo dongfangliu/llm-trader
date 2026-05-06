@@ -47,6 +47,8 @@ def decode_token(token: str) -> Optional[dict]:
 
 async def register_user(db: AsyncSession, email: str, password: str, username: Optional[str] = None, invite_code: Optional[str] = None) -> User:
     """Register a new user."""
+    normalized_invite_code = invite_code.strip().upper() if invite_code else None
+
     # Check email not already used
     result = await db.execute(select(User).where(User.email == email.lower().strip()))
     existing = result.scalar_one_or_none()
@@ -65,9 +67,13 @@ async def register_user(db: AsyncSession, email: str, password: str, username: O
         except Exception:
             pass
     if require_invite:
-        if not invite_code:
+        if not normalized_invite_code:
             raise HTTPException(status_code=400, detail="注册需要邀请码")
-        result = await db.execute(select(User).where(User.invite_code == invite_code.upper()))
+        result = await db.execute(select(User).where(User.invite_code == normalized_invite_code))
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="邀请码无效")
+    elif normalized_invite_code:
+        result = await db.execute(select(User).where(User.invite_code == normalized_invite_code))
         if not result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="邀请码无效")
 
@@ -99,8 +105,8 @@ async def register_user(db: AsyncSession, email: str, password: str, username: O
         logging.getLogger(__name__).warning("Failed to send verification email: %s", e)
 
     # Handle invite code
-    if invite_code:
-        await _apply_invite_code(db, user, invite_code)
+    if normalized_invite_code:
+        await _apply_invite_code(db, user, normalized_invite_code)
 
     return user
 
@@ -156,14 +162,15 @@ async def _apply_invite_code(db: AsyncSession, user: User, invite_code: str):
     if user.used_invite_code:
         return  # Already used an invite code
 
-    result = await db.execute(select(User).where(User.invite_code == invite_code.upper()))
+    normalized_invite_code = invite_code.strip().upper()
+    result = await db.execute(select(User).where(User.invite_code == normalized_invite_code))
     inviter = result.scalar_one_or_none()
     if not inviter or inviter.id == user.id:
         return
 
     # Award bonus quota to both
     user.bonus_quota = (user.bonus_quota or 0) + 10
-    user.used_invite_code = invite_code.upper()
+    user.used_invite_code = normalized_invite_code
     inviter.bonus_quota = (inviter.bonus_quota or 0) + 10
     await db.commit()
 

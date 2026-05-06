@@ -289,17 +289,18 @@ async def admin_set_user_quota(
     _: bool = _Admin,
 ):
     """Directly set a user's daily_usage and/or bonus_quota (admin only)."""
+    if req.daily_usage is not None and req.daily_usage < 0:
+        raise HTTPException(status_code=400, detail="daily_usage 不能为负数")
+    if req.bonus_quota is not None and req.bonus_quota < 0:
+        raise HTTPException(status_code=400, detail="bonus_quota 不能为负数")
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if req.daily_usage is not None:
-        if req.daily_usage < 0:
-            raise HTTPException(status_code=400, detail="daily_usage 不能为负数")
         user.daily_usage = req.daily_usage
     if req.bonus_quota is not None:
-        if req.bonus_quota < 0:
-            raise HTTPException(status_code=400, detail="bonus_quota 不能为负数")
         user.bonus_quota = req.bonus_quota
     await db.commit()
     return {
@@ -833,7 +834,7 @@ async def admin_reset_all(
     """Delete all users, devices, and associated records (admin only)."""
     tables = [
         (AnalysisRequest, "analysis_requests"),
-        (AnalysisHistory, "analysis_histories"),
+        (AnalysisHistory, "analysis_history"),
         (UsageLog, "usage_logs"),
         (Device, "device_subscriptions"),
         (User, "users"),

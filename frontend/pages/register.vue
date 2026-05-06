@@ -26,15 +26,15 @@ let cooldownTimer: ReturnType<typeof setInterval> | null = null
 const BENEFITS = [
   { icon: '📊', bg: 'linear-gradient(135deg, #007aff, #3b9eff)', title: '免费分析', desc: '每天 3 次免费深度研判' },
   { icon: '☁', bg: 'linear-gradient(135deg, #34c759, #30d158)', title: '跨设备同步', desc: '任意设备登录，数据不丢失' },
-  { icon: '★', bg: 'linear-gradient(135deg, #ff9500, #ffcc02)', title: '邀请奖励', desc: '邀请好友，获得免费永久额度' },
+  { icon: '★', bg: 'linear-gradient(135deg, #ff9500, #ffcc02)', title: '邀请奖励', desc: '使用邀请码注册，双方各得 +10 次额度' },
   { icon: '↑', bg: 'linear-gradient(135deg, #5856d6, #7c3aed)', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
 ]
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
-    const inv = params.get('invite')
-    if (inv) inviteCode.value = inv
+    const inv = params.get('invite') || localStorage.getItem('pendingInviteCode')
+    if (inv) inviteCode.value = inv.trim().toUpperCase()
   }
   try {
     const res = await api.get('/api/config')
@@ -66,6 +66,9 @@ async function handleRegister() {
   loading.value = true
   try {
     await auth.register(email.value, password.value, inviteCode.value.trim() || undefined)
+    if (inviteCode.value.trim() && typeof window !== 'undefined') {
+      localStorage.removeItem('pendingInviteCode')
+    }
     success.value = true
   } catch (e: any) {
     localError.value = e.response?.data?.detail || '注册失败'
@@ -315,6 +318,14 @@ function handleInviteCodeInput(e: Event) {
               }"
             />
           </div>
+        </div>
+
+        <div v-if="inviteCode" :style="{
+          background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px',
+          padding: '10px 14px', margin: '-8px 0 16px',
+          fontSize: '13px', color: '#15803d', fontWeight: 600,
+        }">
+          已带入邀请码 {{ inviteCode }}，注册成功后双方各得 +10 次分析额度。
         </div>
 
         <!-- Error -->

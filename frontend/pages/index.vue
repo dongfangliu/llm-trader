@@ -49,6 +49,7 @@ const sheetResult = ref<any>(null)
 // ── Form state ──
 const symbol = ref('')
 const market = ref('a')
+const inviteCodeFromRoute = ref('')
 const period = ref('daily')
 const holdingQuantity = ref('')
 const costPrice = ref('')
@@ -149,6 +150,11 @@ function checkDesktop() {
 
 // ── Quota exhausted ──
 const showUpgradeBanner = computed(() => remaining.value !== null && !hasQuota.value)
+const landingPrefilled = computed(() => !!symbol.value.trim() && !!route.query.symbol)
+const inviteRewardText = computed(() => inviteCodeFromRoute.value ? '注册后双方各得 +10 次分析额度' : '')
+const registerPath = computed(() =>
+  inviteCodeFromRoute.value ? `/register?invite=${encodeURIComponent(inviteCodeFromRoute.value)}` : '/register'
+)
 
 // ── Tier display ──
 const tierLabel = computed(() => {
@@ -333,6 +339,13 @@ function ensureMarketSymbols(m: string, rerunQuery = '') {
 function applyRoutePrefill() {
   const queryMarket = typeof route.query.market === 'string' ? route.query.market : ''
   const querySymbol = typeof route.query.symbol === 'string' ? route.query.symbol : ''
+  const queryInvite = typeof route.query.invite === 'string' ? route.query.invite.trim().toUpperCase() : ''
+  if (queryInvite) {
+    inviteCodeFromRoute.value = queryInvite
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pendingInviteCode', queryInvite)
+    }
+  }
   if (queryMarket && VALID_MARKETS.includes(queryMarket)) {
     market.value = queryMarket
     analysisStore.setMarket(queryMarket)
@@ -342,6 +355,7 @@ function applyRoutePrefill() {
     analysisStore.setSymbol(symbol.value)
     selectedSymbolName.value = getSymbolName(symbol.value, market.value)
     ensureMarketSymbols(market.value, symbol.value)
+    activePanel.value = 'analyze'
   }
 }
 
@@ -628,8 +642,12 @@ function handleLogout() {
             <PwaInstallButton :appName="appName" variant="card" />
           </div>
           <div style="display: flex; align-items: center; gap: 10px; margin: 0 0 24px;">
-            <h1 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0; letter-spacing: -0.3px;">分析一支股票</h1>
+            <h1 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0; letter-spacing: -0.3px;">{{ landingPrefilled ? '立即分析该标的' : '分析一支股票' }}</h1>
             <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #7c3aed; background: #ede9fe; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px;">专业版体验中</span>
+          </div>
+          <div v-if="landingPrefilled || inviteRewardText" style="margin: -12px 0 16px; padding: 12px 14px; border-radius: 12px; background: #f0f9ff; border: 1px solid #bae6fd;">
+            <div style="font-size: 14px; font-weight: 700; color: #075985;">已填入 {{ MARKET_LABELS[market] || market }} {{ symbol }}</div>
+            <div v-if="inviteRewardText" style="font-size: 12px; color: #047857; margin-top: 4px; font-weight: 600;">{{ inviteRewardText }}</div>
           </div>
 
           <!-- Market segmented -->
@@ -757,7 +775,7 @@ function handleLogout() {
               color: !symbol.trim() || isAnalyzing ? 'rgba(0,122,255,0.38)' : 'white',
             }"
           >
-            开始分析
+            {{ landingPrefilled ? '立即分析该标的' : '开始分析' }}
           </button>
         </div>
       </div>
@@ -927,7 +945,7 @@ function handleLogout() {
           </button>
           <template v-else>
             <NuxtLink to="/login" style="font-size: 15px; font-weight: 400; color: #007aff; text-decoration: none; padding: 6px 4px;">登录</NuxtLink>
-            <NuxtLink to="/register" style="font-size: 13px; font-weight: 600; color: white; background: #007aff; border-radius: 8px; padding: 6px 12px; text-decoration: none;">注册</NuxtLink>
+            <NuxtLink :to="registerPath" style="font-size: 13px; font-weight: 600; color: white; background: #007aff; border-radius: 8px; padding: 6px 12px; text-decoration: none;">注册</NuxtLink>
           </template>
         </div>
       </template>
@@ -1056,8 +1074,12 @@ function handleLogout() {
         </div>
         <div style="padding: 22px 16px 16px;">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
-            <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.8px; color: #1c1c1e; margin: 0; line-height: 1.1;">今天分析哪只？</h2>
+            <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.8px; color: #1c1c1e; margin: 0; line-height: 1.1;">{{ landingPrefilled ? '立即分析该标的' : '今天分析哪只？' }}</h2>
             <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #7c3aed; background: #ede9fe; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px; line-height: 1.4;">专业版体验中</span>
+          </div>
+          <div v-if="landingPrefilled || inviteRewardText" style="margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #f0f9ff; border: 1px solid #bae6fd;">
+            <div style="font-size: 14px; font-weight: 700; color: #075985;">已填入 {{ MARKET_LABELS[market] || market }} {{ symbol }}</div>
+            <div v-if="inviteRewardText" style="font-size: 12px; color: #047857; margin-top: 4px; font-weight: 600;">{{ inviteRewardText }}</div>
           </div>
           <div style="margin-bottom: 16px;">
             <PwaInstallButton :appName="appName" variant="card" />
@@ -1192,7 +1214,7 @@ function handleLogout() {
         </template>
         <!-- Normal analyze button -->
         <button v-else class="fab-btn" @click="handleAnalyze" :disabled="!symbol.trim() || isAnalyzing">
-          {{ isAnalyzing ? '分析中…' : '开始分析' }}
+          {{ isAnalyzing ? '分析中…' : landingPrefilled ? '立即分析该标的' : '开始分析' }}
         </button>
       </div>
     </template>

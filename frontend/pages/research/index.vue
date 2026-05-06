@@ -6,8 +6,8 @@ const { data } = await useAsyncData('research-index', () =>
 )
 
 const requestUrl = useRequestURL()
-const title = '模型复盘档案 - 已结算AI分析历史记录'
-const description = '查看已结算的模型复盘记录，包含历史方向、实际涨跌和命中情况，可从公开记录进入AI分析工具自行研究。'
+const title = 'AI K线分析复盘档案 - 已结算技术面历史记录'
+const description = '查看已结算的AI K线分析复盘记录，包含历史技术面方向、实际涨跌、命中和失误情况，可从公开记录进入AI分析工具自行研究。'
 usePublicSeo({ title, description, path: '/research' })
 useJsonLd('research-index-breadcrumb-jsonld', breadcrumbJsonLd(requestUrl.origin, [
   { name: SITE_NAME, path: '/' },
@@ -20,7 +20,7 @@ useJsonLd('research-index-breadcrumb-jsonld', breadcrumbJsonLd(requestUrl.origin
     <header class="hero">
       <NuxtLink to="/" class="back">返回分析工具</NuxtLink>
       <h1>模型复盘档案</h1>
-      <p>这里只展示已结算记录，用于观察模型历史表现。未结算内部记录不会公开展示。</p>
+      <p>这里只展示已结算记录，用于观察模型历史表现。命中和失误都会展示，未结算内部记录不会公开展示。</p>
       <div class="actions">
         <NuxtLink class="cta primary" to="/">打开 AI 分析工具</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>

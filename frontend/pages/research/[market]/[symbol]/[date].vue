@@ -21,8 +21,8 @@ const signedPct = computed(() => {
 })
 const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=promise`)
 const cardUrl = computed(() => `${requestUrl.origin}${cardPath.value}`)
-const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算模型复盘`)
-const description = computed(() => `${record.value?.symbol_name || symbol.value} 的历史复盘：当时方向 ${dir.value}，实际涨跌 ${signedPct.value}。仅供研究参考。`)
+const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算AI K线分析复盘`)
+const description = computed(() => `${record.value?.symbol_name || symbol.value} 的AI K线分析历史复盘：当时技术面方向 ${dir.value}，实际涨跌 ${signedPct.value}，记录命中或失误，仅供研究参考。`)
 usePublicSeo({
   title,
   description,
@@ -54,7 +54,7 @@ useJsonLd('research-detail-jsonld', () => [
     <article v-if="record" class="article">
       <header class="article-head">
         <NuxtLink :to="`/research/${market}/${symbol}`" class="back">该标的历史记录</NuxtLink>
-        <h1>{{ record.symbol_name }} {{ record.prediction_date }} 已结算模型复盘</h1>
+        <h1>{{ record.symbol_name }} {{ record.prediction_date }} 已结算AI K线分析复盘</h1>
         <p class="lead">顶部保留当时生成的 Promise 卡片；下方展示目标日后的实际结果。这里只展示已结算历史记录，不构成投资建议。</p>
       </header>
 

@@ -39,6 +39,7 @@ class UserOut(BaseModel):
     is_admin: bool
     bonus_quota: int = 0
     invite_code: Optional[str] = None
+    used_invite_code: Optional[str] = None
 
     class Config:
         from_attributes = True
