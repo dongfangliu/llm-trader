@@ -1,14 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { CORE_STOCKS, MARKET_LABELS, SITE_NAME, analyzePath } from '~/constants/seo'
+
 const route = useRoute()
 const market = computed(() => String(route.params.market || '').toLowerCase())
 const symbol = computed(() => String(route.params.symbol || '').toUpperCase())
+if (!['a', 'hk', 'us'].includes(market.value) || !symbol.value) {
+  throw createError({ statusCode: 404, statusMessage: '未找到该股票页面' })
+}
+const requestUrl = useRequestURL()
+const coreStock = computed(() => CORE_STOCKS.find(item => item.market === market.value && item.symbol === symbol.value))
 
 const { data } = await useAsyncData(`stock-${market.value}-${symbol.value}`, async () => {
   const [bars, names] = await Promise.all([
     $fetch<any>(`/api/market/${market.value}/${symbol.value}`, { query: { period: 'daily', history_days: 180 } }).catch(() => null),
     $fetch<any>('/api/market', { query: { market: market.value, q: symbol.value } }).catch(() => null),
   ])
-  const name = names?.items?.find((i: any) => String(i.symbol).toUpperCase() === symbol.value)?.name || symbol.value
+  const name = names?.items?.find((i: any) => String(i.symbol).toUpperCase() === symbol.value)?.name || coreStock.value?.name || symbol.value
   return { bars, name }
 })
 
@@ -18,14 +26,37 @@ const changePct = computed(() => {
   if (!latest.value || !prev.value?.close) return null
   return ((latest.value.close - prev.value.close) / prev.value.close) * 100
 })
-const title = computed(() => `${data.value?.name || symbol.value}(${symbol.value}) K线技术指标观察`)
-
-useSeoMeta({
-  title: () => title.value,
-  description: () => `${data.value?.name || symbol.value} ${symbol.value} 的K线、MA、RSI、MACD、ATR等技术指标摘要，仅供研究参考。`,
-  ogTitle: () => title.value,
-  ogDescription: () => '股票技术指标工具页，可进入AI分析工具自行研究。',
+const displayName = computed(() => data.value?.name || coreStock.value?.name || symbol.value)
+const marketLabel = computed(() => MARKET_LABELS[market.value] || market.value.toUpperCase())
+const title = computed(() => `${displayName.value}(${symbol.value}) ${marketLabel.value}K线技术指标分析`)
+const description = computed(() => `${displayName.value} ${symbol.value} 的K线、MA均线、RSI、MACD、ATR、成交量等技术指标摘要，可一键进入AI分析工具继续研究。`)
+usePublicSeo({
+  title,
+  description,
+  path: () => `/stocks/${market.value}/${symbol.value}`,
 })
+useJsonLd('stock-detail-jsonld', () => [
+  breadcrumbJsonLd(requestUrl.origin, [
+    { name: SITE_NAME, path: '/' },
+    { name: '股票技术指标工具', path: '/stocks' },
+    { name: `${displayName.value} ${symbol.value}`, path: `/stocks/${market.value}/${symbol.value}` },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: title.value,
+    description: description.value,
+    mainEntityOfPage: `${requestUrl.origin}/stocks/${market.value}/${symbol.value}`,
+    publisher: {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${requestUrl.origin}/icons/icon-512.png`,
+      },
+    },
+  },
+])
 </script>
 
 <template>
@@ -33,8 +64,11 @@ useSeoMeta({
     <header class="hero">
       <NuxtLink to="/stocks" class="back">股票工具</NuxtLink>
       <h1>{{ data?.name || symbol }} <span>{{ symbol }}</span></h1>
-      <p>{{ market.toUpperCase() }} 市场技术指标观察。数据用于研究和工具演示，不构成投资建议。</p>
-      <NuxtLink class="cta" :to="`/?market=${market}&symbol=${symbol}`">用该代码做一次AI分析</NuxtLink>
+      <p>{{ marketLabel }} 市场技术指标观察。数据用于研究和工具演示，不构成投资建议。</p>
+      <div class="actions">
+        <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">分析 {{ data?.name || symbol }}({{ symbol }})</NuxtLink>
+        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">查看专业版权益</NuxtLink>
+      </div>
     </header>
 
     <section v-if="latest" class="panel">
@@ -84,7 +118,10 @@ h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
 h1 span { color: #6b7280; font-size: 22px; }
 h2 { font-size: 20px; margin: 0 0 14px; }
 p { color: #4b5563; line-height: 1.8; }
-.cta { display: inline-flex; align-items: center; height: 42px; padding: 0 16px; margin-top: 10px; background: #2563eb; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.cta.primary { background: #2563eb; color: #fff; }
+.cta.secondary { background: #eef2ff; color: #3730a3; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px; }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .metrics div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }

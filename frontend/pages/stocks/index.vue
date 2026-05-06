@@ -1,32 +1,21 @@
 <script setup lang="ts">
-useSeoMeta({
-  title: '股票技术指标工具 - A股与港股K线观察',
-  description: '按股票代码查看K线数据、MA、RSI、MACD、ATR等技术指标，并可进入AI分析工具自行研究。',
-})
+import { CORE_STOCKS, LEARN_ARTICLES, MARKET_LABELS, SITE_NAME } from '~/constants/seo'
 
-const groups = [
-  {
-    title: 'A股示例',
-    market: 'a',
-    items: [
-      ['600519', '贵州茅台'],
-      ['300750', '宁德时代'],
-      ['002594', '比亚迪'],
-      ['600036', '招商银行'],
-      ['000858', '五粮液'],
-    ],
-  },
-  {
-    title: '港股示例',
-    market: 'hk',
-    items: [
-      ['00700', '腾讯控股'],
-      ['03690', '美团'],
-      ['01810', '小米集团'],
-      ['09988', '阿里巴巴'],
-    ],
-  },
-]
+const requestUrl = useRequestURL()
+const title = '股票技术指标工具 - A股港股美股K线分析入口'
+const description = '按股票代码查看A股、港股、美股K线数据、MA、RSI、MACD、ATR等技术指标，并可一键进入AI分析工具生成研究参考。'
+usePublicSeo({ title, description, path: '/stocks' })
+
+const groups = ['a', 'hk', 'us'].map(market => ({
+  title: `${MARKET_LABELS[market]}示例`,
+  market,
+  items: CORE_STOCKS.filter(item => item.market === market),
+}))
+
+useJsonLd('stocks-breadcrumb-jsonld', breadcrumbJsonLd(requestUrl.origin, [
+  { name: SITE_NAME, path: '/' },
+  { name: '股票技术指标工具', path: '/stocks' },
+]))
 </script>
 
 <template>
@@ -35,6 +24,10 @@ const groups = [
       <NuxtLink to="/" class="back">返回分析工具</NuxtLink>
       <h1>股票技术指标工具</h1>
       <p>查看常见股票的K线数据与技术指标摘要。页面内容仅用于研究记录，不构成投资建议。</p>
+      <div class="actions">
+        <NuxtLink class="cta primary" to="/">打开 AI 分析工具</NuxtLink>
+        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">查看专业版权益</NuxtLink>
+      </div>
     </header>
 
     <section v-for="group in groups" :key="group.market" class="section">
@@ -42,12 +35,12 @@ const groups = [
       <div class="grid">
         <NuxtLink
           v-for="item in group.items"
-          :key="item[0]"
+          :key="item.symbol"
           class="tile"
-          :to="`/stocks/${group.market}/${item[0]}`"
+          :to="`/stocks/${group.market}/${item.symbol}`"
         >
-          <strong>{{ item[1] }}</strong>
-          <span>{{ item[0] }}</span>
+          <strong>{{ item.name }}</strong>
+          <span>{{ item.symbol }}</span>
         </NuxtLink>
       </div>
     </section>
@@ -55,10 +48,10 @@ const groups = [
     <section class="section">
       <h2>指标说明</h2>
       <div class="grid">
-        <NuxtLink class="tile" to="/learn/ma"><strong>MA 均线</strong><span>趋势观察</span></NuxtLink>
-        <NuxtLink class="tile" to="/learn/rsi"><strong>RSI</strong><span>强弱区间</span></NuxtLink>
-        <NuxtLink class="tile" to="/learn/macd"><strong>MACD</strong><span>动能变化</span></NuxtLink>
-        <NuxtLink class="tile" to="/learn/atr"><strong>ATR</strong><span>波动幅度</span></NuxtLink>
+        <NuxtLink v-for="article in LEARN_ARTICLES.slice(0, 8)" :key="article.slug" class="tile" :to="`/learn/${article.slug}`">
+          <strong>{{ article.title }}</strong>
+          <span>{{ article.desc }}</span>
+        </NuxtLink>
       </div>
     </section>
   </main>
@@ -68,6 +61,10 @@ const groups = [
 .seo-page { min-height: 100vh; background: #f8fafc; color: #111827; padding: 24px 16px 56px; }
 .hero, .section { max-width: 920px; margin: 0 auto 18px; }
 .back { color: #2563eb; text-decoration: none; font-weight: 600; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.cta.primary { background: #2563eb; color: #fff; }
+.cta.secondary { background: #eef2ff; color: #3730a3; }
 h1 { font-size: 34px; margin: 22px 0 8px; letter-spacing: 0; }
 h2 { font-size: 20px; margin: 0 0 12px; }
 p { color: #4b5563; line-height: 1.8; max-width: 680px; }

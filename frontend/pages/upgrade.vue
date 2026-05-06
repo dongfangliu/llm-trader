@@ -4,6 +4,7 @@ import { useRoute, useRouter } from '#app'
 import { useAuthStore } from '~/stores/auth'
 import api from '~/lib/api'
 import { DEFAULT_APP_NAME } from '~/constants/app'
+import { SITE_NAME } from '~/constants/seo'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,6 +115,59 @@ const premiumLimit = computed(() => pricing.value?.premium?.daily_limit ?? 15)
 const period = computed(() => pricing.value?.basic?.period ?? '月')
 const freeLimit = computed(() => pricing.value?.free?.daily_limit ?? 3)
 const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
+
+const requestUrl = useRequestURL()
+const seoTitle = 'K线AI分析助手专业版 - 深度分析与高级功能'
+const seoDescription = '了解K线AI分析助手标准版和专业版权益，包含更多每日分析次数、深度研判、持仓智能分析、高级周期、多结果保存和后台分析能力。'
+usePublicSeo({ title: seoTitle, description: seoDescription, path: '/upgrade' })
+useJsonLd('upgrade-offer-jsonld', () => [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: `${SITE_NAME}订阅`,
+    description: seoDescription,
+    brand: { '@type': 'Organization', name: SITE_NAME },
+    offers: [
+      {
+        '@type': 'Offer',
+        name: '标准版',
+        price: basicPrice.value,
+        priceCurrency: 'CNY',
+        availability: 'https://schema.org/InStock',
+        url: `${requestUrl.origin}/upgrade?tier=basic`,
+      },
+      {
+        '@type': 'Offer',
+        name: '专业版',
+        price: premiumPrice.value,
+        priceCurrency: 'CNY',
+        availability: 'https://schema.org/InStock',
+        url: `${requestUrl.origin}/upgrade?tier=premium`,
+      },
+    ],
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: '专业版适合哪些用户？',
+        acceptedAnswer: { '@type': 'Answer', text: '适合需要更高每日分析次数、持仓智能分析、高级周期、多结果保存和后台分析能力的用户。' },
+      },
+      {
+        '@type': 'Question',
+        name: '订阅后如何生效？',
+        acceptedAnswer: { '@type': 'Answer', text: '完成订阅后，在页面中填写订单号并绑定账号，验证通过后即时生效。' },
+      },
+      {
+        '@type': 'Question',
+        name: 'AI分析结果是否构成投资建议？',
+        acceptedAnswer: { '@type': 'Answer', text: '不构成投资建议。页面输出只用于研究参考，用户需要结合自身风险承受能力独立判断。' },
+      },
+    ],
+  },
+])
 </script>
 
 <template>
@@ -301,6 +355,27 @@ const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
       <p style="font-size: 12px; color: #aeaeb2;">支付宝 · 微信支付 · 订阅后填入订单号即时生效</p>
     </div>
 
+    <!-- Benefits copy for SEO and plan comparison -->
+    <section style="padding: 24px 16px 0;">
+      <div style="background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 6px rgba(0,0,0,0.04);">
+        <h2 style="font-size: 20px; font-weight: 800; color: #000; margin: 0 0 10px;">专业版权益</h2>
+        <p style="font-size: 14px; color: #4b5563; line-height: 1.8; margin: 0 0 14px;">
+          专业版面向需要高频研究和更完整交易计划的用户，适合在免费额度耗尽、需要深度分析、持仓智能分析、高级周期、多结果保存或后台分析能力时升级。
+        </p>
+        <div style="display: grid; gap: 10px;">
+          <div v-for="item in [
+            '每天更多AI分析次数，适合连续跟踪多个标的',
+            '深度研判覆盖趋势、动能、波动、支撑压力和风险计划',
+            '持仓智能分析可结合持仓数量、成本价和最大仓位生成参考',
+            '高级周期和多结果保存帮助复盘同一标的的历史判断',
+          ]" :key="item" style="display: flex; gap: 10px; align-items: flex-start; color: #1c1c1e; font-size: 14px; line-height: 1.7;">
+            <span style="width: 20px; height: 20px; border-radius: 50%; background: #34c759; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; margin-top: 2px;">✓</span>
+            <span>{{ item }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- How to subscribe -->
     <div style="padding: 28px 16px 0;">
       <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; padding-left: 4px;">
@@ -325,6 +400,27 @@ const guestLimit = computed(() => pricing.value?.guest?.daily_limit ?? 1)
         </div>
       </div>
     </div>
+
+    <!-- FAQ -->
+    <section style="padding: 24px 16px 0;">
+      <div style="background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 6px rgba(0,0,0,0.04);">
+        <h2 style="font-size: 20px; font-weight: 800; color: #000; margin: 0 0 14px;">常见问题</h2>
+        <div style="display: grid; gap: 16px;">
+          <div>
+            <h3 style="font-size: 15px; font-weight: 700; color: #000; margin: 0 0 6px;">专业版和标准版有什么区别？</h3>
+            <p style="font-size: 14px; color: #4b5563; line-height: 1.8; margin: 0;">专业版拥有更高的每日分析次数，并开放深度研判、持仓智能分析、高级周期、多结果保存和后台分析等高级能力。</p>
+          </div>
+          <div>
+            <h3 style="font-size: 15px; font-weight: 700; color: #000; margin: 0 0 6px;">订阅后如何激活？</h3>
+            <p style="font-size: 14px; color: #4b5563; line-height: 1.8; margin: 0;">在爱发电完成支付后复制订单号，回到本页登录账号并填写订单号，验证通过后订阅即时生效。</p>
+          </div>
+          <div>
+            <h3 style="font-size: 15px; font-weight: 700; color: #000; margin: 0 0 6px;">AI分析结果是否构成投资建议？</h3>
+            <p style="font-size: 14px; color: #4b5563; line-height: 1.8; margin: 0;">不构成投资建议。页面输出只用于研究参考，用户需要结合自身风险承受能力独立判断。</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- Activation Form -->
     <div style="padding: 24px 16px 0;">

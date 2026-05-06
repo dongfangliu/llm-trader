@@ -1,12 +1,18 @@
 <script setup lang="ts">
+import { SITE_NAME } from '~/constants/seo'
+
 const { data } = await useAsyncData('research-index', () =>
   $fetch<any>('/api/public/research', { query: { limit: 100 } }).catch(() => ({ predictions: [], accuracy: null }))
 )
 
-useSeoMeta({
-  title: '模型复盘档案 - 已结算历史记录',
-  description: '查看已结算的模型复盘记录，包含历史方向、实际涨跌和命中情况。仅供研究参考。',
-})
+const requestUrl = useRequestURL()
+const title = '模型复盘档案 - 已结算AI分析历史记录'
+const description = '查看已结算的模型复盘记录，包含历史方向、实际涨跌和命中情况，可从公开记录进入AI分析工具自行研究。'
+usePublicSeo({ title, description, path: '/research' })
+useJsonLd('research-index-breadcrumb-jsonld', breadcrumbJsonLd(requestUrl.origin, [
+  { name: SITE_NAME, path: '/' },
+  { name: '模型复盘档案', path: '/research' },
+]))
 </script>
 
 <template>
@@ -15,6 +21,10 @@ useSeoMeta({
       <NuxtLink to="/" class="back">返回分析工具</NuxtLink>
       <h1>模型复盘档案</h1>
       <p>这里只展示已结算记录，用于观察模型历史表现。未结算内部记录不会公开展示。</p>
+      <div class="actions">
+        <NuxtLink class="cta primary" to="/">打开 AI 分析工具</NuxtLink>
+        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
+      </div>
       <div v-if="data?.accuracy?.total" class="badge">累计 {{ data.accuracy.correct }}/{{ data.accuracy.total }}，{{ data.accuracy.pct }}%</div>
     </header>
 
@@ -41,6 +51,10 @@ useSeoMeta({
 .seo-page { min-height: 100vh; background: #f8fafc; color: #111827; padding: 24px 16px 56px; }
 .hero, .list { max-width: 920px; margin: 0 auto 16px; }
 .back { color: #2563eb; text-decoration: none; font-weight: 600; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.cta.primary { background: #2563eb; color: #fff; }
+.cta.secondary { background: #eef2ff; color: #3730a3; }
 h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
 p { color: #4b5563; line-height: 1.8; }
 .badge { display: inline-flex; margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: #eff6ff; color: #1d4ed8; font-weight: 700; }

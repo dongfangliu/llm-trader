@@ -1,19 +1,47 @@
 <script setup lang="ts">
+import { CORE_FUTURES, SITE_NAME, analyzePath } from '~/constants/seo'
+
 const route = useRoute()
 const symbol = computed(() => String(route.params.symbol || '').toUpperCase())
-useSeoMeta({
-  title: () => `${symbol.value} 期货K线技术指标观察`,
-  description: () => `${symbol.value} 期货品种K线、均线、RSI、MACD等技术指标工具页，仅供研究参考。`,
+if (!symbol.value) {
+  throw createError({ statusCode: 404, statusMessage: '未找到该期货页面' })
+}
+const requestUrl = useRequestURL()
+const contractName = computed(() => CORE_FUTURES.find(item => item.symbol === symbol.value)?.name || symbol.value)
+const title = computed(() => `${contractName.value}(${symbol.value}) 期货K线技术指标分析`)
+const description = computed(() => `${contractName.value} ${symbol.value} 期货品种K线、均线、RSI、MACD、ATR等技术指标工具页，可进入AI分析工具继续研究。`)
+usePublicSeo({
+  title,
+  description,
+  path: () => `/futures/${symbol.value}`,
 })
+useJsonLd('futures-detail-jsonld', () => [
+  breadcrumbJsonLd(requestUrl.origin, [
+    { name: SITE_NAME, path: '/' },
+    { name: '股票技术指标工具', path: '/stocks' },
+    { name: `${contractName.value} ${symbol.value}`, path: `/futures/${symbol.value}` },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: title.value,
+    description: description.value,
+    mainEntityOfPage: `${requestUrl.origin}/futures/${symbol.value}`,
+    publisher: { '@type': 'Organization', name: SITE_NAME },
+  },
+])
 </script>
 
 <template>
   <main class="seo-page">
     <header class="hero">
       <NuxtLink to="/stocks" class="back">市场工具</NuxtLink>
-      <h1>{{ symbol }} 期货技术指标观察</h1>
+      <h1>{{ contractName }} <span>{{ symbol }}</span> 期货技术指标观察</h1>
       <p>查看期货品种的K线与技术指标摘要。数据与分析仅用于研究，不构成投资建议。</p>
-      <NuxtLink class="cta" :to="`/?market=futures&symbol=${symbol}`">用该代码做一次AI分析</NuxtLink>
+      <div class="actions">
+        <NuxtLink class="cta primary" :to="analyzePath('futures', symbol)">分析 {{ contractName }}({{ symbol }})</NuxtLink>
+        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">查看专业版权益</NuxtLink>
+      </div>
     </header>
     <StockLike market="futures" :symbol="symbol" />
   </main>
@@ -50,8 +78,12 @@ export default {
 .hero, :deep(.panel) { max-width: 920px; margin: 0 auto 16px; }
 .back { color: #2563eb; text-decoration: none; font-weight: 600; }
 h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
+h1 span { color: #6b7280; font-size: 22px; }
 p { color: #4b5563; line-height: 1.8; }
-.cta { display: inline-flex; align-items: center; height: 42px; padding: 0 16px; margin-top: 10px; background: #2563eb; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.cta.primary { background: #2563eb; color: #fff; }
+.cta.secondary { background: #eef2ff; color: #3730a3; }
 :deep(.panel) { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px; }
 :deep(.metrics) { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 :deep(.metrics div) { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }

@@ -8,6 +8,8 @@ export default defineEventHandler((event) => {
     'Disallow: /account',
     'Disallow: /login',
     'Disallow: /register',
+    'Disallow: /verify-email',
+    'Disallow: /api/',
     '',
     `Sitemap: ${origin}/sitemap.xml`,
     '',

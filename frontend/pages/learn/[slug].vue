@@ -1,53 +1,60 @@
 <script setup lang="ts">
+import { LEARN_ARTICLES, SITE_NAME, getLearnArticle } from '~/constants/seo'
+
 const route = useRoute()
 const slug = computed(() => String(route.params.slug || '').toLowerCase())
-
-const docs: Record<string, any> = {
-  ma: {
-    title: 'MA均线怎么看',
-    desc: 'MA均线用于观察价格在不同周期上的平均位置，常用于判断趋势方向和价格偏离程度。',
-    points: ['MA10更贴近短期波动', 'MA30和MA60更适合观察中期趋势', '均线多头排列只代表趋势状态，不代表确定收益'],
-  },
-  rsi: {
-    title: 'RSI指标怎么看',
-    desc: 'RSI用于观察一段时间内上涨与下跌力量的相对强弱，常见区间为0到100。',
-    points: ['RSI高于70常被视为偏热区', 'RSI低于30常被视为偏弱区', '强趋势中RSI可能长时间停留在极端区域'],
-  },
-  macd: {
-    title: 'MACD指标怎么看',
-    desc: 'MACD用于观察价格动能变化，常结合DIF、DEA和柱状线变化判断动能方向。',
-    points: ['金叉和死叉只是一种动能变化信号', '柱状线扩大通常代表动能增强', '震荡行情中MACD容易反复发出信号'],
-  },
-  atr: {
-    title: 'ATR指标怎么看',
-    desc: 'ATR用于衡量价格波动幅度，不直接判断方向，更适合观察风险和波动空间。',
-    points: ['ATR变大代表波动扩大', 'ATR变小代表波动收敛', 'ATR可辅助观察止损距离和仓位风险，但不能预测方向'],
-  },
+const doc = computed(() => getLearnArticle(slug.value))
+if (!doc.value) {
+  throw createError({ statusCode: 404, statusMessage: '未找到该学习页面' })
 }
-
-const doc = computed(() => docs[slug.value] || docs.ma)
-
-useSeoMeta({
-  title: () => `${doc.value.title} - 技术指标解释`,
-  description: () => doc.value.desc,
+const requestUrl = useRequestURL()
+const title = computed(() => `${doc.value!.title} - 技术指标解释与AI分析入口`)
+const description = computed(() => doc.value!.desc)
+const analyzeLink = computed(() => doc.value?.market ? `/?market=${doc.value.market}` : '/')
+usePublicSeo({
+  title,
+  description,
+  path: () => `/learn/${slug.value}`,
+  type: 'article',
 })
+useJsonLd('learn-article-jsonld', () => [
+  breadcrumbJsonLd(requestUrl.origin, [
+    { name: SITE_NAME, path: '/' },
+    { name: '股票技术指标工具', path: '/stocks' },
+    { name: doc.value!.title, path: `/learn/${slug.value}` },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: doc.value!.title,
+    description: doc.value!.desc,
+    mainEntityOfPage: `${requestUrl.origin}/learn/${slug.value}`,
+    author: { '@type': 'Organization', name: SITE_NAME },
+    publisher: { '@type': 'Organization', name: SITE_NAME },
+  },
+])
 </script>
 
 <template>
   <main class="seo-page">
     <article class="article">
       <NuxtLink to="/stocks" class="back">股票工具</NuxtLink>
-      <h1>{{ doc.title }}</h1>
-      <p class="lead">{{ doc.desc }}</p>
+      <h1>{{ doc?.title }}</h1>
+      <p class="lead">{{ doc?.desc }}</p>
       <ul>
-        <li v-for="p in doc.points" :key="p">{{ p }}</li>
+        <li v-for="p in doc?.points || []" :key="p">{{ p }}</li>
       </ul>
+      <section>
+        <h2>怎么把指标用于分析</h2>
+        <p>单个指标只描述价格、成交量或波动率的一个侧面。实际研究时，应同时检查趋势方向、动能变化、波动空间、关键支撑压力和计划内止损仓位，避免把单一信号当成结论。</p>
+      </section>
       <p class="risk">技术指标只能描述历史价格和成交数据，不构成投资建议。使用指标时应结合自身风险承受能力。</p>
+      <div class="actions">
+        <NuxtLink class="cta primary" :to="analyzeLink">打开 AI 分析工具</NuxtLink>
+        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
+      </div>
       <div class="links">
-        <NuxtLink to="/learn/ma">MA</NuxtLink>
-        <NuxtLink to="/learn/rsi">RSI</NuxtLink>
-        <NuxtLink to="/learn/macd">MACD</NuxtLink>
-        <NuxtLink to="/learn/atr">ATR</NuxtLink>
+        <NuxtLink v-for="article in LEARN_ARTICLES" :key="article.slug" :to="`/learn/${article.slug}`">{{ article.title }}</NuxtLink>
       </div>
     </article>
   </main>
@@ -58,8 +65,13 @@ useSeoMeta({
 .article { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; }
 .back, .links a { color: #2563eb; text-decoration: none; font-weight: 600; }
 h1 { font-size: 34px; margin: 20px 0 12px; letter-spacing: 0; }
+h2 { font-size: 20px; margin: 22px 0 8px; }
 .lead, li, .risk { color: #4b5563; line-height: 1.9; }
 ul { padding-left: 20px; }
 .risk { border-top: 1px solid #e5e7eb; padding-top: 16px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.cta.primary { background: #2563eb; color: #fff; }
+.cta.secondary { background: #eef2ff; color: #3730a3; }
 .links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 </style>

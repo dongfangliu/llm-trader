@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
-import { useHead } from '#app'
+import { useHead, useRequestURL, useSeoMeta } from '#app'
 import { useRoute, useRouter } from 'vue-router'
 import api from '~/lib/api'
 import { preloadAll, preloadMarket, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
@@ -11,6 +11,7 @@ import { useAuthStore } from '~/stores/auth'
 import { useAnalysisStore } from '~/stores/analysis'
 import { useDevice } from '~/composables/useDevice'
 import { DEFAULT_APP_NAME } from '~/constants/app'
+import { SITE_DESCRIPTION, SITE_NAME } from '~/constants/seo'
 
 const router = useRouter()
 const route = useRoute()
@@ -113,8 +114,17 @@ let analyzeTimeoutTimer: any = null
 const appName = ref(DEFAULT_APP_NAME)
 const pricing = ref<any>(null)
 const appConfig = ref<any>(null)
+const requestUrl = useRequestURL()
 
-useHead({ title: appName })
+useHead({ title: appName, link: [{ rel: 'canonical', href: `${requestUrl.origin}/` }] })
+useSeoMeta({
+  title: SITE_NAME,
+  description: SITE_DESCRIPTION,
+  ogTitle: SITE_NAME,
+  ogDescription: SITE_DESCRIPTION,
+  ogType: 'website',
+  robots: 'index,follow',
+})
 
 // ── Unread ──
 const unreadResults = ref(0)
@@ -166,6 +176,7 @@ const sheetTier = computed(() => {
 })
 
 const MARKET_LABELS: Record<string, string> = { a: 'A股', hk: '港股', us: '美股', futures: '期货' }
+const VALID_MARKETS = ['a', 'hk', 'us', 'futures']
 const PERIOD_OPTIONS = [
   { value: 'daily', label: '日线' },
   { value: '60', label: '60分' },
@@ -319,19 +330,25 @@ function ensureMarketSymbols(m: string, rerunQuery = '') {
   }).catch(() => {})
 }
 
-onMounted(() => {
-  checkDesktop()
-  window.addEventListener('resize', checkDesktop)
+function applyRoutePrefill() {
   const queryMarket = typeof route.query.market === 'string' ? route.query.market : ''
   const querySymbol = typeof route.query.symbol === 'string' ? route.query.symbol : ''
-  if (queryMarket && ['a', 'hk', 'us', 'futures'].includes(queryMarket)) {
+  if (queryMarket && VALID_MARKETS.includes(queryMarket)) {
     market.value = queryMarket
     analysisStore.setMarket(queryMarket)
   }
   if (querySymbol) {
     symbol.value = querySymbol.toUpperCase()
     analysisStore.setSymbol(symbol.value)
+    selectedSymbolName.value = getSymbolName(symbol.value, market.value)
+    ensureMarketSymbols(market.value, symbol.value)
   }
+}
+
+onMounted(() => {
+  checkDesktop()
+  window.addEventListener('resize', checkDesktop)
+  applyRoutePrefill()
   loadHotStocks()
 
   loadAppConfig()
@@ -346,6 +363,8 @@ onMounted(() => {
     preloadAll().catch(() => {})
   }, 3000)
 })
+
+watch(() => route.query, applyRoutePrefill)
 
 // ── Watch analysis result ──
 watch(result, (newResult) => {
@@ -572,6 +591,7 @@ function handleLogout() {
 </script>
 
 <template>
+  <h1 class="sr-only">K线AI分析助手</h1>
   <!-- ═══════════════════════════════════════════════════
        DESKTOP LAYOUT (≥1024px)
        ═══════════════════════════════════════════════════ -->

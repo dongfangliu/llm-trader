@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { SITE_NAME, analyzePath } from '~/constants/seo'
+
 const route = useRoute()
 const market = computed(() => String(route.params.market || '').toLowerCase())
 const symbol = computed(() => String(route.params.symbol || '').toUpperCase())
@@ -8,6 +10,9 @@ const { data } = await useAsyncData(`research-detail-${market.value}-${symbol.va
   $fetch<any>(`/api/public/research/${market.value}/${symbol.value}/${date.value}`).catch(() => ({ record: null }))
 )
 const record = computed(() => data.value?.record)
+if (!record.value) {
+  throw createError({ statusCode: 404, statusMessage: '未找到复盘记录' })
+}
 const dir = computed(() => record.value?.predicted_direction === 'up' ? '看涨' : record.value?.predicted_direction === 'down' ? '看跌' : '震荡')
 const signedPct = computed(() => {
   const value = record.value?.actual_change_pct
@@ -16,23 +21,32 @@ const signedPct = computed(() => {
 })
 const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=promise`)
 const cardUrl = computed(() => `${requestUrl.origin}${cardPath.value}`)
-const canonicalUrl = computed(() => `${requestUrl.origin}/research/${market.value}/${symbol.value}/${date.value}`)
-
-useSeoMeta({
-  title: () => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算模型复盘`,
-  description: () => `${record.value?.symbol_name || symbol.value} 在 ${date.value} 的已结算模型复盘记录，包含当时预测卡片、实际涨跌和命中情况。`,
-  ogTitle: () => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算模型复盘`,
-  ogDescription: () => `${record.value?.symbol_name || symbol.value} 的历史复盘：当时方向 ${dir.value}，实际涨跌 ${signedPct.value}。仅供研究参考。`,
-  ogImage: () => cardUrl.value,
-  twitterCard: 'summary_large_image',
-  twitterImage: () => cardUrl.value,
+const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算模型复盘`)
+const description = computed(() => `${record.value?.symbol_name || symbol.value} 的历史复盘：当时方向 ${dir.value}，实际涨跌 ${signedPct.value}。仅供研究参考。`)
+usePublicSeo({
+  title,
+  description,
+  path: () => `/research/${market.value}/${symbol.value}/${date.value}`,
+  image: cardUrl,
+  type: 'article',
 })
-
-useHead({
-  link: [
-    { rel: 'canonical', href: canonicalUrl.value },
-  ],
-})
+useJsonLd('research-detail-jsonld', () => [
+  breadcrumbJsonLd(requestUrl.origin, [
+    { name: SITE_NAME, path: '/' },
+    { name: '模型复盘档案', path: '/research' },
+    { name: `${record.value?.symbol_name || symbol.value} ${symbol.value}`, path: `/research/${market.value}/${symbol.value}` },
+    { name: `${date.value} 复盘`, path: `/research/${market.value}/${symbol.value}/${date.value}` },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: title.value,
+    description: description.value,
+    image: cardUrl.value,
+    mainEntityOfPage: `${requestUrl.origin}/research/${market.value}/${symbol.value}/${date.value}`,
+    publisher: { '@type': 'Organization', name: SITE_NAME },
+  },
+])
 </script>
 
 <template>
@@ -85,7 +99,10 @@ useHead({
         <p v-if="record.execution_plan"><strong>执行计划：</strong>{{ record.execution_plan }}</p>
       </section>
 
-      <NuxtLink class="cta" :to="`/?market=${market}&symbol=${symbol}`">自己输入该代码分析</NuxtLink>
+      <div class="actions">
+        <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
+        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
+      </div>
     </article>
     <article v-else class="article">
       <h1>未找到复盘记录</h1>
@@ -116,7 +133,10 @@ p { color: #4b5563; line-height: 1.9; }
 .metrics div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; }
 .metrics span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 6px; }
 .metrics strong { font-size: 20px; }
-.cta { display: inline-flex; align-items: center; height: 42px; padding: 0 16px; margin-top: 18px; background: #2563eb; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+.cta.primary { background: #2563eb; color: #fff; }
+.cta.secondary { background: #eef2ff; color: #3730a3; }
 @media (max-width: 680px) {
   .result-panel { grid-template-columns: 1fr; }
   h1 { font-size: 28px; }
