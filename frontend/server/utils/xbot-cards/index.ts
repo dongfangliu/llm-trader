@@ -22,44 +22,62 @@ const RENDERERS: Record<string, (p: CardPayload) => any> = {
   summary:     renderSummary,
 }
 
-let _fontCache: ArrayBuffer | null = null
+const _fontCache = new Map<number, ArrayBuffer>()
 
-// Candidate CDN URLs for NotoSansSC TTF (tried in order, first success wins)
-const FONT_URLS = [
-  'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansSC/hinted/ttf/NotoSansSC-Regular.ttf',
-  'https://github.com/notofonts/noto-cjk/raw/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf',
-]
+const FONT_FILES: Record<number, { local: string[]; urls: string[] }> = {
+  400: {
+    local: ['NotoSansSC-Regular.otf', 'NotoSansSC-Regular.ttf', 'NotoSansSC.ttf'],
+    urls: [
+      'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf',
+      'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf',
+    ],
+  },
+  700: {
+    local: ['NotoSansSC-Bold.otf', 'NotoSansSC-Bold.ttf'],
+    urls: [
+      'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Bold.otf',
+      'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Bold.otf',
+    ],
+  },
+  900: {
+    local: ['NotoSansSC-Black.otf', 'NotoSansSC-Black.ttf'],
+    urls: [
+      'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf',
+      'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf',
+    ],
+  },
+}
 
-async function loadFont(): Promise<ArrayBuffer> {
-  if (_fontCache) return _fontCache
+async function loadFont(weight: number): Promise<ArrayBuffer> {
+  const cached = _fontCache.get(weight)
+  if (cached) return cached
 
-  // 1. Try local file first
-  const localPaths = [
-    resolve('./public/fonts/NotoSansSC-Regular.ttf'),
-    resolve('./public/fonts/NotoSansSC.ttf'),
-  ]
-  for (const p of localPaths) {
+  const spec = FONT_FILES[weight] ?? FONT_FILES[400]
+  for (const file of spec.local) {
+    const p = resolve('./public/fonts', file)
     if (existsSync(p)) {
       const buf = readFileSync(p)
-      _fontCache = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-      return _fontCache
+      const data = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+      _fontCache.set(weight, data)
+      return data
     }
   }
 
-  // 2. Download from CDN
-  for (const url of FONT_URLS) {
+  for (const url of spec.urls) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
       if (res.ok) {
-        _fontCache = await res.arrayBuffer()
-        return _fontCache
+        const data = await res.arrayBuffer()
+        _fontCache.set(weight, data)
+        return data
       }
     } catch {
       // try next URL
     }
   }
 
-  throw new Error('Failed to load NotoSansSC font from both local paths and CDN. Check network connectivity.')
+  if (weight !== 400) return loadFont(400)
+  throw new Error('Failed to load NotoSansSC font from local files and CDN. Check network connectivity.')
 }
 
 export async function renderCard(payload: CardPayload): Promise<Uint8Array> {
@@ -70,12 +88,16 @@ export async function renderCard(payload: CardPayload): Promise<Uint8Array> {
   const { w, h } = DIMS[variant]
   const vnode = renderer(payload)
 
-  const fontData = await loadFont()
+  const [regular, bold, black] = await Promise.all([loadFont(400), loadFont(700), loadFont(900)])
 
   const svg = await satori(vnode, {
     width: w,
     height: h,
-    fonts: [{ name: 'NotoSansSC', data: fontData, weight: 400, style: 'normal' }],
+    fonts: [
+      { name: 'NotoSansSC', data: regular, weight: 400, style: 'normal' },
+      { name: 'NotoSansSC', data: bold, weight: 700, style: 'normal' },
+      { name: 'NotoSansSC', data: black, weight: 900, style: 'normal' },
+    ],
   })
 
   const resvg = new Resvg(svg, { fitTo: { mode: 'original' } })

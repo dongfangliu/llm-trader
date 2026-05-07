@@ -167,7 +167,7 @@ function saveAdminToken() {
             <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; margin-top: 4px;">市场数据</span>
             <span style="font-size: 12px; color: #8e8e93; line-height: 1.4;">K线数据状态与采集</span>
           </NuxtLink>
-          <NuxtLink to="/admin/xbot" style="text-decoration: none; background: linear-gradient(135deg, #007aff 0%, #5856d6 100%); border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,122,255,0.3);">
+          <NuxtLink to="/admin/model-review" style="text-decoration: none; background: linear-gradient(135deg, #007aff 0%, #5856d6 100%); border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,122,255,0.3);">
             <span style="font-size: 24px;">🤖</span>
             <span style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">模型复盘档案</span>
             <span style="font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.4;">自动记录 · 结算复盘 · SEO素材</span>

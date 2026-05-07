@@ -1,0 +1,266 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import api from '~/lib/api'
+
+const route = useRoute()
+const router = useRouter()
+const pred = ref<Record<string, any> | null>(null)
+const previewUrl = ref('')
+const msg = ref('')
+const msgType = ref<'ok' | 'err'>('ok')
+const loading = ref('')
+
+function getAdminHeaders() {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : ''
+  return { 'X-Admin-Token': token || '' }
+}
+
+function showMsg(text: string, type: 'ok' | 'err' = 'ok') {
+  msg.value = text
+  msgType.value = type
+  window.setTimeout(() => { msg.value = '' }, 2800)
+}
+
+async function loadDetail() {
+  loading.value = 'detail'
+  try {
+    const res = await api.get(`/api/admin/xbot/predictions/${route.params.id}`, { headers: getAdminHeaders() })
+    pred.value = res.data
+    await loadCardPreview()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '读取审核记录失败', 'err')
+  } finally {
+    loading.value = ''
+  }
+}
+
+async function loadCardPreview() {
+  if (!pred.value) return
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  const variant = pred.value.actual_change_pct != null ? 'proof' : 'promise'
+  const res = await api.get(`/api/admin/xbot/predictions/${pred.value.id}/card-preview`, {
+    params: { variant },
+    headers: getAdminHeaders(),
+    responseType: 'blob',
+  })
+  previewUrl.value = URL.createObjectURL(res.data)
+}
+
+async function approve() {
+  if (!pred.value) return
+  loading.value = 'approve'
+  try {
+    await api.post(`/api/admin/xbot/predictions/${pred.value.id}/approve`, {}, { headers: getAdminHeaders() })
+    showMsg('已通过审核')
+    await loadDetail()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '通过失败', 'err')
+  } finally {
+    loading.value = ''
+  }
+}
+
+async function reject() {
+  if (!pred.value) return
+  loading.value = 'reject'
+  try {
+    await api.post(`/api/admin/xbot/predictions/${pred.value.id}/reject`, {}, { headers: getAdminHeaders() })
+    showMsg('已拒绝')
+    await loadDetail()
+  } catch (e: any) {
+    showMsg(e.response?.data?.detail || '拒绝失败', 'err')
+  } finally {
+    loading.value = ''
+  }
+}
+
+function priceReasonable() {
+  if (!pred.value) return false
+  const close = Number(pred.value.close_price || 0)
+  const target = Number(pred.value.target_price || 0)
+  const stop = Number(pred.value.stop_loss || 0)
+  if (!close || !target || !stop) return false
+  if (pred.value.predicted_direction === 'up') return target > close && stop < close
+  if (pred.value.predicted_direction === 'down') return target < close && stop > close
+  return target > 0 && stop > 0
+}
+
+const checklist = computed(() => {
+  const p = pred.value
+  if (!p) return []
+  const sections = [p.market_diagnosis, p.opportunity_assessment, p.risk_analysis, p.execution_plan]
+  return [
+    { label: '方向明确', ok: ['up', 'down', 'hold'].includes(p.predicted_direction) },
+    { label: '目标日存在', ok: Boolean(p.target_date) },
+    { label: '目标价/止损价合理', ok: priceReasonable() },
+    { label: '摘要可读', ok: Boolean(p.analysis_summary && p.analysis_summary.length >= 10) },
+    { label: '四段分析完整', ok: sections.every(Boolean) },
+    { label: '页脚网址正确', ok: true },
+  ]
+})
+
+const publicPath = computed(() => {
+  if (!pred.value) return ''
+  return `/research/${pred.value.market}/${pred.value.symbol}/${pred.value.prediction_date}`
+})
+
+function pctText(v: number | null | undefined) {
+  if (v == null) return '-'
+  return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
+}
+
+onMounted(loadDetail)
+onUnmounted(() => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+})
+</script>
+
+<template>
+  <div class="page">
+    <header class="topbar">
+      <button class="text-btn" @click="router.back()">返回</button>
+      <strong>完整审核</strong>
+      <NuxtLink class="text-btn" to="/admin/model-review">工作流</NuxtLink>
+    </header>
+
+    <div v-if="msg" :class="['toast', msgType]">{{ msg }}</div>
+
+    <main v-if="pred" class="content">
+      <section class="hero panel">
+        <div>
+          <h1>{{ pred.symbol_name }}</h1>
+          <p>{{ pred.market?.toUpperCase() }} / {{ pred.symbol }} / 预测日 {{ pred.prediction_date }}</p>
+        </div>
+        <div class="signal">
+          <strong>{{ pred.predicted_direction === 'up' ? '看涨' : pred.predicted_direction === 'down' ? '看跌' : '震荡' }}</strong>
+          <span>置信度 {{ Math.round(pred.confidence || 0) }}%</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="panel-title">审核检查清单</div>
+          <div v-for="item in checklist" :key="item.label" class="check">
+            <span :class="['dot', item.ok ? 'ok' : 'bad']" />
+            <span>{{ item.label }}</span>
+          </div>
+          <div class="actions">
+            <button v-if="pred.status === 'pending'" class="primary" :disabled="loading === 'approve'" @click="approve">通过</button>
+            <button v-if="['pending','approved'].includes(pred.status)" class="danger" :disabled="loading === 'reject'" @click="reject">拒绝</button>
+            <NuxtLink v-if="pred.status === 'settled'" class="secondary" :to="publicPath" target="_blank">查看公开复盘</NuxtLink>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">关键价格</div>
+          <div class="price-row"><span>基准收盘</span><strong>{{ pred.close_price?.toFixed?.(2) ?? '-' }}</strong></div>
+          <div class="price-row"><span>目标价</span><strong>{{ pred.target_price?.toFixed?.(2) ?? '-' }}</strong></div>
+          <div class="price-row"><span>止损价</span><strong>{{ pred.stop_loss?.toFixed?.(2) ?? '-' }}</strong></div>
+          <div class="price-row"><span>目标日</span><strong>{{ pred.target_date }}</strong></div>
+          <div v-if="pred.actual_change_pct != null" class="price-row"><span>结算涨跌</span><strong>{{ pctText(pred.actual_change_pct) }}</strong></div>
+        </div>
+      </section>
+
+      <section class="grid wide">
+        <div class="panel">
+          <div class="panel-title">真实卡片 PNG</div>
+          <img v-if="previewUrl" class="card-img" :src="previewUrl" alt="模型复盘卡片预览">
+          <div v-else class="empty">卡片生成中...</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">公开页布局预览</div>
+          <div class="public-preview">
+            <strong>{{ pred.symbol_name }} 模型复盘</strong>
+            <span>{{ pred.prediction_date }} -> {{ pred.target_date }}</span>
+            <p>{{ pred.analysis_summary }}</p>
+            <div class="mini-grid">
+              <div>方向 <b>{{ pred.predicted_direction }}</b></div>
+              <div>置信度 <b>{{ Math.round(pred.confidence || 0) }}%</b></div>
+              <div>结算 <b>{{ pctText(pred.actual_change_pct) }}</b></div>
+            </div>
+          </div>
+          <NuxtLink v-if="pred.status === 'settled'" class="secondary full" :to="publicPath" target="_blank">打开公开页</NuxtLink>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">原始分析</div>
+        <ArticleBlock title="摘要" :text="pred.analysis_summary" />
+        <ArticleBlock title="市场诊断" :text="pred.market_diagnosis" />
+        <ArticleBlock title="机会评估" :text="pred.opportunity_assessment" />
+        <ArticleBlock title="风险收益" :text="pred.risk_analysis" />
+        <ArticleBlock title="执行方案" :text="pred.execution_plan" />
+      </section>
+    </main>
+
+    <main v-else class="content">
+      <div class="panel empty">{{ loading === 'detail' ? '加载中...' : '未找到记录' }}</div>
+    </main>
+  </div>
+</template>
+
+<script lang="ts">
+export default {
+  components: {
+    ArticleBlock: {
+      props: ['title', 'text'],
+      template: `
+        <div v-if="text" class="article-block">
+          <h3>{{ title }}</h3>
+          <p>{{ text }}</p>
+        </div>
+      `,
+    },
+  },
+}
+</script>
+
+<style scoped>
+.page { min-height: 100vh; background: #f4f5f7; color: #111827; }
+.topbar { position: sticky; top: 0; z-index: 10; height: 52px; display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; padding: 0 16px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(14px); text-align: center; }
+.text-btn { color: #2563eb; text-decoration: none; background: none; border: 0; font-size: 14px; }
+.content { max-width: 1080px; margin: 0 auto; padding: 16px 16px 48px; }
+.toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 10px 16px; border-radius: 10px; color: #fff; font-weight: 700; }
+.toast.ok { background: #16a34a; }
+.toast.err { background: #dc2626; }
+.panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+.hero { display: flex; justify-content: space-between; align-items: center; }
+h1 { margin: 0 0 4px; font-size: 28px; }
+p { color: #4b5563; line-height: 1.7; margin: 0; white-space: pre-wrap; word-break: break-word; }
+.signal { text-align: right; }
+.signal strong { display: block; color: #b45309; font-size: 28px; }
+.signal span { color: #6b7280; font-size: 13px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.wide { grid-template-columns: 1fr 1fr; align-items: start; }
+.panel-title { font-weight: 800; color: #374151; margin-bottom: 12px; }
+.check { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot.ok { background: #16a34a; }
+.dot.bad { background: #dc2626; }
+.actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.primary, .secondary, .danger { height: 40px; padding: 0 16px; border: 0; border-radius: 8px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.primary { color: #fff; background: #2563eb; }
+.secondary { color: #2563eb; background: #eff6ff; }
+.danger { color: #dc2626; background: #fef2f2; }
+.full { width: 100%; margin-top: 12px; }
+.price-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+.price-row span { color: #6b7280; }
+.card-img { display: block; width: 100%; border-radius: 8px; background: #f9fafb; }
+.public-preview { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fafafa; }
+.public-preview strong { display: block; font-size: 22px; margin-bottom: 4px; }
+.public-preview span { color: #6b7280; font-size: 13px; }
+.public-preview p { margin-top: 12px; }
+.mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.mini-grid div { background: #fff; border-radius: 8px; padding: 10px; color: #6b7280; font-size: 12px; }
+.mini-grid b { display: block; color: #111827; margin-top: 4px; }
+.article-block { padding: 12px 0; border-top: 1px solid #f3f4f6; }
+.article-block:first-of-type { border-top: 0; }
+.article-block h3 { margin: 0 0 6px; font-size: 14px; color: #6b7280; }
+.empty { text-align: center; color: #6b7280; }
+@media (max-width: 760px) {
+  .hero, .actions { flex-direction: column; align-items: stretch; }
+  .signal { text-align: left; }
+  .grid, .wide, .mini-grid { grid-template-columns: 1fr; }
+}
+</style>

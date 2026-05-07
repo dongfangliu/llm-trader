@@ -1,4 +1,4 @@
-"""XBot admin router — manage prediction bot operations."""
+"""Legacy xbot admin router backing the model-review workflow."""
 
 import json
 from datetime import date, timedelta
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies.auth import get_admin_token_or_admin_user
 from src.database.new_db import get_db
+from src.models.market import SymbolName
 from src.models.xbot import XBotPrediction
 from src.models.settings import SystemSetting
 
@@ -140,7 +141,7 @@ async def public_research_card(
 
     stats = await get_accuracy_stats(db)
     acc_all = stats.get("all", {})
-    product_url = config.get("xbot_product_url", "")
+    product_url = await _get_public_base_url(db, config)
     brand_name = await _get_app_name(db)
 
     if variant == "proof":
@@ -189,7 +190,7 @@ async def _get_public_settled_prediction(
 
 
 def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
-    product_url = config.get("xbot_product_url", "")
+    product_url = config.get("public_base_url") or config.get("xbot_product_url", "")
     return {
         "id": p.id,
         "symbol": p.symbol,
@@ -371,7 +372,7 @@ async def preview_card(
     from src.services.xbot.result_service import get_accuracy_stats
 
     stats = await get_accuracy_stats(db)
-    product_url = config.get("xbot_product_url", "")
+    product_url = await _get_public_base_url(db, config)
     brand_name = await _get_app_name(db)
     acc_all = stats.get("all", {})
 
@@ -446,37 +447,62 @@ async def get_candidates(db: AsyncSession = Depends(get_db), _=_Admin):
     count = int(config.get("xbot_hot_stock_count", 5))
 
     candidates = []
+    diagnostics = {
+        "a": {"market": "a", "enabled": "a" in markets, "requested": 0, "returned": 0, "filtered": 0, "filter_reasons": {}, "error": None},
+        "hk": {"market": "hk", "enabled": "hk" in markets, "requested": 0, "returned": 0, "filtered": 0, "filter_reasons": {}, "error": None},
+    }
     if "a" in markets:
-        candidates.extend(await get_hot_stocks(count=count, min_price=float(config.get("xbot_min_price_a", 5))))
+        rows, diag = await get_hot_stocks(
+            count=count,
+            min_price=float(config.get("xbot_min_price_a", 5)),
+            with_diagnostics=True,
+        )
+        diagnostics["a"] = diag
+        candidates.extend(rows)
     if "hk" in markets:
-        candidates.extend(await get_hk_hot_stocks(count=count, min_price=float(config.get("xbot_min_price_hk", 1))))
+        rows, diag = await get_hk_hot_stocks(
+            count=count,
+            min_price=float(config.get("xbot_min_price_hk", 1)),
+            with_diagnostics=True,
+        )
+        diagnostics["hk"] = diag
+        candidates.extend(rows)
 
     # Mark which candidates already have a prediction today
-    today = date.today()
-    existing = {}
-    if candidates:
-        symbols = [c["symbol"] for c in candidates]
-        q = select(XBotPrediction).where(
-            XBotPrediction.prediction_date == today,
-            XBotPrediction.symbol.in_(symbols),
-        )
-        result = await db.execute(q)
-        for p in result.scalars().all():
-            existing[p.symbol] = p.status
-
     return {
-        "candidates": [
-            {**c, "already_generated": c["symbol"] in existing, "existing_status": existing.get(c["symbol"])}
-            for c in candidates
-        ]
+        "candidates": await _mark_candidate_status(db, candidates),
+        "diagnostics": diagnostics,
     }
 
 
 class GenerateSingleRequest(BaseModel):
     symbol: str
     market: str
-    name: str
+    name: Optional[str] = None
     hot_rank: int = 0
+
+
+class ManualCandidateRequest(BaseModel):
+    market: str
+    symbol: str
+    name: Optional[str] = None
+
+
+@router.post("/candidates/manual")
+async def add_manual_candidate(
+    body: ManualCandidateRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Validate and return one manual candidate without creating a prediction record."""
+    market, symbol = _normalize_candidate_or_400(body.market, body.symbol)
+    name = (body.name or "").strip() or await _lookup_symbol_name(db, market, symbol) or symbol
+    hot_rank = 9000
+    marked = await _mark_candidate_status(
+        db,
+        [{"symbol": symbol, "market": market, "name": name, "hot_rank": hot_rank, "source": "manual"}],
+    )
+    return {"candidate": marked[0]}
 
 
 @router.post("/actions/generate-single")
@@ -484,20 +510,23 @@ async def action_generate_single(body: GenerateSingleRequest, db: AsyncSession =
     """Generate AI prediction for a single candidate stock."""
     from src.services.xbot.prediction_service import generate_single_prediction
 
+    market, symbol = _normalize_candidate_or_400(body.market, body.symbol)
+    name = (body.name or "").strip() or await _lookup_symbol_name(db, market, symbol) or symbol
     today = date.today()
     existing = await db.execute(
         select(XBotPrediction).where(
             XBotPrediction.prediction_date == today,
-            XBotPrediction.symbol == body.symbol,
+            XBotPrediction.market == market,
+            XBotPrediction.symbol == symbol,
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"{body.symbol} 今日预测已存在")
+        raise HTTPException(status_code=409, detail=f"{symbol} 今日预测已存在")
 
-    stock = {"symbol": body.symbol, "market": body.market, "name": body.name, "hot_rank": body.hot_rank}
+    stock = {"symbol": symbol, "market": market, "name": name, "hot_rank": body.hot_rank}
     pred = await generate_single_prediction(stock, db)
     if pred is None:
-        raise HTTPException(status_code=500, detail=f"{body.symbol} 分析生成失败")
+        raise HTTPException(status_code=500, detail=f"{symbol} 分析生成失败")
     return _pred_dict(pred)
 
 
@@ -655,7 +684,7 @@ async def test_card(
     )
     cards = await generate_prediction_card_set(
         sample,
-        product_url=config.get("xbot_product_url", ""),
+        product_url=await _get_public_base_url(db, config),
     )
     png = cards.get(variant)
     if not png:
@@ -680,7 +709,22 @@ async def ensure_default_settings(db: AsyncSession) -> None:
 async def _load_config(db: AsyncSession) -> dict:
     result = await db.execute(select(SystemSetting).where(SystemSetting.key.in_(_XBOT_KEYS)))
     rows = {row.key: row.value for row in result.scalars().all()}
-    return {k: rows.get(k, _DEFAULT_SETTINGS.get(k, "")) for k in _XBOT_KEYS}
+    config = {k: rows.get(k, _DEFAULT_SETTINGS.get(k, "")) for k in _XBOT_KEYS}
+    config["public_base_url"] = await _get_public_base_url(db, config)
+    return config
+
+
+async def _get_public_base_url(db: AsyncSession, config: Optional[dict] = None) -> str:
+    """Prefer admin/settings email.app_base_url for public card footers."""
+    row = await db.get(SystemSetting, "email")
+    if row:
+        try:
+            app_base_url = (json.loads(row.value).get("app_base_url") or "").strip()
+            if app_base_url:
+                return app_base_url
+        except Exception:
+            pass
+    return ((config or {}).get("xbot_product_url") or "").strip()
 
 
 async def _get_app_name(db: AsyncSession) -> str:
@@ -691,6 +735,45 @@ async def _get_app_name(db: AsyncSession) -> str:
         except Exception:
             pass
     return ""
+
+
+def _normalize_candidate_or_400(market: str, symbol: str) -> tuple[str, str]:
+    from src.services.xbot.hot_stocks_service import normalize_candidate_symbol
+
+    normalized_market, normalized_symbol = normalize_candidate_symbol(symbol, market)
+    if normalized_market not in ("a", "hk") or not normalized_symbol:
+        raise HTTPException(status_code=400, detail="标的代码格式不正确")
+    return normalized_market, normalized_symbol
+
+
+async def _lookup_symbol_name(db: AsyncSession, market: str, symbol: str) -> Optional[str]:
+    row = await db.get(SymbolName, {"market": market, "symbol": symbol})
+    return row.name if row and row.name else None
+
+
+async def _mark_candidate_status(db: AsyncSession, candidates: List[dict]) -> List[dict]:
+    today = date.today()
+    if not candidates:
+        return []
+
+    symbols = sorted({c["symbol"] for c in candidates})
+    markets = sorted({c["market"] for c in candidates})
+    result = await db.execute(
+        select(XBotPrediction).where(
+            XBotPrediction.prediction_date == today,
+            XBotPrediction.symbol.in_(symbols),
+            XBotPrediction.market.in_(markets),
+        )
+    )
+    existing = {(p.market, p.symbol): p.status for p in result.scalars().all()}
+    return [
+        {
+            **c,
+            "already_generated": (c["market"], c["symbol"]) in existing,
+            "existing_status": existing.get((c["market"], c["symbol"])),
+        }
+        for c in candidates
+    ]
 
 
 async def _get_prediction(db: AsyncSession, prediction_id: int) -> XBotPrediction:

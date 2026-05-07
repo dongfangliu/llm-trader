@@ -12,10 +12,14 @@ RUN npm install --registry=https://registry.npmmirror.com
 # Copy source code
 COPY . .
 
-# Download NotoSansSC font for card generation
+# Download NotoSansSC OTF fonts for Satori card generation
 RUN mkdir -p public/fonts && \
-    wget -q -O public/fonts/NotoSansSC-Regular.ttf \
-    "https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5.0.12/files/noto-sans-sc-chinese-simplified-400-normal.woff" || \
+    wget -q -O public/fonts/NotoSansSC-Regular.otf \
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" && \
+    wget -q -O public/fonts/NotoSansSC-Bold.otf \
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Bold.otf" && \
+    wget -q -O public/fonts/NotoSansSC-Black.otf \
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf" || \
     echo "Font download failed, will use CDN fallback at runtime"
 
 # Build Nuxt app (outputs to .output/)

@@ -41,7 +41,7 @@ async function downloadPng(payload: CardPayload) {
   const url = URL.createObjectURL(res as Blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `xbot-${payload.variant}-${payload.symbol}.png`
+  a.download = `model-review-${payload.variant}-${payload.symbol}.png`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -52,17 +52,17 @@ async function downloadPng(payload: CardPayload) {
     <div class="top-bar">
       <div class="top-title">
         <span class="dot" />
-        <span>XBot 卡片预览</span>
-        <span class="sub">· 乔布斯式迭代 · 2 张 × 2 套</span>
+        <span>模型复盘卡片预览</span>
+        <span class="sub">· 预测卡 · 结算卡 · 汇总卡</span>
       </div>
       <div class="top-actions">
-        <span class="hint">修改 <code>components/xbot-cards/*.vue</code> 页面即时更新</span>
+        <span class="hint">修改卡片组件后页面即时更新</span>
       </div>
     </div>
 
     <!-- Prediction Set -->
     <div class="section-header">
-      <div class="section-label">📈 预测推 — Prediction Tweet</div>
+      <div class="section-label">预测分析卡</div>
       <div class="section-sub">THE PROMISE（主张）+ THE EDGE（底气）</div>
     </div>
 
@@ -96,7 +96,7 @@ async function downloadPng(payload: CardPayload) {
 
     <!-- Result Set (correct) -->
     <div class="section-header">
-      <div class="section-label">✅ 兑现推 — Result Tweet（预测兑现）</div>
+      <div class="section-label">结算复盘卡</div>
       <div class="section-sub">THE VERDICT（裁决）+ THE EDGE（更新战绩）</div>
     </div>
 

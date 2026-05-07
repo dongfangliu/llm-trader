@@ -1,5 +1,5 @@
 <script setup lang="ts">
-await navigateTo('/admin/model-review', { replace: true })
+await navigateTo('/admin/xbot-card-preview', { replace: true })
 </script>
 
 <template>
