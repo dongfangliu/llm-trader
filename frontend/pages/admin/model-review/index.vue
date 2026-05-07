@@ -278,11 +278,24 @@ onMounted(refreshAll)
 
     <main class="content">
       <section v-if="activePanel === 'workflow'">
+        <section class="workflow-hero">
+          <div>
+            <span class="eyebrow">Model Review Operations</span>
+            <h1>模型复盘审核工作台</h1>
+            <p>从候选扫描、单条生成、完整审核到结算公开，按今天的状态推进。</p>
+          </div>
+          <div v-if="dashboard" class="run-card">
+            <span>{{ dashboard.enabled ? '自动调度已启用' : '手动运行模式' }}</span>
+            <strong>{{ dashboard.operation_mode === 'auto' ? 'Auto' : 'Manual' }}</strong>
+            <small>生成 {{ dashboard.predict_time }} · A股结算 {{ dashboard.a_settle_time }} · 港股结算 {{ dashboard.hk_settle_time }}</small>
+          </div>
+        </section>
+
         <div v-if="dashboard" class="stats">
-          <div><b>{{ candidates.length }}</b><span>候选标的</span></div>
-          <div><b>{{ pendingPreds.length }}</b><span>待审核</span></div>
-          <div><b>{{ approvedPreds.length }}</b><span>已通过待结算</span></div>
-          <div><b>{{ dashboard.accuracy?.all?.pct ?? 0 }}%</b><span>累计命中率</span></div>
+          <div><span>候选标的</span><b>{{ candidates.length }}</b></div>
+          <div><span>待审核</span><b>{{ pendingPreds.length }}</b></div>
+          <div><span>已通过待结算</span><b>{{ approvedPreds.length }}</b></div>
+          <div><span>累计命中率</span><b>{{ dashboard.accuracy?.all?.pct ?? 0 }}%</b></div>
         </div>
 
         <div class="toolbar">
@@ -460,22 +473,50 @@ export default {
 </script>
 
 <style scoped>
-.page { min-height: 100vh; background: #f4f5f7; color: #111827; }
+.page { min-height: 100vh; background: #f3f4f6; color: #111827; }
 .topbar { position: sticky; top: 0; z-index: 10; height: 52px; display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; padding: 0 16px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(14px); text-align: center; }
 .back, .text-btn { color: #2563eb; text-decoration: none; background: none; border: 0; font-size: 14px; }
-.tabs { max-width: 1040px; margin: 16px auto; display: flex; gap: 6px; padding: 4px; background: #e5e7eb; border-radius: 10px; }
+.tabs { max-width: 1180px; margin: 16px auto; display: flex; gap: 6px; padding: 4px; background: #e5e7eb; border-radius: 10px; }
 .tabs button { flex: 1; height: 36px; border: 0; border-radius: 8px; background: transparent; color: #4b5563; font-weight: 700; }
 .tabs button.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.content { max-width: 1040px; margin: 0 auto; padding: 0 16px 48px; }
+.content { max-width: 1180px; margin: 0 auto; padding: 0 16px 48px; }
 .toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 10px 16px; border-radius: 10px; color: #fff; font-weight: 700; }
 .toast.ok { background: #16a34a; }
 .toast.err { background: #dc2626; }
+.workflow-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.workflow-hero h1 { margin: 6px 0 8px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+.workflow-hero p { margin: 0; color: #6b7280; line-height: 1.6; }
+.eyebrow { color: #2563eb; font-size: 12px; font-weight: 900; letter-spacing: 0; }
+.run-card {
+  width: min(360px, 38%);
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #111827;
+  color: #f9fafb;
+}
+.run-card span, .run-card small { color: #9ca3af; font-size: 12px; }
+.run-card strong { font-size: 28px; line-height: 1; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
 .stats div, .panel, .toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
-.stats div { padding: 16px; text-align: center; }
-.stats b { display: block; font-size: 24px; color: #1d4ed8; }
+.stats div { padding: 16px; }
+.stats b { display: block; margin-top: 8px; font-size: 28px; color: #111827; line-height: 1; }
 .stats span, .panel-title small, .record-main span, .record-main p, .advanced-actions span { color: #6b7280; font-size: 12px; }
-.toolbar { display: flex; gap: 10px; padding: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar { display: flex; gap: 10px; padding: 14px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
 .panel { padding: 14px; margin-bottom: 14px; }
 .panel-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 800; color: #374151; }
 .manual-form { display: grid; grid-template-columns: 110px 1fr 1fr auto auto; gap: 8px; }
@@ -483,7 +524,7 @@ input, select { height: 40px; border: 1px solid #d1d5db; border-radius: 8px; pad
 button { cursor: pointer; }
 button:disabled { opacity: .55; cursor: default; }
 .primary, .secondary, .small { border: 0; border-radius: 8px; font-weight: 800; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-.primary { height: 40px; padding: 0 16px; color: #fff; background: #2563eb; }
+.primary { height: 40px; padding: 0 16px; color: #fff; background: #2563eb; box-shadow: 0 8px 20px rgba(37,99,235,.18); }
 .secondary { height: 40px; padding: 0 16px; color: #2563eb; background: #eff6ff; }
 .small { min-height: 32px; padding: 0 10px; color: #2563eb; background: #eff6ff; font-size: 13px; }
 .small.ok { color: #15803d; background: #ecfdf5; }
@@ -495,7 +536,7 @@ button:disabled { opacity: .55; cursor: default; }
 .diag strong { color: #111827; }
 .diag em { flex-basis: 100%; color: #b45309; font-style: normal; word-break: break-word; }
 .market-group { margin: 14px 0 4px; font-size: 12px; font-weight: 800; color: #6b7280; }
-.record { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid #f3f4f6; }
+.record { display: flex; gap: 12px; align-items: center; padding: 13px 0; border-top: 1px solid #f3f4f6; }
 .record:first-of-type { border-top: 0; }
 .record-main { flex: 1; min-width: 0; }
 .record-main strong { display: block; }
@@ -514,6 +555,9 @@ button:disabled { opacity: .55; cursor: default; }
 .settings input[type='checkbox'] { width: 20px; height: 20px; }
 @media (max-width: 760px) {
   .stats, .diagnostics { grid-template-columns: 1fr 1fr; }
+  .workflow-hero { flex-direction: column; padding: 16px; }
+  .workflow-hero h1 { font-size: 26px; }
+  .run-card { width: auto; min-width: 0; }
   .manual-form, .history-row, .settings label { grid-template-columns: 1fr; }
   .record, .toolbar, .advanced-actions { flex-direction: column; align-items: stretch; }
 }

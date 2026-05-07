@@ -52,11 +52,24 @@ async function downloadPng(payload: CardPayload) {
     <div class="top-bar">
       <div class="top-title">
         <span class="dot" />
-        <span>模型复盘卡片预览</span>
-        <span class="sub">· 预测卡 · 结算卡 · 汇总卡</span>
+        <span>模型复盘卡片工作台</span>
+        <span class="sub">预测卡 · 结算卡 · 战绩卡 · 汇总卡</span>
       </div>
       <div class="top-actions">
-        <span class="hint">修改卡片组件后页面即时更新</span>
+        <span class="hint">Vue 预览用于校稿，PNG 按钮验证真实生成效果</span>
+      </div>
+    </div>
+
+    <div class="preview-hero">
+      <div>
+        <span class="eyebrow">XBot Social Cards</span>
+        <h1>保留卡片风格，检查每一种真实输出场景</h1>
+        <p>当前页面只承载预览和校稿。卡片本体仍由现有组件和 Satori 渲染器输出，重点确认文字、比例和不同状态下的视觉一致性。</p>
+      </div>
+      <div class="hero-specs">
+        <div><span>竖版</span><strong>1080 × 1350</strong></div>
+        <div><span>方版</span><strong>1080 × 1080</strong></div>
+        <div><span>品牌</span><strong>{{ brandName || '默认' }}</strong></div>
       </div>
     </div>
 
@@ -130,8 +143,8 @@ async function downloadPng(payload: CardPayload) {
 
     <!-- Miss case (credibility test) -->
     <div class="section-header">
-      <div class="section-label">❌ 未中场景 — Miss Case（虚心认错）</div>
-      <div class="section-sub">乔布斯说：坦诚是最便宜的营销</div>
+      <div class="section-label">未中场景</div>
+      <div class="section-sub">Proof card · missed case</div>
     </div>
 
     <div class="card-grid">
@@ -151,8 +164,8 @@ async function downloadPng(payload: CardPayload) {
 
     <!-- Summary Set -->
     <div class="section-header">
-      <div class="section-label">📋 市场汇总兑现图 — Summary Settlement Card</div>
-      <div class="section-sub">按市场合并发一张结算图，左 A股 右 港股</div>
+      <div class="section-label">市场汇总兑现图</div>
+      <div class="section-sub">Summary settlement card · A股 / 港股</div>
     </div>
 
     <div class="card-grid">
@@ -184,8 +197,7 @@ async function downloadPng(payload: CardPayload) {
     </div>
 
     <div class="bottom-note">
-      💡 PNG 按钮调用 <code>POST /api/og/card</code>（satori 渲染）<br>
-      需要在 <code>public/fonts/NotoSansSC-Regular.ttf</code> 放置字体文件方可生成 PNG。
+      PNG 按钮调用 <code>POST /api/og/card</code> 进行 Satori 渲染。Docker 镜像会准备 Noto Sans SC 字体，运行时仍保留 CDN 兜底。
     </div>
   </div>
 </template>
@@ -193,7 +205,9 @@ async function downloadPng(payload: CardPayload) {
 <style scoped>
 .preview-root {
   min-height: 100vh;
-  background: #060a14;
+  background:
+    linear-gradient(180deg, rgba(37,99,235,0.12), transparent 360px),
+    #060a14;
   padding: 32px 40px 80px;
   font-family: "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
   color: #e2e8f0;
@@ -201,7 +215,7 @@ async function downloadPng(payload: CardPayload) {
 
 .top-bar {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 40px; padding-bottom: 20px;
+  margin-bottom: 18px; padding-bottom: 18px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .top-title {
@@ -209,34 +223,84 @@ async function downloadPng(payload: CardPayload) {
   font-size: 20px; font-weight: 700; color: #818cf8;
 }
 .top-title .dot { width: 8px; height: 8px; border-radius: 50%; background: #818cf8 }
-.sub { font-size: 14px; font-weight: 400; color: #475569 }
+.sub { font-size: 14px; font-weight: 400; color: #64748b }
 .hint { font-size: 13px; color: #475569 }
 .hint code { color: #94a3b8; font-size: 12px }
 
-.section-header { margin: 40px 0 20px }
+.preview-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 24px;
+  align-items: end;
+  margin: 28px 0 36px;
+}
+.eyebrow { color: #93c5fd; font-size: 12px; font-weight: 900; letter-spacing: 0; }
+.preview-hero h1 {
+  margin: 8px 0 10px;
+  color: #f8fafc;
+  font-size: clamp(30px, 4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.preview-hero p {
+  max-width: 760px;
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.8;
+}
+.hero-specs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.hero-specs div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(15,23,42,0.72);
+}
+.hero-specs span { color: #64748b; font-size: 12px; }
+.hero-specs strong { color: #e2e8f0; font-size: 13px; }
+
+.section-header { margin: 40px 0 18px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); }
 .section-label { font-size: 18px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px }
-.section-sub   { font-size: 13px; color: #475569 }
+.section-sub   { font-size: 13px; color: #64748b }
 
 .card-grid {
-  display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, max-content));
+  gap: 28px;
+  align-items: flex-start;
 }
 
-.card-slot { display: flex; flex-direction: column; gap: 10px }
+.card-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(15,23,42,0.5);
+}
 
 .slot-label {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; min-height: 28px;
   font-size: 13px;
 }
 .variant-name { font-weight: 700; color: #818cf8; font-family: monospace }
-.slot-dim { color: #475569 }
+.slot-dim { color: #64748b }
 .dl-btn {
-  padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(129,140,248,0.3);
+  margin-left: auto;
+  padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(129,140,248,0.3);
   background: rgba(129,140,248,0.1); color: #818cf8; font-size: 12px;
   cursor: pointer; transition: background 0.15s;
 }
 .dl-btn:hover { background: rgba(129,140,248,0.2) }
 
-.card-frame { overflow: hidden; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06) }
+.card-frame { overflow: hidden; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 24px 64px rgba(0,0,0,.34); }
 .card-scale-wrap { overflow: hidden }
 
 .bottom-note {
@@ -245,4 +309,12 @@ async function downloadPng(payload: CardPayload) {
   font-size: 13px; color: #94a3b8; line-height: 1.8;
 }
 .bottom-note code { color: #818cf8 }
+@media (max-width: 760px) {
+  .preview-root { padding: 22px 14px 56px; }
+  .top-bar, .preview-hero { grid-template-columns: 1fr; flex-direction: column; align-items: flex-start; }
+  .top-title { flex-wrap: wrap; }
+  .preview-hero { display: grid; gap: 18px; }
+  .card-grid { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 8px; }
+  .card-slot { flex: 0 0 auto; }
+}
 </style>

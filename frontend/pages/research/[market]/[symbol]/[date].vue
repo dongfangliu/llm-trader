@@ -19,6 +19,27 @@ const signedPct = computed(() => {
   if (value == null) return '-'
   return `${value >= 0 ? '+' : ''}${Number(value).toFixed(2)}%`
 })
+const marketLabel = computed(() => {
+  if (market.value === 'hk') return '港股'
+  if (market.value === 'us') return '美股'
+  return 'A股'
+})
+const resultLabel = computed(() => record.value?.is_correct ? '命中' : '未命中')
+const resultTone = computed(() => record.value?.is_correct ? 'hit' : 'miss')
+const priceMetrics = computed(() => [
+  { label: '当时方向', value: dir.value },
+  { label: '置信度', value: record.value?.confidence ? Math.round(record.value.confidence) + '%' : '-' },
+  { label: '基准收盘', value: record.value?.close_price ? Number(record.value.close_price).toFixed(2) : '-' },
+  { label: '目标价', value: record.value?.target_price ? Number(record.value.target_price).toFixed(2) : '-' },
+  { label: '止损价', value: record.value?.stop_loss ? Number(record.value.stop_loss).toFixed(2) : '-' },
+  { label: '实际收盘', value: record.value?.actual_close ? Number(record.value.actual_close).toFixed(2) : '-' },
+])
+const analysisSections = computed(() => [
+  { title: '市场诊断', text: record.value?.market_diagnosis },
+  { title: '机会评估', text: record.value?.opportunity_assessment },
+  { title: '风险分析', text: record.value?.risk_analysis },
+  { title: '执行计划', text: record.value?.execution_plan },
+].filter(item => item.text))
 const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=promise`)
 const cardUrl = computed(() => `${requestUrl.origin}${cardPath.value}`)
 const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算AI K线分析复盘`)
@@ -52,55 +73,58 @@ useJsonLd('research-detail-jsonld', () => [
 <template>
   <main class="seo-page">
     <article v-if="record" class="article">
-      <header class="article-head">
-        <NuxtLink :to="`/research/${market}/${symbol}`" class="back">该标的历史记录</NuxtLink>
-        <h1>{{ record.symbol_name }} {{ record.prediction_date }} 已结算AI K线分析复盘</h1>
-        <p class="lead">顶部保留当时生成的 Promise 卡片；下方展示目标日后的实际结果。这里只展示已结算历史记录，不构成投资建议。</p>
+      <header class="article-head hero">
+        <div class="hero-copy">
+          <NuxtLink :to="`/research/${market}/${symbol}`" class="back">该标的历史记录</NuxtLink>
+          <div class="eyebrow">{{ marketLabel }} · {{ symbol }} · {{ record.prediction_date }}</div>
+          <h1>{{ record.symbol_name }} AI K线分析复盘：{{ resultLabel }}记录</h1>
+          <p class="lead">{{ record.symbol_name }} 在 {{ record.prediction_date }} 生成的 AI 技术面预测，目标日 {{ record.target_date || '-' }} 已完成结算。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。</p>
+          <div class="hero-actions">
+            <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
+            <NuxtLink class="cta secondary" to="/research">查看复盘档案</NuxtLink>
+          </div>
+        </div>
+        <figure class="promise-figure hero-card">
+          <img :src="cardPath" :alt="`${record.symbol_name} ${record.prediction_date} AI K线分析 Promise 卡片`">
+          <figcaption>审核时生成的原始预测卡片</figcaption>
+        </figure>
       </header>
 
-      <figure class="promise-figure">
-        <img :src="cardPath" :alt="`${record.symbol_name} ${record.prediction_date} Promise 卡片`">
-        <figcaption>当时审核使用的原始 Promise 图</figcaption>
-      </figure>
-
-      <section class="result-panel" :class="{ hit: record.is_correct, miss: record.is_correct === false }">
-        <div>
+      <section class="result-panel" :class="resultTone">
+        <div class="result-verdict">
           <span>结算结果</span>
-          <strong>{{ record.is_correct ? '命中' : '未命中' }}</strong>
+          <strong>{{ resultLabel }}</strong>
+          <p>预测方向 {{ dir }}，实际涨跌 {{ signedPct }}</p>
         </div>
-        <div>
-          <span>实际涨跌</span>
-          <strong>{{ signedPct }}</strong>
-        </div>
-        <div>
-          <span>目标日</span>
-          <strong>{{ record.target_date || '-' }}</strong>
-        </div>
+        <div><span>实际涨跌</span><strong>{{ signedPct }}</strong></div>
+        <div><span>目标日</span><strong>{{ record.target_date || '-' }}</strong></div>
       </section>
 
       <div class="metrics">
-        <div><span>当时方向</span><strong>{{ dir }}</strong></div>
-        <div><span>置信度</span><strong>{{ record.confidence ? Math.round(record.confidence) + '%' : '-' }}</strong></div>
-        <div><span>基准收盘</span><strong>{{ record.close_price ? Number(record.close_price).toFixed(2) : '-' }}</strong></div>
-        <div><span>目标价</span><strong>{{ record.target_price ? Number(record.target_price).toFixed(2) : '-' }}</strong></div>
-        <div><span>止损价</span><strong>{{ record.stop_loss ? Number(record.stop_loss).toFixed(2) : '-' }}</strong></div>
-        <div><span>实际收盘</span><strong>{{ record.actual_close ? Number(record.actual_close).toFixed(2) : '-' }}</strong></div>
+        <div v-for="item in priceMetrics" :key="item.label">
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+        </div>
       </div>
 
-      <section v-if="record.analysis_summary">
+      <section v-if="record.analysis_summary" class="content-section summary-section">
         <h2>摘要</h2>
         <p>{{ record.analysis_summary }}</p>
       </section>
-      <section>
-        <h2>四步记录</h2>
-        <p v-if="record.market_diagnosis"><strong>市场诊断：</strong>{{ record.market_diagnosis }}</p>
-        <p v-if="record.opportunity_assessment"><strong>机会评估：</strong>{{ record.opportunity_assessment }}</p>
-        <p v-if="record.risk_analysis"><strong>风险分析：</strong>{{ record.risk_analysis }}</p>
-        <p v-if="record.execution_plan"><strong>执行计划：</strong>{{ record.execution_plan }}</p>
+
+      <section class="content-section">
+        <h2>{{ record.symbol_name }} AI K线分析四步记录</h2>
+        <div class="analysis-list">
+          <section v-for="item in analysisSections" :key="item.title" class="analysis-item">
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.text }}</p>
+          </section>
+        </div>
       </section>
 
       <div class="actions">
         <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
+        <NuxtLink class="cta secondary" :to="`/research/${market}/${symbol}`">查看该标的更多复盘</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
       </div>
     </article>
@@ -112,33 +136,92 @@ useJsonLd('research-detail-jsonld', () => [
 </template>
 
 <style scoped>
-.seo-page { min-height: 100vh; background: #f8fafc; color: #111827; padding: 24px 16px 56px; }
-.article { max-width: 920px; margin: 0 auto; }
-.article-head, section, .metrics, .result-panel { margin-bottom: 18px; }
-.back { color: #2563eb; text-decoration: none; font-weight: 600; }
-h1 { font-size: 32px; margin: 20px 0 8px; letter-spacing: 0; }
-h2 { font-size: 20px; margin: 24px 0 8px; }
-p { color: #4b5563; line-height: 1.9; }
-.lead { color: #6b7280; }
-.promise-figure { margin: 22px 0 18px; }
-.promise-figure img { display: block; width: min(520px, 100%); aspect-ratio: 4 / 5; object-fit: contain; background: #e5e7eb; border: 1px solid #e5e7eb; border-radius: 8px; }
-.promise-figure figcaption { margin-top: 8px; color: #6b7280; font-size: 13px; }
-.result-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
-.result-panel div { min-width: 0; }
-.result-panel span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 6px; }
-.result-panel strong { font-size: 24px; }
-.result-panel.hit { border-color: #bbf7d0; background: #f0fdf4; }
-.result-panel.miss { border-color: #fecaca; background: #fef2f2; }
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 20px 0; }
-.metrics div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; }
-.metrics span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 6px; }
-.metrics strong { font-size: 20px; }
+.seo-page { min-height: 100vh; background: #f3f4f6; color: #111827; padding: 24px 16px 64px; }
+.article { max-width: 1120px; margin: 0 auto; }
+.article-head, .content-section, .metrics, .result-panel { margin-bottom: 18px; }
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 430px);
+  gap: 28px;
+  align-items: center;
+  padding: 28px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.hero-copy { min-width: 0; }
+.back { color: #2563eb; text-decoration: none; font-weight: 700; font-size: 14px; }
+.eyebrow { margin-top: 24px; color: #6b7280; font-size: 13px; font-weight: 800; letter-spacing: 0; }
+h1 { font-size: clamp(30px, 4vw, 48px); line-height: 1.12; margin: 12px 0 14px; letter-spacing: 0; }
+h2 { font-size: 22px; margin: 0 0 14px; letter-spacing: 0; }
+h3 { font-size: 15px; margin: 0 0 8px; color: #111827; }
+p { color: #4b5563; line-height: 1.9; margin: 0; }
+.lead { color: #4b5563; font-size: 16px; max-width: 680px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.promise-figure { margin: 0; }
+.promise-figure img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: contain;
+  background: #111827;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  box-shadow: 0 18px 45px rgba(17,24,39,.18);
+}
+.promise-figure figcaption { margin-top: 10px; color: #6b7280; font-size: 13px; text-align: center; }
+.result-panel {
+  display: grid;
+  grid-template-columns: 1.5fr .75fr .75fr;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.result-panel div { min-width: 0; padding: 12px; border-radius: 8px; background: #f9fafb; }
+.result-panel span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 6px; font-weight: 800; }
+.result-panel strong { font-size: 28px; line-height: 1; }
+.result-panel p { margin-top: 8px; font-size: 13px; line-height: 1.6; color: #6b7280; }
+.result-panel.hit { border-color: #bbf7d0; }
+.result-panel.hit .result-verdict { background: #f0fdf4; }
+.result-panel.miss { border-color: #fecaca; }
+.result-panel.miss .result-verdict { background: #fef2f2; }
+.metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 18px 0; }
+.metrics div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fff; min-width: 0; }
+.metrics span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 8px; font-weight: 800; }
+.metrics strong { font-size: 20px; word-break: break-word; }
+.content-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 22px;
+}
+.summary-section p { font-size: 16px; color: #374151; }
+.analysis-list { display: grid; gap: 12px; }
+.analysis-item {
+  padding: 16px;
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  background: #fbfbfc;
+}
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
-.cta.primary { background: #2563eb; color: #fff; }
+.cta { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 800; }
+.cta.primary { background: #2563eb; color: #fff; box-shadow: 0 8px 22px rgba(37,99,235,.22); }
 .cta.secondary { background: #eef2ff; color: #3730a3; }
 @media (max-width: 680px) {
-  .result-panel { grid-template-columns: 1fr; }
-  h1 { font-size: 28px; }
+  .seo-page { padding: 12px 12px 48px; }
+  .hero { grid-template-columns: 1fr; padding: 18px; gap: 18px; }
+  .eyebrow { margin-top: 18px; }
+  h1 { font-size: 30px; }
+  .lead { font-size: 15px; }
+  .result-panel, .metrics { grid-template-columns: 1fr; }
+  .content-section { padding: 18px; }
+  .cta { width: 100%; }
+}
+@media (min-width: 681px) and (max-width: 980px) {
+  .hero { grid-template-columns: 1fr; }
+  .hero-card { max-width: 440px; justify-self: center; }
+  .metrics { grid-template-columns: repeat(3, 1fr); }
 }
 </style>

@@ -103,6 +103,34 @@ const publicPath = computed(() => {
   if (!pred.value) return ''
   return `/research/${pred.value.market}/${pred.value.symbol}/${pred.value.prediction_date}`
 })
+const marketLabel = computed(() => {
+  const m = pred.value?.market
+  if (m === 'hk') return '港股'
+  if (m === 'us') return '美股'
+  return 'A股'
+})
+const directionText = computed(() => {
+  const d = pred.value?.predicted_direction
+  return d === 'up' ? '看涨' : d === 'down' ? '看跌' : '震荡'
+})
+const statusText = computed(() => {
+  const s = pred.value?.status
+  return s === 'pending' ? '待审核'
+    : s === 'approved' ? '已通过待结算'
+    : s === 'settled' ? '已结算'
+    : s === 'rejected' ? '已拒绝'
+    : s || '-'
+})
+const previewVariantText = computed(() => pred.value?.actual_change_pct != null ? 'Proof 结算卡' : 'Promise 预测卡')
+const seoTitle = computed(() => {
+  if (!pred.value) return ''
+  return `${pred.value.symbol_name} ${pred.value.prediction_date} AI K线分析复盘`
+})
+const seoDescription = computed(() => {
+  if (!pred.value) return ''
+  const pct = pctText(pred.value.actual_change_pct)
+  return `${pred.value.symbol_name} 的 AI K线分析历史复盘：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌 ${pct}。`
+})
 
 function pctText(v: number | null | undefined) {
   if (v == null) return '-'
@@ -128,60 +156,70 @@ onUnmounted(() => {
     <main v-if="pred" class="content">
       <section class="hero panel">
         <div>
-          <h1>{{ pred.symbol_name }}</h1>
-          <p>{{ pred.market?.toUpperCase() }} / {{ pred.symbol }} / 预测日 {{ pred.prediction_date }}</p>
+          <span class="eyebrow">{{ statusText }} · {{ marketLabel }} · {{ pred.symbol }}</span>
+          <h1>{{ pred.symbol_name }} 完整审核</h1>
+          <p>{{ pred.prediction_date }} 生成，目标日 {{ pred.target_date || '-' }}。当前预览为 {{ previewVariantText }}。</p>
         </div>
         <div class="signal">
-          <strong>{{ pred.predicted_direction === 'up' ? '看涨' : pred.predicted_direction === 'down' ? '看跌' : '震荡' }}</strong>
+          <strong>{{ directionText }}</strong>
           <span>置信度 {{ Math.round(pred.confidence || 0) }}%</span>
         </div>
       </section>
 
-      <section class="grid">
-        <div class="panel">
-          <div class="panel-title">审核检查清单</div>
-          <div v-for="item in checklist" :key="item.label" class="check">
-            <span :class="['dot', item.ok ? 'ok' : 'bad']" />
-            <span>{{ item.label }}</span>
+      <section class="review-workbench">
+        <aside class="panel audit-panel">
+          <div class="panel-title">审核清单</div>
+          <div class="check-list">
+            <div v-for="item in checklist" :key="item.label" class="check">
+              <span :class="['dot', item.ok ? 'ok' : 'bad']" />
+              <span>{{ item.label }}</span>
+            </div>
           </div>
-          <div class="actions">
-            <button v-if="pred.status === 'pending'" class="primary" :disabled="loading === 'approve'" @click="approve">通过</button>
-            <button v-if="['pending','approved'].includes(pred.status)" class="danger" :disabled="loading === 'reject'" @click="reject">拒绝</button>
-            <NuxtLink v-if="pred.status === 'settled'" class="secondary" :to="publicPath" target="_blank">查看公开复盘</NuxtLink>
-          </div>
-        </div>
 
-        <div class="panel">
           <div class="panel-title">关键价格</div>
           <div class="price-row"><span>基准收盘</span><strong>{{ pred.close_price?.toFixed?.(2) ?? '-' }}</strong></div>
           <div class="price-row"><span>目标价</span><strong>{{ pred.target_price?.toFixed?.(2) ?? '-' }}</strong></div>
           <div class="price-row"><span>止损价</span><strong>{{ pred.stop_loss?.toFixed?.(2) ?? '-' }}</strong></div>
           <div class="price-row"><span>目标日</span><strong>{{ pred.target_date }}</strong></div>
           <div v-if="pred.actual_change_pct != null" class="price-row"><span>结算涨跌</span><strong>{{ pctText(pred.actual_change_pct) }}</strong></div>
-        </div>
-      </section>
 
-      <section class="grid wide">
-        <div class="panel">
-          <div class="panel-title">真实卡片 PNG</div>
+          <div class="actions">
+            <button v-if="pred.status === 'pending'" class="primary" :disabled="loading === 'approve'" @click="approve">通过审核</button>
+            <button v-if="['pending','approved'].includes(pred.status)" class="danger" :disabled="loading === 'reject'" @click="reject">拒绝</button>
+            <NuxtLink v-if="pred.status === 'settled'" class="secondary" :to="publicPath" target="_blank">打开公开页</NuxtLink>
+          </div>
+        </aside>
+
+        <section class="panel card-panel">
+          <div class="panel-title">
+            <span>真实生成 PNG</span>
+            <small>{{ previewVariantText }}</small>
+          </div>
           <img v-if="previewUrl" class="card-img" :src="previewUrl" alt="模型复盘卡片预览">
           <div v-else class="empty">卡片生成中...</div>
-        </div>
+        </section>
 
-        <div class="panel">
-          <div class="panel-title">公开页布局预览</div>
+        <aside class="panel publish-panel">
+          <div class="panel-title">公开页与 SEO 预览</div>
+          <div class="seo-preview">
+            <span class="seo-url">{{ publicPath }}</span>
+            <strong>{{ seoTitle }}</strong>
+            <p>{{ seoDescription }}</p>
+          </div>
           <div class="public-preview">
-            <strong>{{ pred.symbol_name }} 模型复盘</strong>
-            <span>{{ pred.prediction_date }} -> {{ pred.target_date }}</span>
+            <div class="preview-head">
+              <span>{{ marketLabel }} · {{ pred.symbol }}</span>
+              <strong>{{ pred.symbol_name }} AI K线分析复盘</strong>
+            </div>
             <p>{{ pred.analysis_summary }}</p>
             <div class="mini-grid">
-              <div>方向 <b>{{ pred.predicted_direction }}</b></div>
+              <div>方向 <b>{{ directionText }}</b></div>
               <div>置信度 <b>{{ Math.round(pred.confidence || 0) }}%</b></div>
               <div>结算 <b>{{ pctText(pred.actual_change_pct) }}</b></div>
             </div>
           </div>
           <NuxtLink v-if="pred.status === 'settled'" class="secondary full" :to="publicPath" target="_blank">打开公开页</NuxtLink>
-        </div>
+        </aside>
       </section>
 
       <section class="panel">
@@ -217,23 +255,29 @@ export default {
 </script>
 
 <style scoped>
-.page { min-height: 100vh; background: #f4f5f7; color: #111827; }
+.page { min-height: 100vh; background: #f3f4f6; color: #111827; }
 .topbar { position: sticky; top: 0; z-index: 10; height: 52px; display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; padding: 0 16px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(14px); text-align: center; }
 .text-btn { color: #2563eb; text-decoration: none; background: none; border: 0; font-size: 14px; }
-.content { max-width: 1080px; margin: 0 auto; padding: 16px 16px 48px; }
+.content { max-width: 1280px; margin: 0 auto; padding: 16px 16px 48px; }
 .toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 10px 16px; border-radius: 10px; color: #fff; font-weight: 700; }
 .toast.ok { background: #16a34a; }
 .toast.err { background: #dc2626; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
-.hero { display: flex; justify-content: space-between; align-items: center; }
-h1 { margin: 0 0 4px; font-size: 28px; }
+.hero { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px; }
+.eyebrow { display: block; color: #6b7280; font-size: 12px; font-weight: 800; margin-bottom: 8px; }
+h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: 0; }
 p { color: #4b5563; line-height: 1.7; margin: 0; white-space: pre-wrap; word-break: break-word; }
 .signal { text-align: right; }
 .signal strong { display: block; color: #b45309; font-size: 28px; }
 .signal span { color: #6b7280; font-size: 13px; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.wide { grid-template-columns: 1fr 1fr; align-items: start; }
-.panel-title { font-weight: 800; color: #374151; margin-bottom: 12px; }
+.review-workbench { display: grid; grid-template-columns: minmax(260px, .82fr) minmax(360px, 1.15fr) minmax(300px, .9fr); gap: 14px; align-items: start; }
+.audit-panel, .publish-panel { position: sticky; top: 66px; }
+.card-panel { background: #111827; border-color: #111827; }
+.card-panel .panel-title { color: #f9fafb; }
+.card-panel .panel-title small { color: #9ca3af; }
+.panel-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 800; color: #374151; margin-bottom: 12px; }
+.panel-title small { color: #6b7280; font-size: 12px; }
+.check-list { margin-bottom: 18px; }
 .check { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot.ok { background: #16a34a; }
@@ -246,10 +290,13 @@ p { color: #4b5563; line-height: 1.7; margin: 0; white-space: pre-wrap; word-bre
 .full { width: 100%; margin-top: 12px; }
 .price-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
 .price-row span { color: #6b7280; }
-.card-img { display: block; width: 100%; border-radius: 8px; background: #f9fafb; }
-.public-preview { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fafafa; }
-.public-preview strong { display: block; font-size: 22px; margin-bottom: 4px; }
-.public-preview span { color: #6b7280; font-size: 13px; }
+.card-img { display: block; width: 100%; border-radius: 8px; background: #f9fafb; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+.seo-preview, .public-preview { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fafafa; margin-bottom: 12px; }
+.seo-url { color: #15803d; font-size: 12px; display: block; margin-bottom: 6px; word-break: break-all; }
+.seo-preview strong { display: block; color: #1d4ed8; font-size: 17px; line-height: 1.35; margin-bottom: 6px; }
+.seo-preview p { color: #4b5563; font-size: 13px; line-height: 1.6; }
+.preview-head span { color: #6b7280; font-size: 12px; font-weight: 800; }
+.preview-head strong { display: block; font-size: 22px; margin: 4px 0 10px; color: #111827; }
 .public-preview p { margin-top: 12px; }
 .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .mini-grid div { background: #fff; border-radius: 8px; padding: 10px; color: #6b7280; font-size: 12px; }
@@ -261,6 +308,13 @@ p { color: #4b5563; line-height: 1.7; margin: 0; white-space: pre-wrap; word-bre
 @media (max-width: 760px) {
   .hero, .actions { flex-direction: column; align-items: stretch; }
   .signal { text-align: left; }
-  .grid, .wide, .mini-grid { grid-template-columns: 1fr; }
+  .review-workbench, .mini-grid { grid-template-columns: 1fr; }
+  .audit-panel, .publish-panel { position: static; }
+  .card-panel { order: -1; }
+}
+@media (min-width: 761px) and (max-width: 1120px) {
+  .review-workbench { grid-template-columns: 1fr 1fr; }
+  .card-panel { grid-column: 1 / -1; max-width: 560px; justify-self: center; width: 100%; }
+  .audit-panel, .publish-panel { position: static; }
 }
 </style>
