@@ -30,6 +30,7 @@ const manual = reactive({
   symbol: '',
   name: '',
 })
+const router = useRouter()
 
 const pendingPreds = computed(() => todayPreds.value.filter(p => p.status === 'pending'))
 const approvedPreds = computed(() => todayPreds.value.filter(p => p.status === 'approved'))
@@ -145,14 +146,14 @@ function isGenerating(symbol: string) {
 async function generateSingle(c: Candidate) {
   generatingSymbols.value = new Set([...generatingSymbols.value, c.symbol])
   try {
-    await api.post('/api/admin/xbot/actions/generate-single', {
+    const res = await api.post('/api/admin/xbot/actions/generate-single', {
       symbol: c.symbol,
       market: c.market,
       name: c.name,
       hot_rank: c.hot_rank ?? 0,
     }, { headers: getAdminHeaders() })
     candidates.value = candidates.value.map(x => x.market === c.market && x.symbol === c.symbol
-      ? { ...x, already_generated: true, existing_status: 'pending' }
+      ? { ...x, already_generated: true, existing_status: 'pending', existing_prediction_id: res.data?.id }
       : x)
     showMsg(`${c.name || c.symbol} 分析生成成功`)
     await Promise.all([loadTodayPreds(), loadDashboard()])
@@ -163,6 +164,23 @@ async function generateSingle(c: Candidate) {
     s.delete(c.symbol)
     generatingSymbols.value = s
   }
+}
+
+function predictionIdForCandidate(c: Candidate) {
+  return c.existing_prediction_id
+    || todayPreds.value.find(p => p.market === c.market && p.symbol === c.symbol)?.id
+}
+
+function openReview(id: string | number | null | undefined) {
+  if (!id) {
+    showMsg('未找到对应审核记录，请先刷新列表', 'err')
+    return
+  }
+  router.push(`/admin/model-review/${id}`)
+}
+
+function openCandidateReview(c: Candidate) {
+  openReview(predictionIdForCandidate(c))
 }
 
 async function approvePred(pred: Prediction) {
@@ -319,7 +337,14 @@ onMounted(refreshAll)
                 <span>{{ marketLabel[c.market] }} / {{ c.symbol }} / 热度 {{ c.hot_rank ?? '-' }}</span>
               </div>
               <div class="record-actions">
-                <span v-if="c.already_generated" class="state">{{ statusLabel[c.existing_status] || '已生成' }}</span>
+                <button
+                  v-if="c.already_generated"
+                  class="small state-link"
+                  :disabled="!predictionIdForCandidate(c)"
+                  @click="openCandidateReview(c)"
+                >
+                  {{ statusLabel[c.existing_status] || '已生成' }}
+                </button>
                 <button v-else class="small ok" :disabled="isGenerating(c.symbol)" @click="generateSingle(c)">
                   {{ isGenerating(c.symbol) ? '生成中...' : '生成分析' }}
                 </button>
@@ -332,7 +357,7 @@ onMounted(refreshAll)
 
         <StagePanel title="待审核" :items="pendingPreds" empty="暂无待审核记录。">
           <template #default="{ item }">
-            <NuxtLink class="small" :to="`/admin/model-review/${item.id}`">完整审核</NuxtLink>
+            <button class="small" @click="openReview(item.id)">完整审核</button>
             <button class="small ok" @click="approvePred(item)">通过</button>
             <button class="small danger" @click="rejectPred(item)">拒绝</button>
           </template>
@@ -340,7 +365,7 @@ onMounted(refreshAll)
 
         <StagePanel title="已通过待结算" :items="approvedPreds" empty="暂无已通过记录。">
           <template #default="{ item }">
-            <NuxtLink class="small" :to="`/admin/model-review/${item.id}`">查看</NuxtLink>
+            <button class="small" @click="openReview(item.id)">查看</button>
             <button class="small danger" @click="rejectPred(item)">拒绝</button>
           </template>
         </StagePanel>
@@ -353,7 +378,7 @@ onMounted(refreshAll)
 
         <StagePanel title="已拒绝" :items="rejectedPreds" empty="暂无已拒绝记录。">
           <template #default="{ item }">
-            <NuxtLink class="small" :to="`/admin/model-review/${item.id}`">查看</NuxtLink>
+            <button class="small" @click="openReview(item.id)">查看</button>
           </template>
         </StagePanel>
 
@@ -386,7 +411,7 @@ onMounted(refreshAll)
           </div>
           <div>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</div>
           <div>{{ pctText(p.actual_change_pct) }}</div>
-          <NuxtLink class="small" :to="`/admin/model-review/${p.id}`">查看</NuxtLink>
+          <button class="small" @click="openReview(p.id)">查看</button>
         </div>
         <div v-if="!historyPreds.length" class="empty">暂无记录</div>
       </section>

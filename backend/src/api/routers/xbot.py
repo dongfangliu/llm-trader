@@ -765,12 +765,16 @@ async def _mark_candidate_status(db: AsyncSession, candidates: List[dict]) -> Li
             XBotPrediction.market.in_(markets),
         )
     )
-    existing = {(p.market, p.symbol): p.status for p in result.scalars().all()}
+    existing = {
+        (p.market, p.symbol): {"id": p.id, "status": p.status}
+        for p in result.scalars().all()
+    }
     return [
         {
             **c,
             "already_generated": (c["market"], c["symbol"]) in existing,
-            "existing_status": existing.get((c["market"], c["symbol"])),
+            "existing_status": existing.get((c["market"], c["symbol"]), {}).get("status"),
+            "existing_prediction_id": existing.get((c["market"], c["symbol"]), {}).get("id"),
         }
         for c in candidates
     ]

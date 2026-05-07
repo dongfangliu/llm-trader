@@ -27,6 +27,43 @@ function Write-Warn   { param($msg) Write-Host "  [!]  $msg" -ForegroundColor Ye
 function Write-Err    { param($msg) Write-Host "  [X]  $msg" -ForegroundColor Red }
 function Write-Info   { param($msg) Write-Host "  [.]  $msg" -ForegroundColor Gray }
 
+function Get-LatestSourceWriteTime {
+    param([string[]]$Paths)
+    $latest = $null
+    foreach ($p in $Paths) {
+        if (-not (Test-Path $p)) { continue }
+        $items = Get-ChildItem -LiteralPath $p -Recurse -File -ErrorAction SilentlyContinue
+        if ((Get-Item -LiteralPath $p).PSIsContainer -eq $false) {
+            $items = @((Get-Item -LiteralPath $p))
+        }
+        foreach ($item in $items) {
+            if ($null -eq $latest -or $item.LastWriteTimeUtc -gt $latest) {
+                $latest = $item.LastWriteTimeUtc
+            }
+        }
+    }
+    return $latest
+}
+
+function Warn-IfImageMayBeStale {
+    param([string]$Image, [string[]]$SourcePaths)
+    $latestSource = Get-LatestSourceWriteTime -Paths $SourcePaths
+    if ($null -eq $latestSource) { return }
+
+    $createdRaw = docker image inspect $Image --format '{{.Created}}' 2>$null
+    if (-not $createdRaw) {
+        Write-Warn "Docker image '$Image' not found locally; run .\start.ps1 -Build if startup fails."
+        return
+    }
+
+    try {
+        $created = [DateTimeOffset]::Parse($createdRaw).UtcDateTime
+        if ($latestSource -gt $created) {
+            Write-Warn "Local source is newer than Docker image '$Image'. Use .\start.ps1 -Build to avoid stale routes/assets."
+        }
+    } catch {}
+}
+
 function Wait-Http {
     param([string]$Url, [int]$Seconds = 30)
     for ($i = 0; $i -lt $Seconds; $i++) {
@@ -127,6 +164,27 @@ Write-Host "======================================" -ForegroundColor Cyan
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Err "Docker Desktop not found."
     exit 1
+}
+
+if (-not $Build) {
+    Warn-IfImageMayBeStale -Image "trader-frontend:latest" -SourcePaths @(
+        "frontend\pages",
+        "frontend\components",
+        "frontend\composables",
+        "frontend\lib",
+        "frontend\server",
+        "frontend\assets",
+        "frontend\nuxt.config.ts",
+        "frontend\package.json",
+        "frontend\package-lock.json",
+        "frontend\Dockerfile"
+    )
+    Warn-IfImageMayBeStale -Image "trader-backend:latest" -SourcePaths @(
+        "backend\src",
+        "backend\initial_settings.json",
+        "backend\requirements.txt",
+        "backend\Dockerfile"
+    )
 }
 
 $upArgs = if ($Build) {
