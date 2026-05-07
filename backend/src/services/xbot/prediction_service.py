@@ -126,8 +126,12 @@ async def _analyze_stock(
     )
 
 
-async def generate_single_prediction(stock: Dict, db: AsyncSession) -> Optional[XBotPrediction]:
-    """Generate AI prediction for a single stock dict and save it. Returns the prediction or None on failure."""
+async def generate_single_prediction(stock: Dict, db: AsyncSession) -> XBotPrediction:
+    """Generate AI prediction for a single stock dict and save it.
+
+    Raises with the underlying failure reason so the admin UI can show an
+    actionable message instead of a generic "generation failed" toast.
+    """
     today = date.today()
     target = _next_trading_day(today)
     try:
@@ -145,8 +149,10 @@ async def generate_single_prediction(stock: Dict, db: AsyncSession) -> Optional[
         logger.info(f"[Single] Created prediction for {stock['symbol']} ({stock['name']}): {prediction.predicted_direction}")
         return prediction
     except Exception as e:
-        logger.error(f"[Single] Failed to analyze {stock['symbol']}: {e}")
-        return None
+        await db.rollback()
+        reason = str(e) or e.__class__.__name__
+        logger.error(f"[Single] Failed to analyze {stock['symbol']}: {reason}")
+        raise RuntimeError(reason) from e
 
 
 def _next_trading_day(d: date) -> date:

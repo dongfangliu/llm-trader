@@ -524,9 +524,11 @@ async def action_generate_single(body: GenerateSingleRequest, db: AsyncSession =
         raise HTTPException(status_code=409, detail=f"{symbol} 今日预测已存在")
 
     stock = {"symbol": symbol, "market": market, "name": name, "hot_rank": body.hot_rank}
-    pred = await generate_single_prediction(stock, db)
-    if pred is None:
-        raise HTTPException(status_code=500, detail=f"{symbol} 分析生成失败")
+    try:
+        pred = await generate_single_prediction(stock, db)
+    except Exception as exc:
+        reason = str(exc) or "未知错误"
+        raise HTTPException(status_code=500, detail=f"{symbol} 分析生成失败：{reason}")
     return _pred_dict(pred)
 
 
@@ -766,7 +768,7 @@ async def _mark_candidate_status(db: AsyncSession, candidates: List[dict]) -> Li
         )
     )
     existing = {
-        (p.market, p.symbol): {"id": p.id, "status": p.status}
+        (p.market, p.symbol): {"id": getattr(p, "id", None), "status": p.status}
         for p in result.scalars().all()
     }
     return [

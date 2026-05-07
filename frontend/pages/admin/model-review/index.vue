@@ -64,6 +64,14 @@ function showMsg(text: string, type: 'ok' | 'err' = 'ok') {
   window.setTimeout(() => { msg.value = '' }, 2800)
 }
 
+function apiErrorMessage(e: any, fallback: string) {
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (detail?.message) return detail.message
+  if (e?.message) return `${fallback}：${e.message}`
+  return fallback
+}
+
 async function loadDashboard() {
   const res = await api.get('/api/admin/xbot/dashboard', { headers: getAdminHeaders() })
   dashboard.value = res.data
@@ -158,7 +166,7 @@ async function generateSingle(c: Candidate) {
     showMsg(`${c.name || c.symbol} 分析生成成功`)
     await Promise.all([loadTodayPreds(), loadDashboard()])
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || `${c.name || c.symbol} 分析生成失败`, 'err')
+    showMsg(apiErrorMessage(e, `${c.name || c.symbol} 分析生成失败`), 'err')
   } finally {
     const s = new Set(generatingSymbols.value)
     s.delete(c.symbol)
