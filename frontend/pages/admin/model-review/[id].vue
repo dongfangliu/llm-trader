@@ -131,6 +131,39 @@ const seoDescription = computed(() => {
   const pct = pctText(pred.value.actual_change_pct)
   return `${pred.value.symbol_name} 的 AI K线分析历史复盘：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌 ${pct}。`
 })
+const resultLabel = computed(() => {
+  if (!pred.value || pred.value.actual_change_pct == null) return '待结算'
+  return pred.value.is_correct ? '命中' : '未命中'
+})
+const resultTone = computed(() => {
+  if (!pred.value || pred.value.actual_change_pct == null) return 'pending'
+  return pred.value.is_correct ? 'hit' : 'miss'
+})
+const publicLead = computed(() => {
+  if (!pred.value) return ''
+  const settleText = pred.value.actual_change_pct == null ? '尚未结算，当前为将来公开页首屏预览' : '已完成结算'
+  return `${pred.value.symbol_name} 在 ${pred.value.prediction_date} 生成的 AI 技术面预测，目标日 ${pred.value.target_date || '-'} ${settleText}。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。`
+})
+const priceMetrics = computed(() => {
+  if (!pred.value) return []
+  return [
+    { label: '当时方向', value: directionText.value },
+    { label: '置信度', value: pred.value.confidence ? Math.round(pred.value.confidence) + '%' : '-' },
+    { label: '基准收盘', value: pred.value.close_price ? Number(pred.value.close_price).toFixed(2) : '-' },
+    { label: '目标价', value: pred.value.target_price ? Number(pred.value.target_price).toFixed(2) : '-' },
+    { label: '止损价', value: pred.value.stop_loss ? Number(pred.value.stop_loss).toFixed(2) : '-' },
+    { label: '实际收盘', value: pred.value.actual_close ? Number(pred.value.actual_close).toFixed(2) : '-' },
+  ]
+})
+const analysisSections = computed(() => {
+  if (!pred.value) return []
+  return [
+    { title: '市场诊断', text: pred.value.market_diagnosis },
+    { title: '机会评估', text: pred.value.opportunity_assessment },
+    { title: '风险分析', text: pred.value.risk_analysis },
+    { title: '执行计划', text: pred.value.execution_plan },
+  ].filter(item => item.text)
+})
 
 function pctText(v: number | null | undefined) {
   if (v == null) return '-'
@@ -201,22 +234,66 @@ onUnmounted(() => {
 
         <aside class="panel publish-panel">
           <div class="panel-title">公开页与 SEO 预览</div>
+          <div class="preview-label">SEO snippet</div>
           <div class="seo-preview">
             <span class="seo-url">{{ publicPath }}</span>
             <strong>{{ seoTitle }}</strong>
             <p>{{ seoDescription }}</p>
           </div>
-          <div class="public-preview">
-            <div class="preview-head">
-              <span>{{ marketLabel }} · {{ pred.symbol }}</span>
-              <strong>{{ pred.symbol_name }} AI K线分析复盘</strong>
+
+          <div class="preview-label">公开页预览</div>
+          <div class="public-page-preview">
+            <header class="pub-hero">
+              <div class="pub-copy">
+                <span class="pub-back">该标的历史记录</span>
+                <span class="pub-eyebrow">{{ marketLabel }} · {{ pred.symbol }} · {{ pred.prediction_date }}</span>
+                <strong>{{ pred.symbol_name }} AI K线分析复盘：{{ resultLabel }}记录</strong>
+                <p>{{ publicLead }}</p>
+              </div>
+              <figure class="pub-card">
+                <img v-if="previewUrl" :src="previewUrl" alt="公开页卡图预览">
+                <div v-else class="empty">卡片生成中...</div>
+                <figcaption>{{ pred.actual_change_pct == null ? '审核时生成的预测卡片预览' : '审核时生成的原始预测卡片' }}</figcaption>
+              </figure>
+            </header>
+
+            <section class="pub-result" :class="resultTone">
+              <div>
+                <span>结算结果</span>
+                <strong>{{ resultLabel }}</strong>
+                <p>预测方向 {{ directionText }}，实际涨跌 {{ pctText(pred.actual_change_pct) }}</p>
+              </div>
+              <div>
+                <span>实际涨跌</span>
+                <strong>{{ pctText(pred.actual_change_pct) }}</strong>
+              </div>
+              <div>
+                <span>目标日</span>
+                <strong>{{ pred.target_date || '-' }}</strong>
+              </div>
+            </section>
+
+            <div class="pub-metrics">
+              <div v-for="item in priceMetrics" :key="item.label">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
             </div>
-            <p>{{ pred.analysis_summary }}</p>
-            <div class="mini-grid">
-              <div>方向 <b>{{ directionText }}</b></div>
-              <div>置信度 <b>{{ Math.round(pred.confidence || 0) }}%</b></div>
-              <div>结算 <b>{{ pctText(pred.actual_change_pct) }}</b></div>
-            </div>
+
+            <section v-if="pred.analysis_summary" class="pub-section summary">
+              <h3>摘要</h3>
+              <p>{{ pred.analysis_summary }}</p>
+            </section>
+
+            <section v-if="analysisSections.length" class="pub-section">
+              <h3>{{ pred.symbol_name }} AI K线分析四步记录</h3>
+              <div class="pub-analysis">
+                <div v-for="item in analysisSections" :key="item.title">
+                  <strong>{{ item.title }}</strong>
+                  <p>{{ item.text }}</p>
+                </div>
+              </div>
+            </section>
           </div>
           <NuxtLink v-if="pred.status === 'settled'" class="secondary full" :to="publicPath" target="_blank">打开公开页</NuxtLink>
         </aside>
@@ -291,16 +368,39 @@ p { color: #4b5563; line-height: 1.7; margin: 0; white-space: pre-wrap; word-bre
 .price-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
 .price-row span { color: #6b7280; }
 .card-img { display: block; width: 100%; border-radius: 8px; background: #f9fafb; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
-.seo-preview, .public-preview { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fafafa; margin-bottom: 12px; }
+.preview-label { margin: 12px 0 8px; color: #6b7280; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+.seo-preview, .public-page-preview { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fafafa; margin-bottom: 12px; }
 .seo-url { color: #15803d; font-size: 12px; display: block; margin-bottom: 6px; word-break: break-all; }
 .seo-preview strong { display: block; color: #1d4ed8; font-size: 17px; line-height: 1.35; margin-bottom: 6px; }
 .seo-preview p { color: #4b5563; font-size: 13px; line-height: 1.6; }
-.preview-head span { color: #6b7280; font-size: 12px; font-weight: 800; }
-.preview-head strong { display: block; font-size: 22px; margin: 4px 0 10px; color: #111827; }
-.public-preview p { margin-top: 12px; }
-.mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
-.mini-grid div { background: #fff; border-radius: 8px; padding: 10px; color: #6b7280; font-size: 12px; }
-.mini-grid b { display: block; color: #111827; margin-top: 4px; }
+.public-page-preview { background: #f3f4f6; max-height: 760px; overflow: auto; }
+.pub-hero { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 14px; align-items: center; padding: 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+.pub-copy { min-width: 0; }
+.pub-back { color: #2563eb; font-size: 12px; font-weight: 800; }
+.pub-eyebrow { display: block; margin-top: 10px; color: #6b7280; font-size: 12px; font-weight: 800; }
+.pub-copy strong { display: block; font-size: 24px; line-height: 1.15; margin: 8px 0 10px; color: #111827; }
+.pub-copy p { font-size: 13px; line-height: 1.7; }
+.pub-card { margin: 0; min-width: 0; }
+.pub-card img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: contain; border-radius: 8px; background: #111827; border: 1px solid #111827; }
+.pub-card figcaption { margin-top: 6px; color: #6b7280; font-size: 11px; text-align: center; }
+.pub-result { display: grid; grid-template-columns: 1.4fr .8fr .8fr; gap: 8px; margin-top: 12px; padding: 10px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+.pub-result div, .pub-metrics div, .pub-analysis div { min-width: 0; padding: 10px; border-radius: 8px; background: #f9fafb; }
+.pub-result.hit { border-color: #bbf7d0; }
+.pub-result.hit div:first-child { background: #f0fdf4; }
+.pub-result.miss { border-color: #fecaca; }
+.pub-result.miss div:first-child { background: #fef2f2; }
+.pub-result.pending div:first-child { background: #fffbeb; }
+.pub-result span, .pub-metrics span { display: block; color: #6b7280; font-size: 11px; margin-bottom: 6px; font-weight: 800; }
+.pub-result strong { font-size: 22px; line-height: 1; color: #111827; }
+.pub-result p { margin-top: 8px; font-size: 12px; line-height: 1.5; }
+.pub-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.pub-metrics strong { font-size: 17px; color: #111827; word-break: break-word; }
+.pub-section { margin-top: 12px; padding: 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+.pub-section h3 { margin: 0 0 10px; font-size: 15px; color: #111827; }
+.pub-section p { font-size: 13px; line-height: 1.7; }
+.pub-section.summary p { color: #374151; }
+.pub-analysis { display: grid; gap: 8px; }
+.pub-analysis strong { display: block; margin-bottom: 6px; font-size: 13px; color: #111827; }
 .article-block { padding: 12px 0; border-top: 1px solid #f3f4f6; }
 .article-block:first-of-type { border-top: 0; }
 .article-block h3 { margin: 0 0 6px; font-size: 14px; color: #6b7280; }
@@ -308,7 +408,7 @@ p { color: #4b5563; line-height: 1.7; margin: 0; white-space: pre-wrap; word-bre
 @media (max-width: 760px) {
   .hero, .actions { flex-direction: column; align-items: stretch; }
   .signal { text-align: left; }
-  .review-workbench, .mini-grid { grid-template-columns: 1fr; }
+  .review-workbench, .pub-hero, .pub-result, .pub-metrics { grid-template-columns: 1fr; }
   .audit-panel, .publish-panel { position: static; }
   .card-panel { order: -1; }
 }

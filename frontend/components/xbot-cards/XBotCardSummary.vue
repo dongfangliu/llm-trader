@@ -39,7 +39,7 @@ function dirLabel(d: string) {
   return d === 'up' ? '多头' : d === 'down' ? '空头' : '震荡'
 }
 function dirArrow(d: string) {
-  return d === 'up' ? '▲' : d === 'down' ? '▼' : '▬'
+  return d === 'up' ? '▲' : d === 'down' ? '▼' : ''
 }
 function dirColor(d: string) {
   return d === 'up' ? CL.UP : d === 'down' ? CL.DOWN : CL.HOLD
@@ -97,7 +97,9 @@ function stockCode(item: SummaryItem) {
 
         <!-- Direction -->
         <div class="sr-dir" :style="{ color: dirColor(item.predicted_direction) }">
-          {{ dirLabel(item.predicted_direction) }}&nbsp;{{ dirArrow(item.predicted_direction) }}
+          <span>{{ dirLabel(item.predicted_direction) }}</span>
+          <span v-if="item.predicted_direction === 'hold'" class="hold-mark" :style="{ background: dirColor(item.predicted_direction) }" />
+          <span v-else>{{ dirArrow(item.predicted_direction) }}</span>
         </div>
 
         <!-- Actual % -->
@@ -129,7 +131,7 @@ function stockCode(item: SummaryItem) {
     <!-- ── Footer ── -->
     <div class="footer">
       <div class="ft-left">
-        <span class="ft-logo">⬢</span>
+        <span class="brand-mark ft-logo" />
         <span class="ft-name">{{ brandName }}</span>
         <span class="ft-sep">·</span>
         <span class="ft-url">{{ domain }}</span>
@@ -213,6 +215,14 @@ function stockCode(item: SummaryItem) {
 .sr-dir {
   flex: 0 0 180px;
   font-size: 26px; font-weight: 600; letter-spacing: 2px;
+  display: flex; align-items: center; gap: 8px;
+}
+.hold-mark {
+  width: 30px;
+  height: 7px;
+  border-radius: 7px;
+  display: inline-block;
+  flex: 0 0 auto;
 }
 
 /* Actual % */
@@ -269,7 +279,16 @@ function stockCode(item: SummaryItem) {
   display: flex; justify-content: space-between; align-items: baseline;
 }
 .ft-left { display: flex; align-items: center; gap: 8px; font-size: 18px }
-.ft-logo { color: #3D4FA8; font-size: 16px }
+.brand-mark {
+  width: 13px;
+  height: 13px;
+  background: #3D4FA8;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.ft-logo { margin-right: 1px }
 .ft-name { font-weight: 700; letter-spacing: 3px }
 .ft-sep  { opacity: 0.3 }
 .ft-url  {

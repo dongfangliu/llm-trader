@@ -72,7 +72,9 @@ const downside = computed(() => {
     <!-- 信号主体 -->
     <div class="signal-block">
       <div class="sig-word" :style="{ color: sigColor }">
-        {{ dirLabel(dir) }}<span class="sig-arrow" :style="{ color: sigColor }">{{ dirArrow(dir) }}</span>
+        {{ dirLabel(dir) }}
+        <span v-if="dir === 'hold'" class="sig-hold-mark" :style="{ background: sigColor }" />
+        <span v-else class="sig-arrow" :style="{ color: sigColor }">{{ dirArrow(dir) }}</span>
       </div>
     </div>
 
@@ -111,7 +113,7 @@ const downside = computed(() => {
     <!-- Footer -->
     <div class="footer">
       <div class="ft-left">
-        <span class="ft-logo">⬢</span>
+        <span class="brand-mark ft-logo" />
         <span class="ft-name">{{ brandName }}</span>
         <span class="ft-sep">·</span>
         <span class="ft-url">{{ domain }}</span>
@@ -222,6 +224,14 @@ const downside = computed(() => {
   display: flex; align-items: center; gap: 20px;
 }
 .sig-arrow { font-size: 72px; font-weight: 900; opacity: 0.88 }
+.sig-hold-mark {
+  width: 64px;
+  height: 12px;
+  border-radius: 12px;
+  opacity: 0.88;
+  display: inline-block;
+  flex: 0 0 auto;
+}
 
 /* ── 置信度 ─────────────────────────────────────── */
 .conf-block { margin-bottom: 52px }
@@ -274,7 +284,16 @@ const downside = computed(() => {
   border-top: 1px solid var(--border); padding-top: 18px;
 }
 .ft-left { display: flex; align-items: center; gap: 8px; font-size: 18px; color: var(--dim) }
-.ft-logo { color: var(--brand); font-size: 16px }
+.brand-mark {
+  width: 13px;
+  height: 13px;
+  background: var(--brand);
+  border-radius: 2px;
+  transform: rotate(45deg);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.ft-logo { margin-right: 1px }
 .ft-name { font-weight: 700; letter-spacing: 3px; color: var(--text) }
 .ft-sep  { opacity: 0.3 }
 .ft-url  {

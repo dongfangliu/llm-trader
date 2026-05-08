@@ -3,6 +3,7 @@ import {
   BRAND, C, h, txt, prettyDomain,
   marketMeta, dirShort, dirColor, dirArrow,
   fmtPct, resultReportId, parsePct, pctColor,
+  brandMark, holdMark,
 } from '../_helpers'
 
 export function renderProof(p: CardPayload): any {
@@ -22,6 +23,7 @@ export function renderProof(p: CardPayload): any {
   const brandName = p.brand_name ?? BRAND.name
   const pct30     = parsePct(p.accuracy_all)
   const wrColor   = pctColor(pct30)
+  const predictionMark = dir === 'hold' ? holdMark(dirColor(dir), 34, 7) : txt(dirArrow(dir))
 
   const MONO = 'NotoSansSC'
   const DIM    = 'rgba(17,17,17,0.62)'
@@ -79,8 +81,11 @@ export function renderProof(p: CardPayload): any {
       // 预测
       h('div', { flex: '1', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '8px' },
         h('div', { fontSize: '18px', letterSpacing: '5px', color: DIM, fontWeight: '600', marginBottom: '6px' }, txt('预  测')),
-        h('div', { fontSize: '52px', fontWeight: '800', lineHeight: '1', letterSpacing: '-1px', color: dirColor(dir) },
-          txt(`${dirShort(dir)} ${dirArrow(dir)}`),
+        h('div', { display: 'flex', alignItems: 'center', fontSize: '52px', fontWeight: '800', lineHeight: '1', letterSpacing: '-1px', color: dirColor(dir) },
+          h('div', { display: 'flex', alignItems: 'center', gap: '12px' },
+            h('div', { display: 'flex' }, txt(dirShort(dir))),
+            h('div', { display: 'flex', alignItems: 'center' }, predictionMark),
+          ),
         ),
         p.confidence != null
           ? h('div', { fontSize: '20px', color: DIM, letterSpacing: '2px' }, txt(`置信 ${p.confidence}%`))
@@ -130,7 +135,7 @@ export function renderProof(p: CardPayload): any {
       borderTop: `1px solid ${BORDER}`, paddingTop: '18px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' },
-        h('div', { color: BRAND_COLOR, fontSize: '16px' }, txt('⬢')),
+        brandMark(BRAND_COLOR, 13),
         h('div', { fontWeight: '700', letterSpacing: '3px', color: textColor }, txt(brandName)),
         h('div', { opacity: '0.3' }, txt('·')),
         h('div', { color: BRAND_COLOR, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),

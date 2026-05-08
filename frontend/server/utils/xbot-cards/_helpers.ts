@@ -107,7 +107,7 @@ export function dirShort(d?: Direction): string {
   return d === 'up' ? '多头' : d === 'down' ? '空头' : '震荡'
 }
 export function dirArrow(d?: Direction): string {
-  return d === 'up' ? '▲' : d === 'down' ? '▼' : '▬'
+  return d === 'up' ? '▲' : d === 'down' ? '▼' : ''
 }
 
 // ── Value formatters ───────────────────────────────────────────
@@ -145,4 +145,27 @@ export const txt = (s: string | number) => String(s)
 
 export function getDir(p: CardPayload): Direction | undefined {
   return (p.direction || p.predicted_direction) as Direction | undefined
+}
+
+export function brandMark(color: string, size = 14): any {
+  return h('div', {
+    display: 'flex',
+    width: `${size}px`,
+    height: `${size}px`,
+    background: color,
+    transform: 'rotate(45deg)',
+    borderRadius: '2px',
+    flexShrink: 0,
+  })
+}
+
+export function holdMark(color: string, width = 56, height = 10): any {
+  return h('div', {
+    display: 'flex',
+    width: `${width}px`,
+    height: `${height}px`,
+    background: color,
+    borderRadius: `${height}px`,
+    flexShrink: 0,
+  })
 }

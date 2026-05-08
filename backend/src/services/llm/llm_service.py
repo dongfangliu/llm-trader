@@ -411,6 +411,7 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
   "stop_loss": <float, 【必填，非null非0】止损价格>,
   "take_profit": <float, 止盈价格>,
   "confidence": <float 0.0-1.0 或 0-100>,
+  "summary": "<必填，1句可读中文摘要，概括方向、核心理由和主要风险>",
   "reasons": ["关键理由1", "关键理由2", "关键理由3"],
   "market_diagnosis": "<第一步摘要>",
   "opportunity_assessment": "<第二步摘要>",

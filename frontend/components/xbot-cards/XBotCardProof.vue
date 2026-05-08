@@ -51,7 +51,9 @@ const wrColor   = computed(() => pctColor(pct30.value))
       <div class="col">
         <div class="col-hd">预  测</div>
         <div class="col-main" :style="{ color: dirColor(dir) }">
-          {{ dirShort(dir) }} {{ dirArrow(dir) }}
+          <span>{{ dirShort(dir) }}</span>
+          <span v-if="dir === 'hold'" class="hold-mark" :style="{ background: dirColor(dir) }" />
+          <span v-else>{{ dirArrow(dir) }}</span>
         </div>
         <div class="col-sub" v-if="payload.confidence != null">置信 {{ payload.confidence }}%</div>
       </div>
@@ -89,7 +91,7 @@ const wrColor   = computed(() => pctColor(pct30.value))
     <!-- Footer -->
     <div class="footer">
       <div class="ft-left">
-        <span class="ft-logo">⬢</span>
+        <span class="brand-mark ft-logo" />
         <span class="ft-name">{{ brandName }}</span>
         <span class="ft-sep">·</span>
         <span class="ft-url">{{ domain }}</span>
@@ -187,6 +189,7 @@ const wrColor   = computed(() => pctColor(pct30.value))
 }
 .col-main {
   font-size: 52px; font-weight: 800; line-height: 1; letter-spacing: -1px;
+  display: flex; align-items: center; gap: 12px;
 }
 .col-sub {
   font-size: 20px; color: var(--dim); letter-spacing: 2px;
@@ -216,7 +219,23 @@ const wrColor   = computed(() => pctColor(pct30.value))
   border-top: 1px solid var(--border); padding-top: 18px;
 }
 .ft-left { display: flex; align-items: center; gap: 8px; font-size: 18px }
-.ft-logo { color: var(--brand); font-size: 16px }
+.hold-mark {
+  width: 34px;
+  height: 7px;
+  border-radius: 7px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.brand-mark {
+  width: 13px;
+  height: 13px;
+  background: var(--brand);
+  border-radius: 2px;
+  transform: rotate(45deg);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.ft-logo { margin-right: 1px }
 .ft-name { font-weight: 700; letter-spacing: 3px }
 .ft-sep  { opacity: 0.3 }
 .ft-url  {

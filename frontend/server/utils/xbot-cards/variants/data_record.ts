@@ -1,5 +1,5 @@
 import type { CardPayload } from '../types'
-import { BRAND, C, h, txt, prettyDomain, parsePct, pctColor } from '../_helpers'
+import { BRAND, C, h, txt, prettyDomain, parsePct, pctColor, brandMark } from '../_helpers'
 
 export function renderDataRecord(p: CardPayload): any {
   const domain    = prettyDomain(p.product_url)
@@ -39,7 +39,7 @@ export function renderDataRecord(p: CardPayload): any {
       marginBottom: '16px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '10px' },
-        h('div', { color: BRAND_COLOR, fontSize: '20px' }, txt('⬢')),
+        brandMark(BRAND_COLOR, 16),
         h('div', { fontSize: '22px', fontWeight: '700', letterSpacing: '3px' }, txt(brandName)),
         h('div', { color: 'rgba(17,17,17,0.30)' }, txt('·')),
         h('div', { fontSize: '20px', letterSpacing: '3px', color: DIM }, txt('战绩报告')),
@@ -69,7 +69,7 @@ export function renderDataRecord(p: CardPayload): any {
     ),
 
     // ── 近期信号 ───────────────────────────────────────────────
-    dots.length ? h('div', { paddingTop: '28px' },
+    dots.length ? h('div', { display: 'flex', flexDirection: 'column', paddingTop: '28px' },
       h('div', { fontSize: '18px', letterSpacing: '4px', color: DIM, fontWeight: '500', marginBottom: '16px', textAlign: 'center' },
         txt('近期信号'),
       ),
@@ -92,7 +92,7 @@ export function renderDataRecord(p: CardPayload): any {
       borderTop: `1px solid ${BORDER}`, paddingTop: '18px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' },
-        h('div', { color: BRAND_COLOR, fontSize: '16px' }, txt('⬢')),
+        brandMark(BRAND_COLOR, 13),
         h('div', { fontWeight: '700', letterSpacing: '3px', color: TEXT }, txt(brandName)),
         h('div', { opacity: '0.3' }, txt('·')),
         h('div', { color: BRAND_COLOR, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),

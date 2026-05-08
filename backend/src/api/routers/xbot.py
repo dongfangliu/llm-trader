@@ -16,6 +16,7 @@ from src.database.new_db import get_db
 from src.models.market import SymbolName
 from src.models.xbot import XBotPrediction
 from src.models.settings import SystemSetting
+from src.services.xbot.prediction_service import summarize_prediction
 
 router = APIRouter(prefix="/api/admin/xbot", tags=["xbot"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
@@ -204,7 +205,7 @@ def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
         "close_price": p.close_price,
         "target_price": p.target_price,
         "stop_loss": p.stop_loss,
-        "analysis_summary": p.analysis_summary,
+        "analysis_summary": summarize_prediction(p),
         "market_diagnosis": p.market_diagnosis,
         "opportunity_assessment": p.opportunity_assessment,
         "risk_analysis": p.risk_analysis,
@@ -811,7 +812,7 @@ def _pred_dict(p: XBotPrediction) -> dict:
         "target_price": p.target_price,
         "stop_loss": p.stop_loss,
         "close_price": p.close_price,
-        "analysis_summary": p.analysis_summary,
+        "analysis_summary": summarize_prediction(p),
         "market_diagnosis": p.market_diagnosis,
         "opportunity_assessment": p.opportunity_assessment,
         "risk_analysis": p.risk_analysis,

@@ -1,7 +1,7 @@
 import type { CardPayload, SummaryItem, Direction } from '../types'
 import {
   BRAND, CL, h, txt, prettyDomain,
-  fmtPct, parsePct,
+  fmtPct, parsePct, brandMark, holdMark,
 } from '../_helpers'
 
 const MONO = 'NotoSansSC'
@@ -11,7 +11,7 @@ function dirLabel(d: Direction): string {
   return d === 'up' ? '多头' : d === 'down' ? '空头' : '震荡'
 }
 function dirArrow(d: Direction): string {
-  return d === 'up' ? '▲' : d === 'down' ? '▼' : '▬'
+  return d === 'up' ? '▲' : d === 'down' ? '▼' : ''
 }
 function dirColor(d: Direction): string {
   return d === 'up' ? CL.UP : d === 'down' ? CL.DOWN : CL.HOLD
@@ -99,8 +99,20 @@ export function renderSummary(p: CardPayload): any {
         ),
       ),
       // Direction
-      h('div', { fontSize: '20px', fontWeight: '600', letterSpacing: '2px', color: dirColor(item.predicted_direction), width: '160px' },
-        txt(`${dirLabel(item.predicted_direction)} ${dirArrow(item.predicted_direction)}`)
+      h('div', {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontSize: '20px',
+        fontWeight: '600',
+        letterSpacing: '2px',
+        color: dirColor(item.predicted_direction),
+        width: '160px',
+      },
+        h('div', {}, txt(dirLabel(item.predicted_direction))),
+        item.predicted_direction === 'hold'
+          ? holdMark(dirColor(item.predicted_direction), 26, 6)
+          : h('div', {}, txt(dirArrow(item.predicted_direction)))
       ),
       // Actual %
       h('div', { fontSize: '26px', fontWeight: '700', letterSpacing: '-0.5px', flex: '1', color: actualColor(item.actual_change_pct), fontFamily: MONO },
@@ -184,7 +196,7 @@ export function renderSummary(p: CardPayload): any {
       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' },
-        h('div', { color: BRAND_C, fontSize: '16px' }, txt('⬢')),
+        brandMark(BRAND_C, 13),
         h('div', { fontWeight: '700', letterSpacing: '3px', color: TEXT }, txt(brandName)),
         h('div', { opacity: '0.3' }, txt('·')),
         h('div', { color: BRAND_C, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),

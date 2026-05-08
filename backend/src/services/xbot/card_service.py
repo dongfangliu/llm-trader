@@ -7,6 +7,7 @@ from loguru import logger
 import httpx
 
 from src.models.xbot import XBotPrediction
+from src.services.xbot.prediction_service import summarize_prediction
 
 # Nuxt frontend URL (internal Docker networking)
 _FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://frontend:3000")
@@ -36,7 +37,7 @@ async def generate_prediction_card(
         "confidence": prediction.confidence,
         "target_price": prediction.target_price,
         "stop_loss": prediction.stop_loss,
-        "summary": prediction.analysis_summary or "",
+        "summary": summarize_prediction(prediction),
         "market_diagnosis": prediction.market_diagnosis or "",
         "opportunity_assessment": prediction.opportunity_assessment or "",
         "risk_analysis": prediction.risk_analysis or "",
@@ -90,6 +91,7 @@ async def generate_prediction_card_set(
         "close_price": prediction.close_price,
         "target_price": prediction.target_price,
         "stop_loss": prediction.stop_loss,
+        "summary": summarize_prediction(prediction),
         "accuracy_all": accuracy_all,
         "product_url": product_url,
         "brand_name": brand_name or None,
@@ -124,6 +126,7 @@ async def generate_result_card_set(
         "close_price": prediction.close_price,
         "target_price": prediction.target_price,
         "stop_loss": prediction.stop_loss,
+        "summary": summarize_prediction(prediction),
         "actual_change_pct": prediction.actual_change_pct,
         "is_correct": prediction.is_correct,
         "accuracy_all": accuracy_all,

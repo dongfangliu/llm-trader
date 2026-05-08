@@ -28,7 +28,7 @@ const dots    = computed(() => {
     <!-- 顶部品牌行（战绩卡唯一允许顶部品牌） -->
     <div class="top-bar">
       <div class="tb-left">
-        <span class="tb-logo">⬢</span>
+        <span class="brand-mark tb-logo" />
         <span class="tb-name">{{ brandName }}</span>
         <span class="tb-sep">·</span>
         <span class="tb-kind">战绩报告</span>
@@ -66,7 +66,7 @@ const dots    = computed(() => {
     <!-- Footer -->
     <div class="footer">
       <div class="ft-left">
-        <span class="ft-logo">⬢</span>
+        <span class="brand-mark ft-logo" />
         <span class="ft-name">{{ brandName }}</span>
         <span class="ft-sep">·</span>
         <span class="ft-url">{{ domain }}</span>
@@ -100,7 +100,14 @@ const dots    = computed(() => {
   margin-bottom: 16px;
 }
 .tb-left { display: flex; align-items: center; gap: 10px }
-.tb-logo { color: #3D4FA8; font-size: 20px }
+.brand-mark {
+  background: #3D4FA8;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.tb-logo { width: 16px; height: 16px; margin-right: 1px }
 .tb-name { font-size: 22px; font-weight: 700; letter-spacing: 3px }
 .tb-sep  { color: rgba(17,17,17,0.30) }
 .tb-kind { font-size: 20px; letter-spacing: 3px; color: rgba(17,17,17,0.62) }
@@ -158,7 +165,7 @@ const dots    = computed(() => {
   border-top: 1px solid rgba(17,17,17,0.18); padding-top: 18px;
 }
 .ft-left { display: flex; align-items: center; gap: 8px; font-size: 18px }
-.ft-logo { color: #3D4FA8; font-size: 16px }
+.ft-logo { width: 13px; height: 13px; margin-right: 1px }
 .ft-name { font-weight: 700; letter-spacing: 3px }
 .ft-sep  { opacity: 0.3 }
 .ft-url  {

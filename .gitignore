@@ -61,6 +61,7 @@ htmlcov/
 node_modules/
 web_v2/frontend/node_modules/
 web_v2/frontend/dist/
+frontend/.output/
 
 # Temporary files
 *.tmp

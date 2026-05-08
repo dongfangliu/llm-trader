@@ -1,7 +1,7 @@
 import satori from 'satori'
 import { Resvg } from '@resvg/resvg-js'
 import { readFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 import type { CardPayload } from './types'
 import { renderPromise } from './variants/promise'
 import { renderProof } from './variants/proof'
@@ -26,21 +26,37 @@ const _fontCache = new Map<number, ArrayBuffer>()
 
 const FONT_FILES: Record<number, { local: string[]; urls: string[] }> = {
   400: {
-    local: ['NotoSansSC-Regular.otf', 'NotoSansSC-Regular.ttf', 'NotoSansSC.ttf'],
+    local: [
+      'NotoSansSC-Regular.otf',
+      'NotoSansSC-Regular.ttf',
+      'NotoSansSC.ttf',
+      'C:/Windows/Fonts/Deng.ttf',
+      'C:/Windows/Fonts/simhei.ttf',
+    ],
     urls: [
       'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf',
       'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf',
     ],
   },
   700: {
-    local: ['NotoSansSC-Bold.otf', 'NotoSansSC-Bold.ttf'],
+    local: [
+      'NotoSansSC-Bold.otf',
+      'NotoSansSC-Bold.ttf',
+      'C:/Windows/Fonts/Dengb.ttf',
+      'C:/Windows/Fonts/simhei.ttf',
+    ],
     urls: [
       'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Bold.otf',
       'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Bold.otf',
     ],
   },
   900: {
-    local: ['NotoSansSC-Black.otf', 'NotoSansSC-Black.ttf'],
+    local: [
+      'NotoSansSC-Black.otf',
+      'NotoSansSC-Black.ttf',
+      'C:/Windows/Fonts/Dengb.ttf',
+      'C:/Windows/Fonts/simhei.ttf',
+    ],
     urls: [
       'https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf',
       'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf',
@@ -54,7 +70,7 @@ async function loadFont(weight: number): Promise<ArrayBuffer> {
 
   const spec = FONT_FILES[weight] ?? FONT_FILES[400]
   for (const file of spec.local) {
-    const p = resolve('./public/fonts', file)
+    const p = isAbsolute(file) ? file : resolve('./public/fonts', file)
     if (existsSync(p)) {
       const buf = readFileSync(p)
       const data = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer

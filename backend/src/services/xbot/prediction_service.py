@@ -1,8 +1,7 @@
 """Generate internal model records, reusing the existing LLM analysis pipeline."""
 
-import json
 from datetime import date, datetime, timedelta
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from loguru import logger
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,12 +183,67 @@ def _extract_confidence(result: dict) -> Optional[float]:
     return None
 
 
-def _extract_summary(result: dict) -> Optional[str]:
-    for key in ("summary", "analysis", "reason", "reasoning", "comment"):
+_SUMMARY_FALLBACK = "暂无完整摘要，需结合市场诊断、机会评估、风险收益与执行方案进一步人工复核。"
+_SECTION_KEYS = ("market_diagnosis", "opportunity_assessment", "risk_analysis", "execution_plan")
+
+
+def _extract_summary(result: dict) -> str:
+    """Return a concise readable summary for new model-review records."""
+    val = result.get("summary")
+    if isinstance(val, str) and len(_clean_summary_text(val)) >= 10:
+        return _clip_summary(val, max_len=200)
+
+    reasons = result.get("reasons")
+    if isinstance(reasons, list):
+        reason_text = "；".join(_clean_summary_text(str(x)) for x in reasons if x)
+        if reason_text:
+            return _clip_summary(reason_text, min_len=80, max_len=120)
+
+    for key in ("analysis", "reason", "reasoning", "comment"):
         val = result.get(key)
-        if val and isinstance(val, str) and len(val) > 10:
-            return val[:200]
-    return None
+        if isinstance(val, str) and len(_clean_summary_text(val)) >= 10:
+            return _clip_summary(val, min_len=80, max_len=120)
+
+    section_text = "；".join(
+        _clean_summary_text(str(result.get(key) or ""))
+        for key in _SECTION_KEYS
+        if result.get(key)
+    )
+    if section_text:
+        return _clip_summary(section_text, min_len=80, max_len=120)
+
+    return _SUMMARY_FALLBACK
+
+
+def summarize_prediction(pred: Any) -> str:
+    """Read-only summary fallback for historical DB rows."""
+    if getattr(pred, "analysis_summary", None):
+        summary = _clean_summary_text(str(pred.analysis_summary))
+        if summary:
+            return _clip_summary(summary, max_len=200)
+    return _extract_summary({
+        "market_diagnosis": getattr(pred, "market_diagnosis", None),
+        "opportunity_assessment": getattr(pred, "opportunity_assessment", None),
+        "risk_analysis": getattr(pred, "risk_analysis", None),
+        "execution_plan": getattr(pred, "execution_plan", None),
+    })
+
+
+def _clean_summary_text(text: str) -> str:
+    return " ".join(str(text or "").replace("\n", " ").replace("\r", " ").split())
+
+
+def _clip_summary(text: str, min_len: int = 0, max_len: int = 120) -> str:
+    cleaned = _clean_summary_text(text)
+    if not cleaned:
+        return _SUMMARY_FALLBACK
+    if len(cleaned) <= max_len:
+        return cleaned
+
+    clipped = cleaned[:max_len].rstrip("，,；;。 ")
+    if len(clipped) < min_len:
+        clipped = cleaned[:min(max_len, len(cleaned))].rstrip("，,；;。 ")
+    return f"{clipped}。"
 
 
 def _safe_float(val) -> Optional[float]:

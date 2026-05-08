@@ -3,6 +3,7 @@ import {
   BRAND, C, CL, h, txt, prettyDomain,
   marketMeta, dirLabel, dirArrow,
   fmtPrice, fmtPct, predictionReportId, getDir, parsePct,
+  brandMark, holdMark,
 } from '../_helpers'
 
 export function renderPromise(p: CardPayload): any {
@@ -20,6 +21,7 @@ export function renderPromise(p: CardPayload): any {
   const borderColor = isLight ? 'rgba(17,17,17,0.18)' : C.BORDER
   const goldColor = isLight ? '#7A5C18' : C.GOLD
   const brandColor = isLight ? CL.BRAND : C.BRAND
+  const signalMark = dir === 'hold' ? holdMark(sigColor, 64, 12) : txt(dirArrow(dir))
 
   const mkt      = marketMeta(p.market)
   const reportId = predictionReportId(p)
@@ -94,7 +96,7 @@ export function renderPromise(p: CardPayload): any {
       marginBottom: '24px',
     },
       h('div', { fontSize: '136px', fontWeight: '900', lineHeight: '1', letterSpacing: '-3px', color: sigColor }, txt(dirLabel(dir))),
-      h('div', { fontSize: '72px', fontWeight: '900', lineHeight: '1', opacity: '0.88', color: sigColor }, txt(dirArrow(dir))),
+      h('div', { display: 'flex', alignItems: 'center', fontSize: '72px', fontWeight: '900', lineHeight: '1', opacity: '0.88', color: sigColor }, signalMark),
     ),
 
     // ── 置信度 ─────────────────────────────────────────────────
@@ -149,7 +151,7 @@ export function renderPromise(p: CardPayload): any {
       borderTop: `1px solid ${borderColor}`, paddingTop: '18px',
     },
       h('div', { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px' },
-        h('div', { color: brandColor, fontSize: '16px' }, txt('⬢')),
+        brandMark(brandColor, 13),
         h('div', { fontWeight: '700', letterSpacing: '3px', color: textColor }, txt(brandName)),
         h('div', { opacity: '0.3' }, txt('·')),
         h('div', { color: brandColor, fontSize: '16px', letterSpacing: '1px' }, txt(domain)),
