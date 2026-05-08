@@ -6,13 +6,47 @@ const { data } = await useAsyncData('research-index', () =>
 )
 
 const requestUrl = useRequestURL()
-const title = 'AI K线分析复盘档案 - 已结算技术面历史记录'
-const description = '查看已结算的AI K线分析复盘记录，包含历史技术面方向、实际涨跌、命中和失误情况，可从公开记录进入AI分析工具自行研究。'
+const title = 'AI K线预测与复盘档案 - 公开技术面历史记录'
+const description = '查看已通过的AI K线预测和已结算复盘记录，包含技术面方向、目标日、实际涨跌、命中和失误情况，可从公开记录进入AI分析工具自行研究。'
 usePublicSeo({ title, description, path: '/research' })
 useJsonLd('research-index-breadcrumb-jsonld', breadcrumbJsonLd(requestUrl.origin, [
   { name: SITE_NAME, path: '/' },
   { name: '模型复盘档案', path: '/research' },
 ]))
+
+function isAwaitingResult(p: any) {
+  return ['approved', 'posted'].includes(p?.status) && p?.actual_change_pct == null && p?.is_correct == null
+}
+
+function directionLabel(value: string) {
+  return value === 'up' ? '看涨' : value === 'down' ? '看跌' : '震荡'
+}
+
+function confidenceLabel(value: number | null | undefined) {
+  return value == null ? '-' : `${Math.round(Number(value))}%`
+}
+
+function statusLabel(p: any) {
+  if (isAwaitingResult(p)) return '待验证'
+  if (p?.is_correct === true) return '命中'
+  if (p?.is_correct === false) return '未命中'
+  return '已结算'
+}
+
+function statusClass(p: any) {
+  if (isAwaitingResult(p)) return 'pending'
+  if (p?.is_correct === true) return 'hit'
+  if (p?.is_correct === false) return 'miss'
+  return 'settled'
+}
+
+const records = computed(() => [...(data.value?.predictions || [])].sort((a, b) => {
+  const awaitingOrder = Number(isAwaitingResult(b)) - Number(isAwaitingResult(a))
+  if (awaitingOrder) return awaitingOrder
+  const dateOrder = String(b.prediction_date || '').localeCompare(String(a.prediction_date || ''))
+  if (dateOrder) return dateOrder
+  return Number(a.hot_rank || 0) - Number(b.hot_rank || 0)
+}))
 </script>
 
 <template>
@@ -20,29 +54,30 @@ useJsonLd('research-index-breadcrumb-jsonld', breadcrumbJsonLd(requestUrl.origin
     <header class="hero">
       <NuxtLink to="/" class="back">返回分析工具</NuxtLink>
       <h1>模型复盘档案</h1>
-      <p>这里只展示已结算记录，用于观察模型历史表现。命中和失误都会展示，未结算内部记录不会公开展示。</p>
+      <p>这里展示已通过预测和已结算复盘。待验证记录会保留完整原始判断，结算后同一页面自动变成复盘记录。</p>
       <div class="actions">
         <NuxtLink class="cta primary" to="/">打开 AI 分析工具</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
       </div>
-      <div v-if="data?.accuracy?.total" class="badge">累计 {{ data.accuracy.correct }}/{{ data.accuracy.total }}，{{ data.accuracy.pct }}%</div>
+      <div v-if="data?.accuracy?.total" class="badge">已结算准确率 {{ data.accuracy.correct }}/{{ data.accuracy.total }}，{{ data.accuracy.pct }}%</div>
     </header>
 
     <section class="list">
       <NuxtLink
-        v-for="p in data?.predictions || []"
+        v-for="p in records"
         :key="p.id"
         class="record"
         :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
       >
         <div>
           <strong>{{ p.symbol_name }}</strong>
-          <span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span>
+          <span>{{ p.market }} / {{ p.symbol }} / 目标日 {{ p.target_date || '-' }}</span>
         </div>
-        <div>{{ p.predicted_direction === 'up' ? '看涨' : p.predicted_direction === 'down' ? '看跌' : '震荡' }}</div>
-        <div :class="{ hit: p.is_correct, miss: p.is_correct === false }">{{ p.is_correct ? '命中' : '未命中' }}</div>
+        <div class="direction">{{ directionLabel(p.predicted_direction) }}<span>预测日 {{ p.prediction_date }}</span></div>
+        <div class="confidence">置信度 <strong>{{ confidenceLabel(p.confidence) }}</strong></div>
+        <div :class="['status-badge', statusClass(p)]">{{ statusLabel(p) }}</div>
       </NuxtLink>
-      <div v-if="!(data?.predictions || []).length" class="empty">暂无已结算记录</div>
+      <div v-if="!records.length" class="empty">暂无公开预测记录</div>
     </section>
   </main>
 </template>
@@ -59,11 +94,17 @@ h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
 p { color: #4b5563; line-height: 1.8; }
 .badge { display: inline-flex; margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: #eff6ff; color: #1d4ed8; font-weight: 700; }
 .list { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-.record { display: grid; grid-template-columns: 1.6fr .6fr .6fr; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; color: inherit; text-decoration: none; }
+.record { display: grid; grid-template-columns: 1.4fr .75fr .65fr .6fr; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; color: inherit; text-decoration: none; }
 .record:hover { background: #f8fafc; }
 .record span { display: block; color: #6b7280; font-size: 12px; margin-top: 3px; }
-.hit { color: #15803d; font-weight: 700; }
-.miss { color: #b91c1c; font-weight: 700; }
+.direction { font-weight: 800; }
+.confidence { color: #4b5563; font-size: 13px; }
+.confidence strong { display: block; color: #111827; font-size: 16px; margin-top: 3px; }
+.status-badge { justify-self: start; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 800; }
+.status-badge.pending { color: #92400e; background: #fffbeb; }
+.status-badge.settled { color: #1d4ed8; background: #eff6ff; }
+.hit { color: #15803d; background: #f0fdf4; }
+.miss { color: #b91c1c; background: #fef2f2; }
 .empty { padding: 40px; text-align: center; color: #6b7280; }
 @media (max-width: 680px) { .record { grid-template-columns: 1fr; } }
 </style>

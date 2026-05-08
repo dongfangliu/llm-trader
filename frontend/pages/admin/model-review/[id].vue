@@ -103,6 +103,13 @@ const publicPath = computed(() => {
   if (!pred.value) return ''
   return `/research/${pred.value.market}/${pred.value.symbol}/${pred.value.prediction_date}`
 })
+function isPublicStatus(p: Record<string, any> | null | undefined) {
+  return ['approved', 'posted', 'settled'].includes(p?.status)
+}
+function isAwaitingResult(p: Record<string, any> | null | undefined) {
+  return ['approved', 'posted'].includes(p?.status) && p?.actual_change_pct == null && p?.is_correct == null
+}
+const canOpenPublicPage = computed(() => isPublicStatus(pred.value))
 const marketLabel = computed(() => {
   const m = pred.value?.market
   if (m === 'hk') return '港股'
@@ -117,42 +124,61 @@ const statusText = computed(() => {
   const s = pred.value?.status
   return s === 'pending' ? '待审核'
     : s === 'approved' ? '已通过待结算'
+    : s === 'posted' ? '已发布待结算'
     : s === 'settled' ? '已结算'
     : s === 'rejected' ? '已拒绝'
     : s || '-'
 })
 const previewVariantText = computed(() => pred.value?.actual_change_pct != null ? 'Proof 结算卡' : 'Promise 预测卡')
+const resultStatusText = computed(() => {
+  if (!pred.value) return '-'
+  if (isAwaitingResult(pred.value)) return '待验证'
+  if (pred.value.is_correct === true) return '命中'
+  if (pred.value.is_correct === false) return '未命中'
+  return pred.value.status === 'settled' ? '已结算' : '-'
+})
+const settlementText = computed(() => pctText(pred.value?.actual_change_pct))
+const publicPreviewTitle = computed(() => {
+  if (!pred.value) return ''
+  return isAwaitingResult(pred.value) ? `${pred.value.symbol_name} 待验证 AI K线预测` : `${pred.value.symbol_name} AI K线分析复盘`
+})
 const seoTitle = computed(() => {
   if (!pred.value) return ''
-  return `${pred.value.symbol_name} ${pred.value.prediction_date} AI K线分析复盘`
+  return isAwaitingResult(pred.value)
+    ? `${pred.value.symbol_name} ${pred.value.prediction_date} 待验证 AI K线预测`
+    : `${pred.value.symbol_name} ${pred.value.prediction_date} AI K线分析复盘`
 })
 const seoDescription = computed(() => {
   if (!pred.value) return ''
-  const pct = pctText(pred.value.actual_change_pct)
-  return `${pred.value.symbol_name} 的 AI K线分析历史复盘：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌 ${pct}。`
+  return isAwaitingResult(pred.value)
+    ? `${pred.value.symbol_name} 的待验证 AI K线预测：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌待结算。`
+    : `${pred.value.symbol_name} 的 AI K线分析历史复盘：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌 ${settlementText.value}。`
 })
 const resultLabel = computed(() => {
-  if (!pred.value || pred.value.actual_change_pct == null) return '待结算'
-  return pred.value.is_correct ? '命中' : '未命中'
+  return resultStatusText.value
 })
 const resultTone = computed(() => {
-  if (!pred.value || pred.value.actual_change_pct == null) return 'pending'
-  return pred.value.is_correct ? 'hit' : 'miss'
+  if (!pred.value || isAwaitingResult(pred.value)) return 'pending'
+  if (pred.value.is_correct === true) return 'hit'
+  if (pred.value.is_correct === false) return 'miss'
+  return 'settled'
 })
 const publicLead = computed(() => {
   if (!pred.value) return ''
-  const settleText = pred.value.actual_change_pct == null ? '尚未结算，当前为将来公开页首屏预览' : '已完成结算'
-  return `${pred.value.symbol_name} 在 ${pred.value.prediction_date} 生成的 AI 技术面预测，目标日 ${pred.value.target_date || '-'} ${settleText}。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。`
+  if (isAwaitingResult(pred.value)) {
+    return `${pred.value.symbol_name} 在 ${pred.value.prediction_date} 生成的 AI 技术面预测，目标日 ${pred.value.target_date || '-'} 尚待结算。本页展示原始判断、方向、置信度和关键价格，结算后会自动更新为复盘记录。`
+  }
+  return `${pred.value.symbol_name} 在 ${pred.value.prediction_date} 生成的 AI 技术面预测，目标日 ${pred.value.target_date || '-'} 已完成结算。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。`
 })
 const priceMetrics = computed(() => {
   if (!pred.value) return []
   return [
     { label: '当时方向', value: directionText.value },
-    { label: '置信度', value: pred.value.confidence ? Math.round(pred.value.confidence) + '%' : '-' },
-    { label: '基准收盘', value: pred.value.close_price ? Number(pred.value.close_price).toFixed(2) : '-' },
-    { label: '目标价', value: pred.value.target_price ? Number(pred.value.target_price).toFixed(2) : '-' },
-    { label: '止损价', value: pred.value.stop_loss ? Number(pred.value.stop_loss).toFixed(2) : '-' },
-    { label: '实际收盘', value: pred.value.actual_close ? Number(pred.value.actual_close).toFixed(2) : '-' },
+    { label: '置信度', value: pred.value.confidence == null ? '-' : Math.round(pred.value.confidence) + '%' },
+    { label: '基准收盘', value: pred.value.close_price == null ? '-' : Number(pred.value.close_price).toFixed(2) },
+    { label: '目标价', value: pred.value.target_price == null ? '-' : Number(pred.value.target_price).toFixed(2) },
+    { label: '止损价', value: pred.value.stop_loss == null ? '-' : Number(pred.value.stop_loss).toFixed(2) },
+    { label: '实际收盘', value: pred.value.actual_close == null ? '待结算' : Number(pred.value.actual_close).toFixed(2) },
   ]
 })
 const analysisSections = computed(() => {
@@ -166,7 +192,7 @@ const analysisSections = computed(() => {
 })
 
 function pctText(v: number | null | undefined) {
-  if (v == null) return '-'
+  if (v == null) return '待结算'
   return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
 }
 
@@ -214,12 +240,13 @@ onUnmounted(() => {
           <div class="price-row"><span>目标价</span><strong>{{ pred.target_price?.toFixed?.(2) ?? '-' }}</strong></div>
           <div class="price-row"><span>止损价</span><strong>{{ pred.stop_loss?.toFixed?.(2) ?? '-' }}</strong></div>
           <div class="price-row"><span>目标日</span><strong>{{ pred.target_date }}</strong></div>
-          <div v-if="pred.actual_change_pct != null" class="price-row"><span>结算涨跌</span><strong>{{ pctText(pred.actual_change_pct) }}</strong></div>
+          <div class="price-row"><span>验证状态</span><strong>{{ resultStatusText }}</strong></div>
+          <div class="price-row"><span>结算涨跌</span><strong>{{ settlementText }}</strong></div>
 
           <div class="actions">
             <button v-if="pred.status === 'pending'" class="primary" :disabled="loading === 'approve'" @click="approve">通过审核</button>
             <button v-if="['pending','approved'].includes(pred.status)" class="danger" :disabled="loading === 'reject'" @click="reject">拒绝</button>
-            <NuxtLink v-if="pred.status === 'settled'" class="secondary" :to="publicPath" target="_blank">打开公开页</NuxtLink>
+            <NuxtLink v-if="canOpenPublicPage" class="secondary" :to="publicPath" target="_blank">打开公开页</NuxtLink>
           </div>
         </aside>
 
@@ -247,7 +274,7 @@ onUnmounted(() => {
               <div class="pub-copy">
                 <span class="pub-back">该标的历史记录</span>
                 <span class="pub-eyebrow">{{ marketLabel }} · {{ pred.symbol }} · {{ pred.prediction_date }}</span>
-                <strong>{{ pred.symbol_name }} AI K线分析复盘：{{ resultLabel }}记录</strong>
+                <strong>{{ publicPreviewTitle }}</strong>
                 <p>{{ publicLead }}</p>
               </div>
               <figure class="pub-card">
@@ -259,13 +286,13 @@ onUnmounted(() => {
 
             <section class="pub-result" :class="resultTone">
               <div>
-                <span>结算结果</span>
+                <span>{{ isAwaitingResult(pred) ? '验证状态' : '结算结果' }}</span>
                 <strong>{{ resultLabel }}</strong>
-                <p>预测方向 {{ directionText }}，实际涨跌 {{ pctText(pred.actual_change_pct) }}</p>
+                <p>{{ isAwaitingResult(pred) ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : `预测方向 ${directionText}，实际涨跌 ${settlementText}` }}</p>
               </div>
               <div>
                 <span>实际涨跌</span>
-                <strong>{{ pctText(pred.actual_change_pct) }}</strong>
+                <strong>{{ settlementText }}</strong>
               </div>
               <div>
                 <span>目标日</span>
@@ -295,7 +322,7 @@ onUnmounted(() => {
               </div>
             </section>
           </div>
-          <NuxtLink v-if="pred.status === 'settled'" class="secondary full" :to="publicPath" target="_blank">打开公开页</NuxtLink>
+          <NuxtLink v-if="canOpenPublicPage" class="secondary full" :to="publicPath" target="_blank">打开公开页</NuxtLink>
         </aside>
       </section>
 

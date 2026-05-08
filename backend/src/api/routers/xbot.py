@@ -21,6 +21,7 @@ from src.services.xbot.prediction_service import summarize_prediction
 router = APIRouter(prefix="/api/admin/xbot", tags=["xbot"])
 public_router = APIRouter(prefix="/api/public", tags=["public"])
 _Admin = Depends(get_admin_token_or_admin_user)
+PUBLIC_RESEARCH_STATUSES = ("approved", "posted", "settled")
 
 
 # ---------------------------------------------------------------------------
@@ -33,9 +34,9 @@ async def public_list_predictions(
     market: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Public feed: latest settled model records (no auth)."""
+    """Public feed: latest approved, posted, or settled model records (no auth)."""
     filters = [
-        XBotPrediction.status == "settled",
+        XBotPrediction.status.in_(PUBLIC_RESEARCH_STATUSES),
     ]
     if market:
         filters.append(XBotPrediction.market == market.lower())
@@ -65,7 +66,7 @@ async def public_research_index(
     market: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """SEO-safe index of settled model records."""
+    """SEO-safe index of public model records."""
     return await public_list_predictions(limit=limit, market=market, db=db)
 
 
@@ -79,7 +80,7 @@ async def public_research_symbol(
     q = (
         select(XBotPrediction)
         .where(
-            XBotPrediction.status == "settled",
+            XBotPrediction.status.in_(PUBLIC_RESEARCH_STATUSES),
             XBotPrediction.market == market.lower(),
             XBotPrediction.symbol == symbol.upper(),
         )
@@ -111,7 +112,7 @@ async def public_research_detail(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date")
 
-    pred = await _get_public_settled_prediction(db, market, symbol, pred_date)
+    pred = await _get_public_prediction(db, market, symbol, pred_date)
     config = await _load_config(db)
     return {"record": _public_pred_dict(pred, config)}
 
@@ -124,17 +125,19 @@ async def public_research_card(
     variant: str = Query(default="promise", pattern="^(promise|proof)$"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public image for a settled research record.
+    """Public image for a public research record.
 
-    Only settled records can render here, so pending/internal predictions never
-    get a public image URL.
+    Approved/posted records can render the original prediction card. Result
+    proof cards require a settled record or settlement fields.
     """
     try:
         pred_date = date.fromisoformat(prediction_date)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date")
 
-    pred = await _get_public_settled_prediction(db, market, symbol, pred_date)
+    pred = await _get_public_prediction(db, market, symbol, pred_date)
+    if variant == "proof" and not _has_settlement_result(pred):
+        raise HTTPException(status_code=404, detail="卡片暂不可用")
     config = await _load_config(db)
 
     from src.services.xbot.card_service import generate_prediction_card_set, generate_result_card_set
@@ -170,7 +173,7 @@ async def public_research_card(
     )
 
 
-async def _get_public_settled_prediction(
+async def _get_public_prediction(
     db: AsyncSession,
     market: str,
     symbol: str,
@@ -178,7 +181,7 @@ async def _get_public_settled_prediction(
 ) -> XBotPrediction:
     result = await db.execute(
         select(XBotPrediction).where(
-            XBotPrediction.status == "settled",
+            XBotPrediction.status.in_(PUBLIC_RESEARCH_STATUSES),
             XBotPrediction.market == market.lower(),
             XBotPrediction.symbol == symbol.upper(),
             XBotPrediction.prediction_date == prediction_date,
@@ -188,6 +191,15 @@ async def _get_public_settled_prediction(
     if not pred:
         raise HTTPException(status_code=404, detail="Record not found")
     return pred
+
+
+def _has_settlement_result(p: XBotPrediction) -> bool:
+    return (
+        p.status == "settled"
+        or p.actual_close is not None
+        or p.actual_change_pct is not None
+        or p.is_correct is not None
+    )
 
 
 def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:

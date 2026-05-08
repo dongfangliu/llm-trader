@@ -11,12 +11,12 @@ const { data } = await useAsyncData(`research-detail-${market.value}-${symbol.va
 )
 const record = computed(() => data.value?.record)
 if (!record.value) {
-  throw createError({ statusCode: 404, statusMessage: '未找到复盘记录' })
+  throw createError({ statusCode: 404, statusMessage: '未找到公开记录' })
 }
 const dir = computed(() => record.value?.predicted_direction === 'up' ? '看涨' : record.value?.predicted_direction === 'down' ? '看跌' : '震荡')
 const signedPct = computed(() => {
   const value = record.value?.actual_change_pct
-  if (value == null) return '-'
+  if (value == null) return '待结算'
   return `${value >= 0 ? '+' : ''}${Number(value).toFixed(2)}%`
 })
 const marketLabel = computed(() => {
@@ -24,15 +24,26 @@ const marketLabel = computed(() => {
   if (market.value === 'us') return '美股'
   return 'A股'
 })
-const resultLabel = computed(() => record.value?.is_correct ? '命中' : '未命中')
-const resultTone = computed(() => record.value?.is_correct ? 'hit' : 'miss')
+const awaitingResult = computed(() => ['approved', 'posted'].includes(record.value?.status) && record.value?.actual_change_pct == null && record.value?.is_correct == null)
+const resultLabel = computed(() => {
+  if (awaitingResult.value) return '待验证'
+  if (record.value?.is_correct === true) return '命中'
+  if (record.value?.is_correct === false) return '未命中'
+  return '已结算'
+})
+const resultTone = computed(() => {
+  if (awaitingResult.value) return 'pending'
+  if (record.value?.is_correct === true) return 'hit'
+  if (record.value?.is_correct === false) return 'miss'
+  return 'settled'
+})
 const priceMetrics = computed(() => [
   { label: '当时方向', value: dir.value },
-  { label: '置信度', value: record.value?.confidence ? Math.round(record.value.confidence) + '%' : '-' },
-  { label: '基准收盘', value: record.value?.close_price ? Number(record.value.close_price).toFixed(2) : '-' },
-  { label: '目标价', value: record.value?.target_price ? Number(record.value.target_price).toFixed(2) : '-' },
-  { label: '止损价', value: record.value?.stop_loss ? Number(record.value.stop_loss).toFixed(2) : '-' },
-  { label: '实际收盘', value: record.value?.actual_close ? Number(record.value.actual_close).toFixed(2) : '-' },
+  { label: '置信度', value: record.value?.confidence == null ? '-' : Math.round(record.value.confidence) + '%' },
+  { label: '基准收盘', value: record.value?.close_price == null ? '-' : Number(record.value.close_price).toFixed(2) },
+  { label: '目标价', value: record.value?.target_price == null ? '-' : Number(record.value.target_price).toFixed(2) },
+  { label: '止损价', value: record.value?.stop_loss == null ? '-' : Number(record.value.stop_loss).toFixed(2) },
+  { label: '实际收盘', value: record.value?.actual_close == null ? '待结算' : Number(record.value.actual_close).toFixed(2) },
 ])
 const analysisSections = computed(() => [
   { title: '市场诊断', text: record.value?.market_diagnosis },
@@ -42,8 +53,12 @@ const analysisSections = computed(() => [
 ].filter(item => item.text))
 const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=promise`)
 const cardUrl = computed(() => `${requestUrl.origin}${cardPath.value}`)
-const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} 已结算AI K线分析复盘`)
-const description = computed(() => `${record.value?.symbol_name || symbol.value} 的AI K线分析历史复盘：当时技术面方向 ${dir.value}，实际涨跌 ${signedPct.value}，记录命中或失误，仅供研究参考。`)
+const pageModeLabel = computed(() => awaitingResult.value ? '待验证 AI K线预测' : '已结算AI K线分析复盘')
+const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} ${pageModeLabel.value}`)
+const description = computed(() => awaitingResult.value
+  ? `${record.value?.symbol_name || symbol.value} 的待验证AI K线预测：技术面方向 ${dir.value}，目标日 ${record.value?.target_date || '-'}，展示原始判断和关键价格，仅供研究参考。`
+  : `${record.value?.symbol_name || symbol.value} 的AI K线分析历史复盘：当时技术面方向 ${dir.value}，实际涨跌 ${signedPct.value}，记录命中或失误，仅供研究参考。`
+)
 usePublicSeo({
   title,
   description,
@@ -56,7 +71,7 @@ useJsonLd('research-detail-jsonld', () => [
     { name: SITE_NAME, path: '/' },
     { name: '模型复盘档案', path: '/research' },
     { name: `${record.value?.symbol_name || symbol.value} ${symbol.value}`, path: `/research/${market.value}/${symbol.value}` },
-    { name: `${date.value} 复盘`, path: `/research/${market.value}/${symbol.value}/${date.value}` },
+    { name: `${date.value} ${awaitingResult.value ? '预测' : '复盘'}`, path: `/research/${market.value}/${symbol.value}/${date.value}` },
   ]),
   {
     '@context': 'https://schema.org',
@@ -77,8 +92,8 @@ useJsonLd('research-detail-jsonld', () => [
         <div class="hero-copy">
           <NuxtLink :to="`/research/${market}/${symbol}`" class="back">该标的历史记录</NuxtLink>
           <div class="eyebrow">{{ marketLabel }} · {{ symbol }} · {{ record.prediction_date }}</div>
-          <h1>{{ record.symbol_name }} AI K线分析复盘：{{ resultLabel }}记录</h1>
-          <p class="lead">{{ record.symbol_name }} 在 {{ record.prediction_date }} 生成的 AI 技术面预测，目标日 {{ record.target_date || '-' }} 已完成结算。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。</p>
+          <h1>{{ record.symbol_name }} {{ awaitingResult ? '待验证 AI K线预测' : `AI K线分析复盘：${resultLabel}记录` }}</h1>
+          <p class="lead">{{ awaitingResult ? `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 技术面预测，目标日 ${record.target_date || '-'} 尚待结算。本页展示原始判断、方向、置信度和关键价格，结算后会自动更新为复盘记录。` : `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 技术面预测，目标日 ${record.target_date || '-'} 已完成结算。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。` }}</p>
           <div class="hero-actions">
             <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
             <NuxtLink class="cta secondary" to="/research">查看复盘档案</NuxtLink>
@@ -92,9 +107,9 @@ useJsonLd('research-detail-jsonld', () => [
 
       <section class="result-panel" :class="resultTone">
         <div class="result-verdict">
-          <span>结算结果</span>
+          <span>{{ awaitingResult ? '验证状态' : '结算结果' }}</span>
           <strong>{{ resultLabel }}</strong>
-          <p>预测方向 {{ dir }}，实际涨跌 {{ signedPct }}</p>
+          <p>{{ awaitingResult ? `预测方向 ${dir}，目标日 ${record.target_date || '-'}` : `预测方向 ${dir}，实际涨跌 ${signedPct}` }}</p>
         </div>
         <div><span>实际涨跌</span><strong>{{ signedPct }}</strong></div>
         <div><span>目标日</span><strong>{{ record.target_date || '-' }}</strong></div>
@@ -129,8 +144,8 @@ useJsonLd('research-detail-jsonld', () => [
       </div>
     </article>
     <article v-else class="article">
-      <h1>未找到复盘记录</h1>
-      <p>该记录可能尚未结算或未公开。</p>
+      <h1>未找到公开记录</h1>
+      <p>该记录可能尚未通过审核或未公开。</p>
     </article>
   </main>
 </template>
@@ -187,6 +202,10 @@ p { color: #4b5563; line-height: 1.9; margin: 0; }
 .result-panel.hit .result-verdict { background: #f0fdf4; }
 .result-panel.miss { border-color: #fecaca; }
 .result-panel.miss .result-verdict { background: #fef2f2; }
+.result-panel.pending { border-color: #fde68a; }
+.result-panel.pending .result-verdict { background: #fffbeb; }
+.result-panel.settled { border-color: #bfdbfe; }
+.result-panel.settled .result-verdict { background: #eff6ff; }
 .metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 18px 0; }
 .metrics div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; background: #fff; min-width: 0; }
 .metrics span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 8px; font-weight: 800; }
