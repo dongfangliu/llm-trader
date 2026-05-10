@@ -160,14 +160,16 @@ export function renderProof(p: CardPayload): any {
     ),
 
     // ── 结算条：实际 vs 目标 ─────────────────────────────────
+    // 边框使用 borderColor（中性 dim）而不是 stampColor —— 把"色彩注意力"全部留给印章。
+    // 数据是事实陈述，颜色铁律已经体现在"实际值"本身的颜色上；边框无需再撞色。
     h('div', {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       marginTop: '28px',
-      padding: '14px 18px',
-      border: `1px solid ${stampColor}`,
+      padding: '14px 20px',
+      border: `1px solid ${borderColor}`,
       borderRadius: '10px',
       backgroundColor: '#FAF7F0',
-      boxShadow: `inset 0 1px 0 rgba(255,255,255,0.6)`,
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
     },
       h('div', { display: 'flex', alignItems: 'baseline', gap: '14px' },
         h('div', { fontSize: '15px', letterSpacing: '4px', color: dimColor, fontWeight: '600' }, txt('结算')),
@@ -184,58 +186,64 @@ export function renderProof(p: CardPayload): any {
     ),
 
     // ── 下方留白区：左侧摘要 / 右下角印章（asymmetric anchor） ──
+    // 节奏：当时摘要小标 → 引文 → 留白 → 印章
+    // 摘要标签从 13px dimmer → 14px dim：与印章的"声响"形成 piano vs forte 的对比
     h('div', {
       flex: '1',
       display: 'flex',
       alignItems: 'flex-end',
       justifyContent: 'space-between',
-      gap: '32px',
-      paddingTop: '32px',
-      paddingBottom: '24px',
-      minHeight: '180px',
+      gap: '40px',
+      paddingTop: '36px',
+      paddingBottom: '28px',
+      minHeight: '200px',
     },
-      // 左侧摘要：意大利体引文，撑住印章对侧的视觉重量
+      // 左侧摘要：当时模型的一句话定调
       p.summary ? h('div', {
         display: 'flex',
         flex: '1',
         flexDirection: 'column',
-        gap: '10px',
-        maxWidth: '560px',
+        gap: '14px',
+        maxWidth: '540px',
       },
         h('div', {
           display: 'flex',
-          fontSize: '13px',
-          letterSpacing: '6px',
-          color: dimmerColor,
-          fontWeight: '600',
+          fontSize: '14px',
+          letterSpacing: '7px',
+          color: dimColor,
+          fontWeight: '700',
         }, txt('当 时 摘 要')),
+        h('div', { height: '1px', background: borderColor, width: '40px', display: 'flex' }),
         h('div', {
           display: 'flex',
           fontSize: '22px',
           fontStyle: 'italic',
-          color: dimColor,
+          color: textColor,
           lineHeight: '1.55',
           letterSpacing: '0.5px',
-        }, txt(`「${p.summary.slice(0, 40)}${p.summary.length > 40 ? '…' : ''}」`)),
+          opacity: '0.78',
+        }, txt(`「${p.summary.slice(0, 42)}${p.summary.length > 42 ? '…' : ''}」`)),
       ) : h('div', { flex: '1', display: 'flex' }),
 
-      // 右下角印章：脱离 prices 块，落在留白区，体量加大、感觉像盖在公报底部
+      // 右下角印章：盖在公报底部的湿润印迹
+      // box-shadow 三层：外 1px 戒指 = 钢印外缘；内 0 0 0 8px 0.05 alpha = 印油渗透；
+      // 偏移 3px 6px 0 -3px = 纸面浮起的细微高光对比
       h('div', {
         display: 'flex',
         flex: '0 0 auto',
         alignItems: 'center',
         justifyContent: 'center',
         border: `3px solid ${stampColor}`,
-        borderRadius: '12px',
-        padding: '22px 56px',
+        borderRadius: '14px',
+        padding: '26px 60px',
         color: stampColor,
-        fontSize: '78px',
+        fontSize: '82px',
         fontWeight: '900',
-        letterSpacing: '14px',
+        letterSpacing: '18px',
         lineHeight: '1',
         transform: 'rotate(-7deg)',
-        opacity: '0.92',
-        boxShadow: `0 0 0 1px ${stampColor}, 0 8px 0 -6px ${stampColor}`,
+        opacity: '0.88',
+        boxShadow: `0 0 0 1px ${stampColor}, inset 0 0 0 8px rgba(255,255,255,0.04), 3px 6px 0 -3px rgba(0,0,0,0.06)`,
         backgroundColor: 'rgba(245,242,236,0.55)',
       },
         txt(`${verdictCn} ${vGlyph}`),
