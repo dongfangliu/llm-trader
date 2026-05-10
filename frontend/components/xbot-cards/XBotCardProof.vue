@@ -202,13 +202,14 @@ const wrColor   = computed(() => pctColor(pct30.value))
 }
 .stamp {
   display: inline-flex; align-items: center; justify-content: center;
-  border: 5px solid;
-  border-radius: 8px;
-  padding: 20px 80px;
+  border: 3px solid;
+  border-radius: 10px;
+  padding: 22px 80px;
   font-size: 88px; font-weight: 900;
   letter-spacing: 12px;
   transform: rotate(-7deg);
   line-height: 1;
+  box-shadow: 0 0 0 1px currentColor;
 }
 
 .grow { min-height: 24px }

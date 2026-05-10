@@ -6,7 +6,10 @@ type SeoInput = {
   description: MaybeRefOrGetter<string>
   path: MaybeRefOrGetter<string>
   image?: MaybeRefOrGetter<string>
+  imageWidth?: MaybeRefOrGetter<number>
+  imageHeight?: MaybeRefOrGetter<number>
   type?: 'website' | 'article'
+  preloadImage?: MaybeRefOrGetter<boolean>
 }
 
 export function useCanonical(path: MaybeRefOrGetter<string>) {
@@ -27,6 +30,8 @@ export function usePublicSeo(input: SeoInput) {
     const image = toValue(input.image) || DEFAULT_OG_IMAGE
     return image.startsWith('http') ? image : `${requestUrl.origin}${image}`
   })
+  const imgW = computed(() => toValue(input.imageWidth) || 1200)
+  const imgH = computed(() => toValue(input.imageHeight) || 630)
 
   useSeoMeta({
     title: () => toValue(input.title),
@@ -37,10 +42,20 @@ export function usePublicSeo(input: SeoInput) {
     ogType: input.type || 'website',
     ogUrl: () => canonical.value,
     ogImage: () => imageUrl.value,
+    ogImageWidth: () => imgW.value,
+    ogImageHeight: () => imgH.value,
     twitterCard: 'summary_large_image',
     twitterImage: () => imageUrl.value,
     robots: 'index,follow',
   })
+
+  if (input.preloadImage) {
+    useHead(() => ({
+      link: toValue(input.preloadImage)
+        ? [{ rel: 'preload', as: 'image', href: imageUrl.value }]
+        : [],
+    }))
+  }
 
   return canonical
 }

@@ -66,6 +66,28 @@ export function pctColor(pct: number | null): string {
   return (pct ?? 0) >= 50 ? C.GOLD : C.DIM
 }
 
+/**
+ * 颜色铁律：红涨绿跌（CN 习惯），按"实际市场涨跌方向"映射颜色，**不**按"命中/未中"映射。
+ * Reviewer 看到"做多+对=红"请不要"修正"——红色代表股价上涨，与胜负无关。
+ *
+ * 用于结算条 / 印章 / 实际涨跌值的着色：
+ *   pctTone(+3.42, true)  → 深红 (CL.UP) — 因为涨了
+ *   pctTone(-2.40, true)  → 深绿 (CL.DOWN) — 因为跌了
+ *   pctTone(0, true)      → 琥珀/dim — 平盘
+ */
+export function pctTone(value: number | null | undefined, light = false): string {
+  if (value == null || isNaN(value)) return light ? CL.DIM : C.DIM
+  if (value > 0.05) return light ? CL.UP : C.UP        // 涨 → 红
+  if (value < -0.05) return light ? CL.DOWN : C.DOWN   // 跌 → 绿
+  return light ? CL.HOLD : C.HOLD                       // 平 → 琥珀
+}
+
+/** 派生：从 close + target 计算目标涨幅% */
+export function targetPct(close?: number | null, target?: number | null): number | null {
+  if (close == null || target == null || close === 0) return null
+  return ((target - close) / close) * 100
+}
+
 /** 止损方向色：止损触发方向 = 信号反方向 */
 export function dirStopColor(d?: Direction, light = false): string {
   if (d === 'up')   return light ? CL.DOWN : C.DOWN  // 多头止损=跌=绿
@@ -147,16 +169,39 @@ export function getDir(p: CardPayload): Direction | undefined {
   return (p.direction || p.predicted_direction) as Direction | undefined
 }
 
+/**
+ * 品牌标记：账册 / 印谱风格 logomark。
+ * 上栏窄 + 间距 + 下栏宽，右侧切去一个缺口，整体读起来像研究公报的封口戳。
+ * 替代原来的"45° 旋转方块"——后者跟任何 SaaS logo 都重复。
+ */
 export function brandMark(color: string, size = 14): any {
+  const w = size + 2  // 视觉宽略大于高
   return h('div', {
     display: 'flex',
-    width: `${size}px`,
+    flexDirection: 'column',
+    width: `${w}px`,
     height: `${size}px`,
-    background: color,
-    transform: 'rotate(45deg)',
-    borderRadius: '2px',
     flexShrink: 0,
-  })
+    justifyContent: 'space-between',
+  },
+    // 上栏：窄
+    h('div', {
+      display: 'flex',
+      width: `${w - 3}px`,
+      height: `${Math.max(2, Math.round(size * 0.18))}px`,
+      background: color,
+      borderRadius: '1px',
+    }),
+    // 下栏：宽 + 右侧缺口
+    h('div', {
+      display: 'flex',
+      width: `${w - 1}px`,
+      height: `${Math.max(3, Math.round(size * 0.32))}px`,
+      background: color,
+      borderRadius: '1px',
+      marginLeft: '0px',
+    }),
+  )
 }
 
 export function holdMark(color: string, width = 56, height = 10): any {

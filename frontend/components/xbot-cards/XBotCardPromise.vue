@@ -105,7 +105,7 @@ const downside = computed(() => {
 
     <!-- LLM 一行结论 -->
     <div class="summary-line" v-if="payload.summary">
-      「{{ payload.summary.slice(0, 28) }}{{ payload.summary.length > 28 ? '…' : '' }}」
+      「{{ payload.summary.slice(0, 36) }}{{ payload.summary.length > 36 ? '…' : '' }}」
     </div>
 
     <div class="grow" />
@@ -194,7 +194,7 @@ const downside = computed(() => {
 }
 .tk-left { display: flex; flex-direction: column; gap: 8px }
 .tk-name {
-  font-size: 68px; font-weight: 800; line-height: 1;
+  font-size: 68px; font-weight: 800; line-height: 0.96;
   letter-spacing: 1px; color: var(--text);
 }
 .tk-meta {
@@ -242,9 +242,13 @@ const downside = computed(() => {
 .conf-label { font-size: 17px; letter-spacing: 4px; color: var(--dim) }
 .conf-val   { font-size: 17px; font-weight: 700; letter-spacing: 1px }
 .conf-track {
-  height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
-.conf-fill { height: 100%; border-radius: 3px }
+.conf-fill {
+  height: 100%; border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
 
 /* ── 价格 ──────────────────────────────────────── */
 .prices { display: flex; flex-direction: column }

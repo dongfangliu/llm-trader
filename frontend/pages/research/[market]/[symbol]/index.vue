@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { PhArchive, PhChartLineUp, PhMagnifyingGlass, PhTarget } from '@phosphor-icons/vue'
 import { MARKET_LABELS, SITE_NAME, analyzePath } from '~/constants/seo'
 import MrMetric from '~/components/model-review/MrMetric.vue'
@@ -19,16 +20,35 @@ const requestUrl = useRequestURL()
 const displayName = computed(() => first.value?.symbol_name || symbol.value)
 const title = computed(() => `${displayName.value}(${symbol.value}) AI K线预测与复盘/技术面历史记录`)
 const description = computed(() => `${displayName.value} ${symbol.value} 的公开AI K线预测和已结算复盘，展示技术面方向、目标日、实际涨跌、命中与失误记录，可进入AI分析工具自行研究。`)
+
+const cardImage = computed(() => first.value
+  ? `/api/public/research/${market.value}/${symbol.value}/${first.value.prediction_date}/card?variant=${first.value.actual_change_pct != null ? 'proof' : 'promise'}`
+  : '')
+
 usePublicSeo({
   title,
   description,
   path: () => `/research/${market.value}/${symbol.value}`,
+  image: () => cardImage.value,
+  imageWidth: 1080,
+  imageHeight: 1350,
 })
 useJsonLd('research-symbol-breadcrumb-jsonld', () => breadcrumbJsonLd(requestUrl.origin, [
   { name: SITE_NAME, path: '/' },
   { name: '模型复盘档案', path: '/research' },
   { name: `${displayName.value} ${symbol.value}`, path: `/research/${market.value}/${symbol.value}` },
 ]))
+
+const { data: relatedData } = await useAsyncData(`research-related-${market.value}-${symbol.value}`, () =>
+  $fetch<any>('/api/public/predictions', { query: { limit: 12 } }).catch(() => ({ predictions: [] })),
+)
+
+const otherPicks = computed(() => {
+  const list = relatedData.value?.predictions || []
+  return list
+    .filter((p: any) => !(p.market === market.value && p.symbol === symbol.value))
+    .slice(0, 6)
+})
 
 function isAwaitingResult(p: any) {
   return ['approved', 'posted'].includes(p?.status) && p?.actual_change_pct == null && p?.is_correct == null
@@ -58,11 +78,21 @@ function changeText(p: any) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
 }
 
+function dotKind(p: any) {
+  if (isAwaitingResult(p)) return 'pending'
+  if (p?.is_correct === true) return 'hit'
+  if (p?.is_correct === false) return 'miss'
+  return ''
+}
+
 const records = computed(() => [...(data.value?.records || [])].sort((a, b) => {
   const awaitingOrder = Number(isAwaitingResult(b)) - Number(isAwaitingResult(a))
   if (awaitingOrder) return awaitingOrder
   return String(b.prediction_date || '').localeCompare(String(a.prediction_date || ''))
 }))
+
+const recentDots = computed(() => records.value.slice(0, 7).reverse())
+
 const awaitingCount = computed(() => records.value.filter(isAwaitingResult).length)
 const hitCount = computed(() => records.value.filter(r => r.is_correct === true).length)
 const missCount = computed(() => records.value.filter(r => r.is_correct === false).length)
@@ -71,6 +101,14 @@ const missCount = computed(() => records.value.filter(r => r.is_correct === fals
 <template>
   <main class="mr-page">
     <div class="mr-public-shell">
+      <nav class="mr-breadcrumb" aria-label="面包屑">
+        <NuxtLink to="/">首页</NuxtLink>
+        <span class="sep" aria-hidden="true">/</span>
+        <NuxtLink to="/research">公开复盘档案</NuxtLink>
+        <span class="sep" aria-hidden="true">/</span>
+        <span aria-current="page">{{ displayName }} {{ symbol }}</span>
+      </nav>
+
       <section class="mr-hero">
         <div class="mr-hero-main">
           <NuxtLink to="/research" class="mr-btn mr-btn-ghost mr-btn-small">
@@ -83,6 +121,18 @@ const missCount = computed(() => records.value.filter(r => r.is_correct === fals
           </div>
           <h1 class="mr-title">{{ displayName }} <span style="color: var(--mr-muted)">{{ symbol }}</span></h1>
           <p class="mr-lead">{{ MARKET_LABELS[market] || market }} 已通过 AI K线预测和已结算复盘记录。待验证记录展示目标日与原始方向，结算后继续保留命中和失误。</p>
+          <div v-if="recentDots.length" class="mr-symbol-dots" aria-label="近期 7 次记录">
+            <span class="mr-symbol-dots-label">近期</span>
+            <span class="mr-dot-strip">
+              <span
+                v-for="(p, idx) in recentDots"
+                :key="`${p.prediction_date}-${idx}`"
+                class="mr-dot"
+                :class="dotKind(p)"
+                :title="`${p.prediction_date} · ${statusLabel(p)}`"
+              />
+            </span>
+          </div>
           <div class="mr-toolbar" style="margin: 18px 0 0">
             <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
             <NuxtLink class="mr-btn mr-btn-secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
@@ -127,6 +177,109 @@ const missCount = computed(() => records.value.filter(r => r.is_correct === fals
         </NuxtLink>
         <MrState v-if="!records.length" title="暂无公开预测记录" text="审核通过后的该标的记录会显示在这里。" />
       </section>
+
+      <section v-if="otherPicks.length" class="mr-related-section" aria-labelledby="other-picks-title">
+        <h2 id="other-picks-title" class="mr-panel-title">其他热门标的复盘</h2>
+        <p class="mr-panel-sub">来自最近的公开预测和结算记录。</p>
+        <div class="mr-related-grid">
+          <NuxtLink
+            v-for="p in otherPicks"
+            :key="`${p.market}-${p.symbol}-${p.prediction_date}`"
+            class="mr-related-card"
+            :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
+          >
+            <div class="mr-related-meta">
+              <span class="mr-related-tag">{{ MARKET_LABELS[p.market] || p.market }} · {{ p.symbol }}</span>
+              <MrStatusBadge :status="statusClass(p)" :label="statusLabel(p)" />
+            </div>
+            <strong class="mr-related-name">{{ p.symbol_name || p.symbol }}</strong>
+            <span class="mr-related-date">预测 {{ p.prediction_date }} · 目标 {{ p.target_date || '-' }}</span>
+          </NuxtLink>
+        </div>
+      </section>
     </div>
   </main>
 </template>
+
+<style scoped>
+.mr-symbol-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 6px 12px;
+  border: 1px solid var(--mr-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .65);
+}
+
+.mr-symbol-dots-label {
+  color: var(--mr-faint);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.mr-related-section {
+  margin-top: 28px;
+  padding: 22px;
+  border: 1px solid var(--mr-line);
+  border-radius: var(--mr-radius-md);
+  background: #fff;
+  box-shadow: var(--mr-elev-1);
+}
+
+.mr-related-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.mr-related-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--mr-line);
+  border-radius: var(--mr-radius-sm);
+  background: #fafbf8;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .18s ease, transform .18s ease, background .18s ease;
+}
+
+.mr-related-card:hover {
+  border-color: var(--mr-accent);
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.mr-related-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mr-related-tag {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  color: var(--mr-muted);
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.mr-related-name {
+  color: var(--mr-text);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.mr-related-date {
+  color: var(--mr-muted);
+  font-size: 12px;
+}
+</style>

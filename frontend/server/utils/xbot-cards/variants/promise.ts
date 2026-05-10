@@ -80,33 +80,38 @@ export function renderPromise(p: CardPayload): any {
           ] : []),
         ),
       ),
-      // 右：胜率
+      // 右：胜率（字距收敛到 -4，与 Promise 信号词一致）
       pct30 != null ? h('div', { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' },
         h('div', { fontSize: '17px', letterSpacing: '5px', color: dimColor, fontWeight: '500' }, txt('累计胜率')),
         h('div', { display: 'flex', alignItems: 'baseline', gap: '2px' },
-          h('div', { fontSize: '80px', fontWeight: '800', lineHeight: '1', letterSpacing: '-2px', color: sigColor }, txt(String(pct30))),
+          h('div', { fontSize: '80px', fontWeight: '800', lineHeight: '1', letterSpacing: '-4px', color: sigColor }, txt(String(pct30))),
           h('div', { fontSize: '38px', fontWeight: '700', color: sigColor }, txt('%')),
         ),
       ) : null,
     ),
 
-    // ── 信号主体 ────────────────────────────────────────────────
+    // ── 信号主体（字距 -4，与胜率对齐） ────────────────────────
     h('div', {
       display: 'flex', alignItems: 'center', gap: '20px',
       marginBottom: '24px',
     },
-      h('div', { fontSize: '136px', fontWeight: '900', lineHeight: '1', letterSpacing: '-3px', color: sigColor }, txt(dirLabel(dir))),
+      h('div', { fontSize: '136px', fontWeight: '900', lineHeight: '1', letterSpacing: '-4px', color: sigColor }, txt(dirLabel(dir))),
       h('div', { display: 'flex', alignItems: 'center', fontSize: '72px', fontWeight: '900', lineHeight: '1', opacity: '0.88', color: sigColor }, signalMark),
     ),
 
-    // ── 置信度 ─────────────────────────────────────────────────
+    // ── 置信度：8px 仪表条 + 25/50/75% 刻度参考线 ─────────────
     p.confidence != null ? h('div', { display: 'flex', flexDirection: 'column', marginBottom: '52px' },
       h('div', { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' },
         h('div', { fontSize: '17px', letterSpacing: '4px', color: dimColor }, txt('置信度')),
         h('div', { fontSize: '17px', fontWeight: '700', color: sigColor }, txt(`${p.confidence}%`)),
       ),
-      h('div', { height: '6px', background: borderColor, borderRadius: '3px', display: 'flex' },
-        h('div', { width: `${p.confidence}%`, height: '100%', background: sigColor, borderRadius: '3px' }),
+      // 仪表底槽 + 内嵌 25/50/75% 刻度（Satori 友好的固定百分比写法）
+      h('div', {
+        height: '8px', background: borderColor, borderRadius: '4px',
+        display: 'flex', position: 'relative',
+        backgroundImage: `linear-gradient(90deg, transparent 0% 24.7%, ${dimmerColor} 24.7% 25.3%, transparent 25.3% 49.7%, ${dimmerColor} 49.7% 50.3%, transparent 50.3% 74.7%, ${dimmerColor} 74.7% 75.3%, transparent 75.3% 100%)`,
+      },
+        h('div', { width: `${p.confidence}%`, height: '100%', background: sigColor, borderRadius: '4px' }),
       ),
     ) : null,
 
@@ -140,7 +145,7 @@ export function renderPromise(p: CardPayload): any {
       color: dimColor,
       letterSpacing: '0.5px',
       lineHeight: '1',
-    }, txt(`「${p.summary.slice(0, 28)}${p.summary.length > 28 ? '…' : ''}」`)) : null,
+    }, txt(`「${p.summary.slice(0, 36)}${p.summary.length > 36 ? '…' : ''}」`)) : null,
 
     // spacer
     h('div', { flex: '1', minHeight: '24px', display: 'flex' }),

@@ -15,6 +15,7 @@ import {
   PhPlus,
   PhSlidersHorizontal,
   PhWarningCircle,
+  PhX,
   PhXCircle,
 } from '@phosphor-icons/vue'
 import api from '~/lib/api'
@@ -49,6 +50,10 @@ const generatingSymbols = ref<Set<string>>(new Set())
 const activePanel = ref<'workflow' | 'history' | 'settings'>('workflow')
 const historyStatus = ref('')
 const showAdvanced = ref(false)
+const showGenerationTools = ref(false)
+const candidateMarket = ref<'all' | 'a' | 'hk'>('all')
+const candidateSearch = ref('')
+let toastTimer: number | null = null
 
 const markets = ['a', 'hk']
 const router = useRouter()
@@ -63,10 +68,23 @@ const pendingPreds = computed(() => todayPreds.value.filter(p => p.status === 'p
 const approvedPreds = computed(() => todayPreds.value.filter(p => p.status === 'approved' || p.status === 'posted'))
 const settledPreds = computed(() => todayPreds.value.filter(p => p.status === 'settled'))
 const rejectedPreds = computed(() => todayPreds.value.filter(p => p.status === 'rejected'))
-const candidateGroups = computed<Record<string, Candidate[]>>(() => ({
-  a: candidates.value.filter(c => c.market === 'a'),
-  hk: candidates.value.filter(c => c.market === 'hk'),
-}))
+const candidateGroups = computed<Record<string, Candidate[]>>(() => {
+  const term = candidateSearch.value.trim().toLowerCase()
+  const matches = (c: Candidate) => {
+    if (!term) return true
+    return String(c.symbol || '').toLowerCase().includes(term)
+      || String(c.name || '').toLowerCase().includes(term)
+  }
+  return {
+    a: candidates.value.filter(c => c.market === 'a' && matches(c)),
+    hk: candidates.value.filter(c => c.market === 'hk' && matches(c)),
+  }
+})
+const filteredCandidates = computed(() => {
+  const m = candidateMarket.value
+  if (m === 'all') return [...candidateGroups.value.a, ...candidateGroups.value.hk]
+  return candidateGroups.value[m] || []
+})
 
 const marketLabel: Record<string, string> = { a: 'A股', hk: '港股' }
 const statusLabel: Record<string, string> = {
@@ -85,16 +103,32 @@ const accuracyLabel = computed(() => {
 })
 
 const nextAction = computed(() => {
-  if (pendingPreds.value.length) return '逐条审核待处理记录'
-  if (candidates.value.some(c => !c.already_generated)) return '从候选生成分析'
-  if (approvedPreds.value.length) return '等待目标日结算'
-  return '扫描候选或手动添加'
+  if (pendingPreds.value.length) {
+    return { label: `${pendingPreds.value.length} 条待审核 · 立即处理`, action: 'review-first' }
+  }
+  if (candidates.value.some(c => !c.already_generated)) {
+    return { label: '从候选生成分析', action: 'open-tools' }
+  }
+  if (approvedPreds.value.length) {
+    return { label: `${approvedPreds.value.length} 条等待结算`, action: 'wait' }
+  }
+  return { label: '扫描候选或手动添加', action: 'open-tools' }
 })
 
 function showMsg(text: string, type: 'ok' | 'err' = 'ok') {
   msg.value = text
   msgType.value = type
-  window.setTimeout(() => { msg.value = '' }, 2800)
+  if (toastTimer) window.clearTimeout(toastTimer)
+  if (type === 'ok') {
+    toastTimer = window.setTimeout(() => { msg.value = '' }, 4000)
+  } else {
+    toastTimer = window.setTimeout(() => { msg.value = '' }, 8000)
+  }
+}
+
+function dismissMsg() {
+  if (toastTimer) window.clearTimeout(toastTimer)
+  msg.value = ''
 }
 
 function apiErrorMessage(e: any, fallback: string) {
@@ -144,6 +178,7 @@ async function refreshAll() {
 
 async function scanCandidates() {
   candidatesLoading.value = true
+  showGenerationTools.value = true
   try {
     const res = await api.get('/api/admin/xbot/candidates', { headers: getAdminHeaders() })
     candidates.value = res.data.candidates || []
@@ -310,6 +345,26 @@ function filterReasonsText(value: any) {
   return Object.entries(value).map(([key, val]) => `${key}: ${val}`).join(' / ')
 }
 
+function handleNextAction() {
+  const action = nextAction.value.action
+  if (action === 'review-first') {
+    const first = pendingPreds.value[0]
+    if (first?.id) openReview(first.id)
+    return
+  }
+  if (action === 'open-tools') {
+    showGenerationTools.value = true
+    if (!candidates.value.length && !candidatesLoading.value) {
+      scanCandidates()
+    }
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        document.getElementById('mr-generation-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 80)
+    }
+  }
+}
+
 onMounted(refreshAll)
 </script>
 
@@ -328,7 +383,14 @@ onMounted(refreshAll)
       </MrButton>
     </template>
 
-    <div v-if="msg" :class="['mr-toast', msgType]">{{ msg }}</div>
+    <transition name="mr-toast">
+      <div v-if="msg" :class="['mr-toast', msgType]" role="status" :aria-live="msgType === 'err' ? 'assertive' : 'polite'">
+        <span>{{ msg }}</span>
+        <button v-if="msgType === 'err'" class="mr-toast-dismiss" aria-label="关闭提示" @click="dismissMsg">
+          <PhX :size="14" weight="bold" />
+        </button>
+      </div>
+    </transition>
 
     <MrMotion>
       <section class="mr-hero">
@@ -339,8 +401,19 @@ onMounted(refreshAll)
           </div>
           <h1 class="mr-title">模型复盘审核工作台</h1>
           <p class="mr-lead">
-            候选扫描、单条生成、完整审核、通过公开与结算复盘集中在一条工作流里。当前下一步：{{ nextAction }}。
+            候选扫描、单条生成、完整审核、通过公开与结算复盘集中在一条工作流里。
           </p>
+          <div class="mr-next-action">
+            <span class="mr-next-action-label">下一步</span>
+            <button
+              class="mr-btn mr-btn-primary"
+              :disabled="nextAction.action === 'wait'"
+              @click="handleNextAction"
+            >
+              <PhPlay :size="14" weight="bold" />
+              {{ nextAction.label }}
+            </button>
+          </div>
         </div>
         <aside class="mr-hero-side">
           <div>
@@ -366,7 +439,7 @@ onMounted(refreshAll)
     </nav>
 
     <section v-if="activePanel === 'workflow'">
-      <div class="mr-metrics">
+      <div class="mr-metrics mr-metrics-scroll">
         <MrMetric label="候选标的" :value="candidates.length" sub="扫描或手动加入">
           <template #icon><PhMagnifyingGlass :size="18" weight="bold" /></template>
         </MrMetric>
@@ -381,21 +454,6 @@ onMounted(refreshAll)
         </MrMetric>
       </div>
 
-      <div class="mr-toolbar">
-        <MrButton variant="primary" :disabled="candidatesLoading" @click="scanCandidates">
-          <template #icon><PhMagnifyingGlass :size="17" weight="bold" /></template>
-          {{ candidatesLoading ? '扫描中' : '扫描候选' }}
-        </MrButton>
-        <MrButton variant="secondary" :disabled="loading === 'settle'" @click="settleRecords">
-          <template #icon><PhClockCounterClockwise :size="17" weight="bold" /></template>
-          {{ loading === 'settle' ? '结算中' : '结算到期记录' }}
-        </MrButton>
-        <NuxtLink class="mr-btn mr-btn-secondary" to="/admin/xbot-card-preview">
-          <PhCards :size="17" weight="bold" />
-          卡片预览
-        </NuxtLink>
-      </div>
-
       <MrState
         v-if="initialLoading"
         title="正在读取工作流"
@@ -404,119 +462,19 @@ onMounted(refreshAll)
       />
 
       <template v-else>
-        <div class="mr-grid mr-grid-2 mr-grid-flow">
-          <section class="mr-panel">
-            <div class="mr-panel-header">
-              <div>
-                <h2 class="mr-panel-title">手动添加标的</h2>
-                <p class="mr-panel-sub">用于补充扫描结果之外的临时审核对象。</p>
-              </div>
-              <MrStatusBadge status="info" label="手动" />
-            </div>
-            <div class="mr-form-grid">
-              <label class="mr-field">
-                <span class="mr-label">市场</span>
-                <select v-model="manual.market" class="mr-select">
-                  <option value="a">A股</option>
-                  <option value="hk">港股</option>
-                </select>
-              </label>
-              <label class="mr-field">
-                <span class="mr-label">代码</span>
-                <input v-model.trim="manual.symbol" class="mr-input" placeholder="SZ000066 / 00700">
-              </label>
-              <label class="mr-field">
-                <span class="mr-label">名称</span>
-                <input v-model.trim="manual.name" class="mr-input" placeholder="可选">
-              </label>
-              <MrButton variant="secondary" :disabled="loading === 'manual-add'" @click="addManual(false)">
-                <template #icon><PhPlus :size="17" weight="bold" /></template>
-                加入候选
-              </MrButton>
-              <MrButton variant="primary" :disabled="loading === 'manual-generate'" @click="addManual(true)">
-                <template #icon><PhPlay :size="17" weight="bold" /></template>
-                加入并生成
-              </MrButton>
-            </div>
-          </section>
-
-          <section class="mr-panel">
-            <div class="mr-panel-header">
-              <div>
-                <h2 class="mr-panel-title">候选诊断</h2>
-                <p class="mr-panel-sub">记录数据源返回量、过滤量和错误原因。</p>
-              </div>
-              <MrStatusBadge :status="candidates.length ? 'ok' : 'neutral'" :label="`${candidates.length} 只`" />
-            </div>
-            <div class="mr-diag-grid">
-              <div v-for="m in markets" :key="m" class="mr-diag">
-                <div class="mr-record-title">
-                  <strong>{{ marketLabel[m] }}</strong>
-                  <MrStatusBadge :status="diagnostics[m]?.enabled === false ? 'neutral' : 'ok'" :label="diagnostics[m]?.enabled === false ? '未启用' : '已启用'" />
-                </div>
-                <div class="mr-diag-line">
-                  <span>返回 {{ diagnostics[m]?.returned ?? 0 }}</span>
-                  <span>请求 {{ diagnostics[m]?.requested ?? 0 }}</span>
-                  <span>过滤 {{ diagnostics[m]?.filtered ?? 0 }}</span>
-                </div>
-                <div v-if="diagnostics[m]?.error" class="mr-diag-error">{{ diagnostics[m].error }}</div>
-                <div v-else-if="filterReasonsText(diagnostics[m]?.filter_reasons)" class="mr-diag-error">
-                  {{ filterReasonsText(diagnostics[m]?.filter_reasons) }}
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <section class="mr-panel">
-          <div class="mr-panel-header">
-            <div>
-              <h2 class="mr-panel-title">候选标的</h2>
-              <p class="mr-panel-sub">A股 {{ candidateGroups.a.length }} / 港股 {{ candidateGroups.hk.length }}</p>
-            </div>
-            <MrStatusBadge :status="candidates.length ? 'ok' : 'neutral'" :label="candidates.length ? '可处理' : '未扫描'" />
-          </div>
-
-          <MrState v-if="!candidates.length" title="暂无候选" text="先扫描候选，或手动添加一只标的。" />
-          <template v-else>
-            <template v-for="m in markets" :key="m">
-              <div v-if="candidateGroups[m].length" class="mr-section-label">{{ marketLabel[m] }}</div>
-              <div v-for="c in candidateGroups[m]" :key="`${c.market}-${c.symbol}`" class="mr-record">
-                <div class="mr-record-main">
-                  <div class="mr-record-title">
-                    <strong>{{ c.name || c.symbol }}</strong>
-                    <MrStatusBadge :status="c.already_generated ? (c.existing_status || 'info') : 'neutral'" :label="c.already_generated ? (statusLabel[c.existing_status] || '已生成') : '未生成'" />
-                  </div>
-                  <div class="mr-record-meta">{{ marketLabel[c.market] }} / {{ c.symbol }} / 热度 {{ c.hot_rank ?? '-' }}</div>
-                </div>
-                <div class="mr-record-actions">
-                  <MrButton
-                    v-if="c.already_generated"
-                    size="sm"
-                    variant="secondary"
-                    :disabled="!predictionIdForCandidate(c)"
-                    @click="openCandidateReview(c)"
-                  >
-                    完整审核
-                  </MrButton>
-                  <MrButton v-else size="sm" variant="primary" :disabled="isGenerating(c.symbol)" @click="generateSingle(c)">
-                    <template #icon><PhPlay :size="15" weight="bold" /></template>
-                    {{ isGenerating(c.symbol) ? '生成中' : '生成分析' }}
-                  </MrButton>
-                </div>
-              </div>
-            </template>
-          </template>
-        </section>
-
-        <MrStagePanel title="待生成" :items="[]" empty="候选标的生成分析后会进入待审核。" status="neutral" />
-
-        <MrStagePanel title="待审核" :items="pendingPreds" empty="暂无待审核记录。" status="pending">
+        <MrStagePanel
+          title="待审核"
+          description="建议逐条进入完整审核页，依据检查清单决定通过或拒绝"
+          :items="pendingPreds"
+          empty="暂无待审核记录。"
+          status="pending"
+          :default-expanded="true"
+        >
           <template #default="{ item }">
-            <MrButton size="sm" variant="secondary" @click="openReview(item.id)">完整审核</MrButton>
-            <MrButton size="sm" variant="primary" :disabled="loading === `approve-${item.id}`" @click="approvePred(item)">
+            <MrButton size="sm" variant="primary" @click="openReview(item.id)">完整审核</MrButton>
+            <MrButton size="sm" variant="secondary" :disabled="loading === `approve-${item.id}`" @click="approvePred(item)">
               <template #icon><PhCheckCircle :size="15" weight="bold" /></template>
-              通过
+              快速通过
             </MrButton>
             <MrButton size="sm" variant="danger" :disabled="loading === `reject-${item.id}`" @click="rejectPred(item)">
               <template #icon><PhXCircle :size="15" weight="bold" /></template>
@@ -525,14 +483,28 @@ onMounted(refreshAll)
           </template>
         </MrStagePanel>
 
-        <MrStagePanel title="已通过待结算" :items="approvedPreds" empty="暂无已通过记录。" status="approved">
+        <MrStagePanel
+          title="已通过待结算"
+          description="等待目标日结算自动更新结果"
+          :items="approvedPreds"
+          empty="暂无已通过记录。"
+          status="approved"
+          :default-expanded="true"
+        >
           <template #default="{ item }">
             <MrButton size="sm" variant="secondary" @click="openReview(item.id)">查看</MrButton>
             <MrButton size="sm" variant="danger" :disabled="loading === `reject-${item.id}`" @click="rejectPred(item)">拒绝</MrButton>
           </template>
         </MrStagePanel>
 
-        <MrStagePanel title="已结算复盘" :items="settledPreds" empty="暂无结算复盘。" status="settled">
+        <MrStagePanel
+          title="已结算复盘"
+          description="可直接打开公开复盘验证内容"
+          :items="settledPreds"
+          empty="暂无结算复盘。"
+          status="settled"
+          :default-expanded="false"
+        >
           <template #default="{ item }">
             <NuxtLink class="mr-btn mr-btn-secondary mr-btn-small" :to="`/research/${item.market}/${item.symbol}/${item.prediction_date}`" target="_blank">
               <PhGlobeHemisphereEast :size="15" weight="bold" />
@@ -541,27 +513,212 @@ onMounted(refreshAll)
           </template>
         </MrStagePanel>
 
-        <MrStagePanel title="已拒绝" :items="rejectedPreds" empty="暂无已拒绝记录。" status="rejected">
+        <MrStagePanel
+          title="已拒绝"
+          description="不会进入公开档案"
+          :items="rejectedPreds"
+          empty="暂无已拒绝记录。"
+          status="rejected"
+          :default-expanded="false"
+        >
           <template #default="{ item }">
             <MrButton size="sm" variant="secondary" @click="openReview(item.id)">查看</MrButton>
           </template>
         </MrStagePanel>
 
-        <section class="mr-panel">
-          <div class="mr-panel-header">
+        <section id="mr-generation-tools" class="mr-panel">
+          <header class="mr-panel-header">
             <div>
-              <h2 class="mr-panel-title">高级批量操作</h2>
-              <p class="mr-panel-sub">默认建议逐条进入完整审核页；批量操作只在流程稳定时使用。</p>
+              <h2 class="mr-panel-title">
+                <button
+                  type="button"
+                  class="mr-collapse-trigger"
+                  :aria-expanded="showGenerationTools"
+                  @click="showGenerationTools = !showGenerationTools"
+                >
+                  <span class="chevron" aria-hidden="true">▾</span>
+                  生成工具
+                </button>
+              </h2>
+              <p class="mr-panel-sub">扫描候选、手动添加、查看数据源诊断和高级批量操作。</p>
             </div>
-            <MrButton variant="ghost" size="sm" @click="showAdvanced = !showAdvanced">
-              <template #icon><PhSlidersHorizontal :size="16" weight="bold" /></template>
-              {{ showAdvanced ? '收起' : '展开' }}
-            </MrButton>
-          </div>
-          <div v-if="showAdvanced" class="mr-toolbar">
-            <MrButton variant="secondary" :disabled="!pendingPreds.length || loading === 'bulk-approve'" @click="approveAllPending">
-              批量通过当前待审核
-            </MrButton>
+            <div class="mr-toolbar-mini">
+              <MrButton variant="primary" size="sm" :disabled="candidatesLoading" @click="scanCandidates">
+                <template #icon><PhMagnifyingGlass :size="15" weight="bold" /></template>
+                {{ candidatesLoading ? '扫描中' : '扫描候选' }}
+              </MrButton>
+              <MrButton variant="secondary" size="sm" :disabled="loading === 'settle'" @click="settleRecords">
+                <template #icon><PhClockCounterClockwise :size="15" weight="bold" /></template>
+                {{ loading === 'settle' ? '结算中' : '结算到期' }}
+              </MrButton>
+              <NuxtLink class="mr-btn mr-btn-secondary mr-btn-small" to="/admin/xbot-card-preview">
+                <PhCards :size="15" weight="bold" />
+                卡片
+              </NuxtLink>
+            </div>
+          </header>
+
+          <div v-show="showGenerationTools">
+            <div class="mr-grid mr-grid-2 mr-grid-flow">
+              <section class="mr-subpanel">
+                <div class="mr-panel-header">
+                  <div>
+                    <h3 class="mr-subpanel-title">手动添加标的</h3>
+                    <p class="mr-panel-sub">补充扫描结果之外的临时审核对象。</p>
+                  </div>
+                  <MrStatusBadge status="info" label="手动" />
+                </div>
+                <div class="mr-form-grid">
+                  <label class="mr-field">
+                    <span class="mr-label">市场</span>
+                    <select v-model="manual.market" class="mr-select">
+                      <option value="a">A股</option>
+                      <option value="hk">港股</option>
+                    </select>
+                  </label>
+                  <label class="mr-field">
+                    <span class="mr-label">代码</span>
+                    <input v-model.trim="manual.symbol" class="mr-input" placeholder="SZ000066 / 00700">
+                  </label>
+                  <label class="mr-field">
+                    <span class="mr-label">名称</span>
+                    <input v-model.trim="manual.name" class="mr-input" placeholder="可选">
+                  </label>
+                  <MrButton variant="secondary" :disabled="loading === 'manual-add'" @click="addManual(false)">
+                    <template #icon><PhPlus :size="17" weight="bold" /></template>
+                    加入候选
+                  </MrButton>
+                  <MrButton variant="primary" :disabled="loading === 'manual-generate'" @click="addManual(true)">
+                    <template #icon><PhPlay :size="17" weight="bold" /></template>
+                    加入并生成
+                  </MrButton>
+                </div>
+              </section>
+
+              <section class="mr-subpanel">
+                <div class="mr-panel-header">
+                  <div>
+                    <h3 class="mr-subpanel-title">候选诊断</h3>
+                    <p class="mr-panel-sub">数据源返回量、过滤量与错误原因。</p>
+                  </div>
+                  <MrStatusBadge :status="candidates.length ? 'ok' : 'neutral'" :label="`${candidates.length} 只`" />
+                </div>
+                <div class="mr-diag-grid">
+                  <div v-for="m in markets" :key="m" class="mr-diag">
+                    <div class="mr-record-title">
+                      <strong>{{ marketLabel[m] }}</strong>
+                      <MrStatusBadge :status="diagnostics[m]?.enabled === false ? 'neutral' : 'ok'" :label="diagnostics[m]?.enabled === false ? '未启用' : '已启用'" />
+                    </div>
+                    <div class="mr-diag-line">
+                      <span>返回 {{ diagnostics[m]?.returned ?? 0 }}</span>
+                      <span>请求 {{ diagnostics[m]?.requested ?? 0 }}</span>
+                      <span>过滤 {{ diagnostics[m]?.filtered ?? 0 }}</span>
+                    </div>
+                    <div v-if="diagnostics[m]?.error" class="mr-diag-error">{{ diagnostics[m].error }}</div>
+                    <div v-else-if="filterReasonsText(diagnostics[m]?.filter_reasons)" class="mr-diag-error">
+                      {{ filterReasonsText(diagnostics[m]?.filter_reasons) }}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section class="mr-subpanel">
+              <div class="mr-panel-header">
+                <div>
+                  <h3 class="mr-subpanel-title">候选标的</h3>
+                  <p class="mr-panel-sub">A股 {{ candidateGroups.a.length }} / 港股 {{ candidateGroups.hk.length }}</p>
+                </div>
+              </div>
+              <div class="mr-filter-row">
+                <div class="mr-chip-row" role="tablist" aria-label="市场筛选">
+                  <button
+                    type="button"
+                    class="mr-chip"
+                    :class="{ 'is-active': candidateMarket === 'all' }"
+                    :aria-pressed="candidateMarket === 'all'"
+                    @click="candidateMarket = 'all'"
+                  >
+                    全部
+                    <span class="mr-chip-count">{{ candidates.length }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mr-chip"
+                    :class="{ 'is-active': candidateMarket === 'a' }"
+                    :aria-pressed="candidateMarket === 'a'"
+                    @click="candidateMarket = 'a'"
+                  >
+                    A股
+                    <span class="mr-chip-count">{{ candidateGroups.a.length }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mr-chip"
+                    :class="{ 'is-active': candidateMarket === 'hk' }"
+                    :aria-pressed="candidateMarket === 'hk'"
+                    @click="candidateMarket = 'hk'"
+                  >
+                    港股
+                    <span class="mr-chip-count">{{ candidateGroups.hk.length }}</span>
+                  </button>
+                </div>
+                <input
+                  v-model.trim="candidateSearch"
+                  class="mr-input mr-input-sm"
+                  placeholder="按代码或名称筛选"
+                  aria-label="筛选候选"
+                >
+              </div>
+
+              <MrState v-if="candidatesLoading && !candidates.length" title="扫描中" text="正在拉取候选标的，请稍候。" variant="loading" />
+              <MrState v-else-if="!candidates.length" title="暂无候选" text="先扫描候选，或手动添加一只标的。" />
+              <MrState v-else-if="!filteredCandidates.length" title="未匹配候选" text="试试清空筛选或切换市场。" />
+              <template v-else>
+                <div v-for="c in filteredCandidates" :key="`${c.market}-${c.symbol}`" class="mr-record">
+                  <div class="mr-record-main">
+                    <div class="mr-record-title">
+                      <strong>{{ c.name || c.symbol }}</strong>
+                      <MrStatusBadge :status="c.already_generated ? (c.existing_status || 'info') : 'neutral'" :label="c.already_generated ? (statusLabel[c.existing_status] || '已生成') : '未生成'" />
+                    </div>
+                    <div class="mr-record-meta">{{ marketLabel[c.market] }} / {{ c.symbol }} / 热度 {{ c.hot_rank ?? '-' }}</div>
+                  </div>
+                  <div class="mr-record-actions">
+                    <MrButton
+                      v-if="c.already_generated"
+                      size="sm"
+                      variant="secondary"
+                      :disabled="!predictionIdForCandidate(c)"
+                      @click="openCandidateReview(c)"
+                    >
+                      完整审核
+                    </MrButton>
+                    <MrButton v-else size="sm" variant="primary" :disabled="isGenerating(c.symbol)" @click="generateSingle(c)">
+                      <template #icon><PhPlay :size="15" weight="bold" /></template>
+                      {{ isGenerating(c.symbol) ? '生成中' : '生成分析' }}
+                    </MrButton>
+                  </div>
+                </div>
+              </template>
+            </section>
+
+            <section class="mr-subpanel mr-subpanel-quiet">
+              <div class="mr-panel-header">
+                <div>
+                  <h3 class="mr-subpanel-title">高级批量操作</h3>
+                  <p class="mr-panel-sub">建议先逐条审核；批量操作仅在流程稳定后使用。</p>
+                </div>
+                <MrButton variant="ghost" size="sm" @click="showAdvanced = !showAdvanced">
+                  <template #icon><PhSlidersHorizontal :size="16" weight="bold" /></template>
+                  {{ showAdvanced ? '收起' : '展开' }}
+                </MrButton>
+              </div>
+              <div v-if="showAdvanced" class="mr-toolbar">
+                <MrButton variant="secondary" :disabled="!pendingPreds.length || loading === 'bulk-approve'" @click="approveAllPending">
+                  批量通过当前待审核（{{ pendingPreds.length }}）
+                </MrButton>
+              </div>
+            </section>
           </div>
         </section>
       </template>
@@ -628,3 +785,125 @@ onMounted(refreshAll)
     </section>
   </MrShell>
 </template>
+
+<style scoped>
+.mr-next-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--mr-line);
+  border-radius: 999px;
+  background: rgba(47, 111, 104, .06);
+}
+
+.mr-next-action-label {
+  color: var(--mr-muted);
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.mr-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mr-toast-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .18);
+  color: inherit;
+  cursor: pointer;
+}
+
+.mr-toast-dismiss:hover {
+  background: rgba(255, 255, 255, .28);
+}
+
+.mr-toast-enter-active,
+.mr-toast-leave-active {
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.mr-toast-enter-from,
+.mr-toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+}
+
+.mr-subpanel {
+  border: 1px solid #edf0ec;
+  border-radius: var(--mr-radius-sm);
+  padding: 14px 14px 16px;
+  background: #fafbf8;
+  margin-bottom: 12px;
+}
+
+.mr-subpanel-quiet {
+  background: transparent;
+  border-style: dashed;
+}
+
+.mr-subpanel-title {
+  margin: 0;
+  color: var(--mr-text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.mr-toolbar-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mr-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.mr-input-sm {
+  height: 36px;
+  max-width: 240px;
+}
+
+@media (max-width: 760px) {
+  .mr-next-action {
+    width: 100%;
+    margin-top: 16px;
+  }
+
+  .mr-next-action .mr-btn {
+    flex: 1;
+  }
+
+  .mr-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mr-input-sm {
+    max-width: none;
+    width: 100%;
+  }
+
+  .mr-toolbar-mini {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+</style>
