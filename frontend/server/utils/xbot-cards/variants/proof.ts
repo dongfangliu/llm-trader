@@ -21,7 +21,9 @@ export function renderProof(p: CardPayload): any {
   const dir       = getDir(p)
   const correct   = p.is_correct ?? false
   const verdictCn = correct ? '兑现' : '失效'
-  const vGlyph    = correct ? '✓' : '✗'
+  // 注意：✗ (U+2717) 在很多 CJK 字体里没有 glyph，会显示成 [x] 框；
+  // 改用 × (U+00D7 multiplication sign)，NotoSansSC 等字体都覆盖。
+  const vGlyph    = correct ? '✓' : '×'
 
   // 印章颜色：跟随实际涨跌方向（CN 习惯）
   const stampColor = pctTone(p.actual_change_pct ?? null, true)
@@ -135,8 +137,8 @@ export function renderProof(p: CardPayload): any {
       ),
     ) : null,
 
-    // ── 价格双行 + 印章叠加（关键改造） ──────────────────────
-    h('div', { display: 'flex', flexDirection: 'column', position: 'relative' },
+    // ── 价格双行（不再叠加印章，归还 prices 行视觉空间） ────
+    h('div', { display: 'flex', flexDirection: 'column' },
       // 目标价
       h('div', {
         display: 'flex', alignItems: 'baseline',
@@ -154,29 +156,6 @@ export function renderProof(p: CardPayload): any {
         h('div', { fontSize: '20px', letterSpacing: '4px', color: dimColor, fontWeight: '600', width: '160px' }, txt('止损价')),
         h('div', { fontSize: '52px', fontWeight: '700', letterSpacing: '-1px', flex: '1', color: stopColor }, txt(fmtPrice(p.stop_loss))),
         downside != null ? h('div', { fontSize: '24px', fontWeight: '600', color: stopColor }, txt(fmtPct(downside))) : null,
-      ),
-      // 旋转印章（绝对定位，叠在价格行右上）
-      h('div', {
-        position: 'absolute',
-        top: '-26px',
-        right: '-12px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        border: `3px solid ${stampColor}`,
-        borderRadius: '10px',
-        padding: '12px 28px',
-        color: stampColor,
-        fontSize: '46px',
-        fontWeight: '900',
-        letterSpacing: '6px',
-        lineHeight: '1',
-        transform: 'rotate(-8deg)',
-        opacity: '0.92',
-        boxShadow: `0 0 0 1px ${stampColor}`,
-        backgroundColor: 'rgba(245,242,236,0.6)',
-      },
-        txt(`${verdictCn} ${vGlyph}`),
       ),
     ),
 
@@ -204,17 +183,64 @@ export function renderProof(p: CardPayload): any {
       ),
     ),
 
-    // ── LLM 一行结论（保留对照用） ─────────────────────────
-    p.summary ? h('div', {
-      marginTop: '20px',
-      fontSize: '20px',
-      fontStyle: 'italic',
-      color: dimColor,
-      letterSpacing: '0.5px',
-      lineHeight: '1',
-    }, txt(`「${p.summary.slice(0, 36)}${p.summary.length > 36 ? '…' : ''}」`)) : null,
+    // ── 下方留白区：左侧摘要 / 右下角印章（asymmetric anchor） ──
+    h('div', {
+      flex: '1',
+      display: 'flex',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      gap: '32px',
+      paddingTop: '32px',
+      paddingBottom: '24px',
+      minHeight: '180px',
+    },
+      // 左侧摘要：意大利体引文，撑住印章对侧的视觉重量
+      p.summary ? h('div', {
+        display: 'flex',
+        flex: '1',
+        flexDirection: 'column',
+        gap: '10px',
+        maxWidth: '560px',
+      },
+        h('div', {
+          display: 'flex',
+          fontSize: '13px',
+          letterSpacing: '6px',
+          color: dimmerColor,
+          fontWeight: '600',
+        }, txt('当 时 摘 要')),
+        h('div', {
+          display: 'flex',
+          fontSize: '22px',
+          fontStyle: 'italic',
+          color: dimColor,
+          lineHeight: '1.55',
+          letterSpacing: '0.5px',
+        }, txt(`「${p.summary.slice(0, 40)}${p.summary.length > 40 ? '…' : ''}」`)),
+      ) : h('div', { flex: '1', display: 'flex' }),
 
-    h('div', { flex: '1', minHeight: '20px', display: 'flex' }),
+      // 右下角印章：脱离 prices 块，落在留白区，体量加大、感觉像盖在公报底部
+      h('div', {
+        display: 'flex',
+        flex: '0 0 auto',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: `3px solid ${stampColor}`,
+        borderRadius: '12px',
+        padding: '22px 56px',
+        color: stampColor,
+        fontSize: '78px',
+        fontWeight: '900',
+        letterSpacing: '14px',
+        lineHeight: '1',
+        transform: 'rotate(-7deg)',
+        opacity: '0.92',
+        boxShadow: `0 0 0 1px ${stampColor}, 0 8px 0 -6px ${stampColor}`,
+        backgroundColor: 'rgba(245,242,236,0.55)',
+      },
+        txt(`${verdictCn} ${vGlyph}`),
+      ),
+    ),
 
     // ── Footer ─────────────────────────────────────────────────
     h('div', {
