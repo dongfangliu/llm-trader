@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { PhArchive, PhChartLineUp, PhMagnifyingGlass, PhTarget } from '@phosphor-icons/vue'
 import { MARKET_LABELS, SITE_NAME, analyzePath } from '~/constants/seo'
+import MrMetric from '~/components/model-review/MrMetric.vue'
+import MrState from '~/components/model-review/MrState.vue'
+import MrStatusBadge from '~/components/model-review/MrStatusBadge.vue'
 
 const route = useRoute()
 const market = computed(() => String(route.params.market || '').toLowerCase())
@@ -59,56 +63,70 @@ const records = computed(() => [...(data.value?.records || [])].sort((a, b) => {
   if (awaitingOrder) return awaitingOrder
   return String(b.prediction_date || '').localeCompare(String(a.prediction_date || ''))
 }))
+const awaitingCount = computed(() => records.value.filter(isAwaitingResult).length)
+const hitCount = computed(() => records.value.filter(r => r.is_correct === true).length)
+const missCount = computed(() => records.value.filter(r => r.is_correct === false).length)
 </script>
 
 <template>
-  <main class="seo-page">
-    <header class="hero">
-      <NuxtLink to="/research" class="back">复盘档案</NuxtLink>
-      <h1>{{ first?.symbol_name || symbol }} <span>{{ symbol }}</span></h1>
-      <p>{{ MARKET_LABELS[market] || market }} 已通过AI K线预测和已结算复盘记录。待验证记录展示目标日与原始方向，结算后继续保留命中和失误。</p>
-      <div class="actions">
-        <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
-        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
+  <main class="mr-page">
+    <div class="mr-public-shell">
+      <section class="mr-hero">
+        <div class="mr-hero-main">
+          <NuxtLink to="/research" class="mr-btn mr-btn-ghost mr-btn-small">
+            <PhArchive :size="16" weight="bold" />
+            复盘档案
+          </NuxtLink>
+          <div class="mr-kicker" style="margin-top: 18px">
+            <PhTarget :size="16" weight="bold" />
+            {{ MARKET_LABELS[market] || market }} / {{ symbol }}
+          </div>
+          <h1 class="mr-title">{{ displayName }} <span style="color: var(--mr-muted)">{{ symbol }}</span></h1>
+          <p class="mr-lead">{{ MARKET_LABELS[market] || market }} 已通过 AI K线预测和已结算复盘记录。待验证记录展示目标日与原始方向，结算后继续保留命中和失误。</p>
+          <div class="mr-toolbar" style="margin: 18px 0 0">
+            <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
+            <NuxtLink class="mr-btn mr-btn-secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
+          </div>
+        </div>
+        <aside class="mr-hero-side">
+          <div>
+            <div class="mr-kicker">公开记录</div>
+            <strong>{{ records.length }}</strong>
+            <small>待验证 {{ awaitingCount }}，命中 {{ hitCount }}，未命中 {{ missCount }}。</small>
+          </div>
+          <MrStatusBadge status="info" :label="`${displayName} 档案`" />
+        </aside>
+      </section>
+
+      <div class="mr-metrics">
+        <MrMetric label="总记录" :value="records.length" sub="按预测日倒序">
+          <template #icon><PhArchive :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="待验证" :value="awaitingCount" sub="目标日后更新">
+          <template #icon><PhTarget :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="命中" :value="hitCount" sub="方向验证成功">
+          <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="未命中" :value="missCount" sub="保留失败记录">
+          <template #icon><PhMagnifyingGlass :size="18" weight="bold" /></template>
+        </MrMetric>
       </div>
-    </header>
-    <section class="list">
-      <NuxtLink
-        v-for="p in records"
-        :key="p.id"
-        class="record"
-        :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
-      >
-        <div><strong>{{ p.prediction_date }}</strong><span>目标日 {{ p.target_date }}</span></div>
-        <div>{{ directionLabel(p.predicted_direction) }}<span>置信度 {{ p.confidence == null ? '-' : `${Math.round(Number(p.confidence))}%` }}</span></div>
-        <div>{{ changeText(p) }}</div>
-        <div :class="['status-badge', statusClass(p)]">{{ statusLabel(p) }}</div>
-      </NuxtLink>
-      <div v-if="!records.length" class="empty">暂无公开预测记录</div>
-    </section>
+
+      <section class="mr-list-table" aria-label="标的复盘记录">
+        <NuxtLink
+          v-for="p in records"
+          :key="p.id"
+          class="mr-list-row"
+          :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
+        >
+          <div><strong>{{ p.prediction_date }}</strong><span>目标日 {{ p.target_date }}</span></div>
+          <div><strong>{{ directionLabel(p.predicted_direction) }}</strong><span>置信度 {{ p.confidence == null ? '-' : `${Math.round(Number(p.confidence))}%` }}</span></div>
+          <div><strong>{{ changeText(p) }}</strong><span>实际涨跌</span></div>
+          <MrStatusBadge :status="statusClass(p)" :label="statusLabel(p)" />
+        </NuxtLink>
+        <MrState v-if="!records.length" title="暂无公开预测记录" text="审核通过后的该标的记录会显示在这里。" />
+      </section>
+    </div>
   </main>
 </template>
-
-<style scoped>
-.seo-page { min-height: 100vh; background: #f8fafc; color: #111827; padding: 24px 16px 56px; }
-.hero, .list { max-width: 920px; margin: 0 auto 16px; }
-.back { color: #2563eb; text-decoration: none; font-weight: 600; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
-.cta.primary { background: #2563eb; color: #fff; }
-.cta.secondary { background: #eef2ff; color: #3730a3; }
-h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
-h1 span, p, .record span { color: #6b7280; }
-p { line-height: 1.8; }
-.list { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-.record { display: grid; grid-template-columns: 1fr .75fr .7fr .65fr; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; color: inherit; text-decoration: none; }
-.record:hover { background: #f8fafc; }
-.record span { display: block; font-size: 12px; margin-top: 3px; }
-.status-badge { justify-self: start; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 800; }
-.status-badge.pending { color: #92400e; background: #fffbeb; }
-.status-badge.settled { color: #1d4ed8; background: #eff6ff; }
-.hit { color: #15803d; background: #f0fdf4; }
-.miss { color: #b91c1c; background: #fef2f2; }
-.empty { padding: 40px; text-align: center; color: #6b7280; }
-@media (max-width: 680px) { .record { grid-template-columns: 1fr; } }
-</style>

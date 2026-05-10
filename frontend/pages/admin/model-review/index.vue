@@ -1,6 +1,30 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import {
+  PhArrowLeft,
+  PhArrowsClockwise,
+  PhCards,
+  PhChartLineUp,
+  PhCheckCircle,
+  PhClockCounterClockwise,
+  PhGauge,
+  PhGlobeHemisphereEast,
+  PhListChecks,
+  PhMagnifyingGlass,
+  PhPlay,
+  PhPlus,
+  PhSlidersHorizontal,
+  PhWarningCircle,
+  PhXCircle,
+} from '@phosphor-icons/vue'
 import api from '~/lib/api'
+import MrButton from '~/components/model-review/MrButton.vue'
+import MrMetric from '~/components/model-review/MrMetric.vue'
+import MrMotion from '~/components/model-review/MrMotion.vue'
+import MrShell from '~/components/model-review/MrShell.vue'
+import MrStagePanel from '~/components/model-review/MrStagePanel.vue'
+import MrState from '~/components/model-review/MrState.vue'
+import MrStatusBadge from '~/components/model-review/MrStatusBadge.vue'
 
 type Prediction = Record<string, any>
 type Candidate = Record<string, any>
@@ -19,44 +43,53 @@ const diagnostics = ref<Record<string, any>>({})
 const msg = ref('')
 const msgType = ref<'ok' | 'err'>('ok')
 const loading = ref('')
+const initialLoading = ref(true)
 const candidatesLoading = ref(false)
 const generatingSymbols = ref<Set<string>>(new Set())
 const activePanel = ref<'workflow' | 'history' | 'settings'>('workflow')
 const historyStatus = ref('')
 const showAdvanced = ref(false)
 
+const markets = ['a', 'hk']
+const router = useRouter()
+
 const manual = reactive({
   market: 'a',
   symbol: '',
   name: '',
 })
-const router = useRouter()
 
 const pendingPreds = computed(() => todayPreds.value.filter(p => p.status === 'pending'))
-const approvedPreds = computed(() => todayPreds.value.filter(p => p.status === 'approved'))
-const settledPreds = computed(() => todayPreds.value.filter(p => p.status === 'settled' || p.status === 'posted'))
+const approvedPreds = computed(() => todayPreds.value.filter(p => p.status === 'approved' || p.status === 'posted'))
+const settledPreds = computed(() => todayPreds.value.filter(p => p.status === 'settled'))
 const rejectedPreds = computed(() => todayPreds.value.filter(p => p.status === 'rejected'))
-const candidateGroups = computed(() => ({
+const candidateGroups = computed<Record<string, Candidate[]>>(() => ({
   a: candidates.value.filter(c => c.market === 'a'),
   hk: candidates.value.filter(c => c.market === 'hk'),
 }))
 
-const marketLabel: Record<string, string> = { a: 'A 股', hk: '港股' }
+const marketLabel: Record<string, string> = { a: 'A股', hk: '港股' }
 const statusLabel: Record<string, string> = {
   pending: '待审核',
   approved: '已通过待结算',
+  posted: '已发布待结算',
   rejected: '已拒绝',
   settled: '已结算复盘',
-  posted: '历史已归档',
 }
 const directionLabel: Record<string, string> = { up: '看涨', down: '看跌', hold: '震荡' }
-const statusColor: Record<string, string> = {
-  pending: '#b45309',
-  approved: '#1d4ed8',
-  rejected: '#6b7280',
-  settled: '#047857',
-  posted: '#047857',
-}
+
+const accuracyLabel = computed(() => {
+  const all = dashboard.value?.accuracy?.all
+  if (!all) return '0%'
+  return all.label || `${all.pct ?? 0}%`
+})
+
+const nextAction = computed(() => {
+  if (pendingPreds.value.length) return '逐条审核待处理记录'
+  if (candidates.value.some(c => !c.already_generated)) return '从候选生成分析'
+  if (approvedPreds.value.length) return '等待目标日结算'
+  return '扫描候选或手动添加'
+})
 
 function showMsg(text: string, type: 'ok' | 'err' = 'ok') {
   msg.value = text
@@ -99,7 +132,14 @@ async function loadHistory() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadDashboard(), loadTodayPreds(), loadSettings()])
+  initialLoading.value = true
+  try {
+    await Promise.all([loadDashboard(), loadTodayPreds(), loadSettings()])
+  } catch (e: any) {
+    showMsg(apiErrorMessage(e, '加载模型复盘数据失败'), 'err')
+  } finally {
+    initialLoading.value = false
+  }
 }
 
 async function scanCandidates() {
@@ -110,7 +150,7 @@ async function scanCandidates() {
     diagnostics.value = res.data.diagnostics || {}
     if (!candidates.value.length) showMsg('未扫描到候选标的，请查看数据源状态和过滤原因', 'err')
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '扫描候选失败', 'err')
+    showMsg(apiErrorMessage(e, '扫描候选失败'), 'err')
   } finally {
     candidatesLoading.value = false
   }
@@ -141,7 +181,7 @@ async function addManual(generateNow = false) {
       showMsg(candidate.already_generated ? '今天已存在该标的分析记录' : '已加入候选标的')
     }
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '手动添加失败', 'err')
+    showMsg(apiErrorMessage(e, '手动添加失败'), 'err')
   } finally {
     loading.value = ''
   }
@@ -198,7 +238,7 @@ async function approvePred(pred: Prediction) {
     showMsg('已通过审核')
     await refreshAll()
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '通过失败', 'err')
+    showMsg(apiErrorMessage(e, '通过失败'), 'err')
   } finally {
     loading.value = ''
   }
@@ -211,7 +251,7 @@ async function rejectPred(pred: Prediction) {
     showMsg('已拒绝')
     await refreshAll()
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '拒绝失败', 'err')
+    showMsg(apiErrorMessage(e, '拒绝失败'), 'err')
   } finally {
     loading.value = ''
   }
@@ -225,7 +265,7 @@ async function settleRecords() {
     showMsg('结算任务已启动，稍后刷新查看')
     window.setTimeout(() => { refreshAll(); loadHistory() }, 8000)
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '结算失败', 'err')
+    showMsg(apiErrorMessage(e, '结算失败'), 'err')
   } finally {
     loading.value = ''
   }
@@ -240,7 +280,7 @@ async function approveAllPending() {
     showMsg(`${ids.length} 条记录已通过`)
     await refreshAll()
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '批量通过失败', 'err')
+    showMsg(apiErrorMessage(e, '批量通过失败'), 'err')
   } finally {
     loading.value = ''
   }
@@ -254,319 +294,337 @@ async function saveSettings() {
     showMsg('设置已保存')
     await loadDashboard()
   } catch (e: any) {
-    showMsg(e.response?.data?.detail || '保存失败', 'err')
+    showMsg(apiErrorMessage(e, '保存失败'), 'err')
   } finally {
     loading.value = ''
   }
 }
 
 function pctText(v: number | null | undefined) {
-  if (v == null) return '-'
+  if (v == null) return '待结算'
   return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
+}
+
+function filterReasonsText(value: any) {
+  if (!value || typeof value !== 'object') return ''
+  return Object.entries(value).map(([key, val]) => `${key}: ${val}`).join(' / ')
 }
 
 onMounted(refreshAll)
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <NuxtLink to="/admin" class="back">返回</NuxtLink>
-      <strong>模型复盘</strong>
-      <button class="text-btn" @click="refreshAll">刷新</button>
-    </header>
+  <MrShell title="模型复盘" back-to="/admin" back-label="后台">
+    <template #backIcon>
+      <PhArrowLeft :size="16" weight="bold" />
+    </template>
+    <template #titleIcon>
+      <PhListChecks :size="18" weight="bold" />
+    </template>
+    <template #actions>
+      <MrButton variant="ghost" size="sm" @click="refreshAll">
+        <template #icon><PhArrowsClockwise :size="16" weight="bold" /></template>
+        刷新
+      </MrButton>
+    </template>
 
-    <div v-if="msg" :class="['toast', msgType]">{{ msg }}</div>
+    <div v-if="msg" :class="['mr-toast', msgType]">{{ msg }}</div>
 
-    <nav class="tabs">
-      <button :class="{ active: activePanel === 'workflow' }" @click="activePanel = 'workflow'">工作流</button>
+    <MrMotion>
+      <section class="mr-hero">
+        <div class="mr-hero-main">
+          <div class="mr-kicker">
+            <PhGauge :size="16" weight="bold" />
+            审核工作台
+          </div>
+          <h1 class="mr-title">模型复盘审核工作台</h1>
+          <p class="mr-lead">
+            候选扫描、单条生成、完整审核、通过公开与结算复盘集中在一条工作流里。当前下一步：{{ nextAction }}。
+          </p>
+        </div>
+        <aside class="mr-hero-side">
+          <div>
+            <div class="mr-kicker">
+              <PhClockCounterClockwise :size="16" weight="bold" />
+              调度状态
+            </div>
+            <strong>{{ dashboard?.operation_mode === 'auto' ? 'Auto' : 'Manual' }}</strong>
+            <small>
+              {{ dashboard?.enabled ? '自动调度已启用' : '当前为手动运行' }}。
+              生成 {{ dashboard?.predict_time || '-' }}，A股结算 {{ dashboard?.a_settle_time || '-' }}，港股结算 {{ dashboard?.hk_settle_time || '-' }}。
+            </small>
+          </div>
+          <MrStatusBadge :status="dashboard?.enabled ? 'ok' : 'neutral'" :label="dashboard?.enabled ? '已启用' : '未启用'" />
+        </aside>
+      </section>
+    </MrMotion>
+
+    <nav class="mr-tabs" aria-label="模型复盘分区">
+      <button :class="{ active: activePanel === 'workflow' }" @click="activePanel = 'workflow'">今日工作流</button>
       <button :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'; loadHistory()">历史复盘</button>
       <button :class="{ active: activePanel === 'settings' }" @click="activePanel = 'settings'">运行设置</button>
     </nav>
 
-    <main class="content">
-      <section v-if="activePanel === 'workflow'">
-        <section class="workflow-hero">
-          <div>
-            <span class="eyebrow">Model Review Operations</span>
-            <h1>模型复盘审核工作台</h1>
-            <p>从候选扫描、单条生成、完整审核到结算公开，按今天的状态推进。</p>
-          </div>
-          <div v-if="dashboard" class="run-card">
-            <span>{{ dashboard.enabled ? '自动调度已启用' : '手动运行模式' }}</span>
-            <strong>{{ dashboard.operation_mode === 'auto' ? 'Auto' : 'Manual' }}</strong>
-            <small>生成 {{ dashboard.predict_time }} · A股结算 {{ dashboard.a_settle_time }} · 港股结算 {{ dashboard.hk_settle_time }}</small>
-          </div>
-        </section>
+    <section v-if="activePanel === 'workflow'">
+      <div class="mr-metrics">
+        <MrMetric label="候选标的" :value="candidates.length" sub="扫描或手动加入">
+          <template #icon><PhMagnifyingGlass :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="待审核" :value="pendingPreds.length" sub="建议逐条完整审核">
+          <template #icon><PhWarningCircle :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="已通过待结算" :value="approvedPreds.length" sub="目标日后结算">
+          <template #icon><PhCheckCircle :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="累计命中率" :value="accuracyLabel" :sub="`${dashboard?.totals?.settled ?? 0} 条已结算`">
+          <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
+        </MrMetric>
+      </div>
 
-        <div v-if="dashboard" class="stats">
-          <div><span>候选标的</span><b>{{ candidates.length }}</b></div>
-          <div><span>待审核</span><b>{{ pendingPreds.length }}</b></div>
-          <div><span>已通过待结算</span><b>{{ approvedPreds.length }}</b></div>
-          <div><span>累计命中率</span><b>{{ dashboard.accuracy?.all?.pct ?? 0 }}%</b></div>
+      <div class="mr-toolbar">
+        <MrButton variant="primary" :disabled="candidatesLoading" @click="scanCandidates">
+          <template #icon><PhMagnifyingGlass :size="17" weight="bold" /></template>
+          {{ candidatesLoading ? '扫描中' : '扫描候选' }}
+        </MrButton>
+        <MrButton variant="secondary" :disabled="loading === 'settle'" @click="settleRecords">
+          <template #icon><PhClockCounterClockwise :size="17" weight="bold" /></template>
+          {{ loading === 'settle' ? '结算中' : '结算到期记录' }}
+        </MrButton>
+        <NuxtLink class="mr-btn mr-btn-secondary" to="/admin/xbot-card-preview">
+          <PhCards :size="17" weight="bold" />
+          卡片预览
+        </NuxtLink>
+      </div>
+
+      <MrState
+        v-if="initialLoading"
+        title="正在读取工作流"
+        text="加载今日记录、调度状态和运行设置。"
+        variant="loading"
+      />
+
+      <template v-else>
+        <div class="mr-grid mr-grid-2 mr-grid-flow">
+          <section class="mr-panel">
+            <div class="mr-panel-header">
+              <div>
+                <h2 class="mr-panel-title">手动添加标的</h2>
+                <p class="mr-panel-sub">用于补充扫描结果之外的临时审核对象。</p>
+              </div>
+              <MrStatusBadge status="info" label="手动" />
+            </div>
+            <div class="mr-form-grid">
+              <label class="mr-field">
+                <span class="mr-label">市场</span>
+                <select v-model="manual.market" class="mr-select">
+                  <option value="a">A股</option>
+                  <option value="hk">港股</option>
+                </select>
+              </label>
+              <label class="mr-field">
+                <span class="mr-label">代码</span>
+                <input v-model.trim="manual.symbol" class="mr-input" placeholder="SZ000066 / 00700">
+              </label>
+              <label class="mr-field">
+                <span class="mr-label">名称</span>
+                <input v-model.trim="manual.name" class="mr-input" placeholder="可选">
+              </label>
+              <MrButton variant="secondary" :disabled="loading === 'manual-add'" @click="addManual(false)">
+                <template #icon><PhPlus :size="17" weight="bold" /></template>
+                加入候选
+              </MrButton>
+              <MrButton variant="primary" :disabled="loading === 'manual-generate'" @click="addManual(true)">
+                <template #icon><PhPlay :size="17" weight="bold" /></template>
+                加入并生成
+              </MrButton>
+            </div>
+          </section>
+
+          <section class="mr-panel">
+            <div class="mr-panel-header">
+              <div>
+                <h2 class="mr-panel-title">候选诊断</h2>
+                <p class="mr-panel-sub">记录数据源返回量、过滤量和错误原因。</p>
+              </div>
+              <MrStatusBadge :status="candidates.length ? 'ok' : 'neutral'" :label="`${candidates.length} 只`" />
+            </div>
+            <div class="mr-diag-grid">
+              <div v-for="m in markets" :key="m" class="mr-diag">
+                <div class="mr-record-title">
+                  <strong>{{ marketLabel[m] }}</strong>
+                  <MrStatusBadge :status="diagnostics[m]?.enabled === false ? 'neutral' : 'ok'" :label="diagnostics[m]?.enabled === false ? '未启用' : '已启用'" />
+                </div>
+                <div class="mr-diag-line">
+                  <span>返回 {{ diagnostics[m]?.returned ?? 0 }}</span>
+                  <span>请求 {{ diagnostics[m]?.requested ?? 0 }}</span>
+                  <span>过滤 {{ diagnostics[m]?.filtered ?? 0 }}</span>
+                </div>
+                <div v-if="diagnostics[m]?.error" class="mr-diag-error">{{ diagnostics[m].error }}</div>
+                <div v-else-if="filterReasonsText(diagnostics[m]?.filter_reasons)" class="mr-diag-error">
+                  {{ filterReasonsText(diagnostics[m]?.filter_reasons) }}
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <div class="toolbar">
-          <button class="primary" :disabled="candidatesLoading" @click="scanCandidates">
-            {{ candidatesLoading ? '扫描中...' : '扫描候选' }}
-          </button>
-          <button class="secondary" :disabled="loading === 'settle'" @click="settleRecords">
-            {{ loading === 'settle' ? '结算中...' : '结算' }}
-          </button>
-          <NuxtLink class="secondary link" to="/admin/model-review-cards">卡片预览</NuxtLink>
-        </div>
-
-        <section class="panel">
-          <div class="panel-title">
-            <span>手动添加标的</span>
-          </div>
-          <div class="manual-form">
-            <select v-model="manual.market">
-              <option value="a">A 股</option>
-              <option value="hk">港股</option>
-            </select>
-            <input v-model.trim="manual.symbol" placeholder="例如 SZ000066 / 00700">
-            <input v-model.trim="manual.name" placeholder="名称可选">
-            <button class="secondary" :disabled="loading === 'manual-add'" @click="addManual(false)">加入候选</button>
-            <button class="primary" :disabled="loading === 'manual-generate'" @click="addManual(true)">加入并生成</button>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-title">
-            <span>候选标的</span>
-            <small>A 股 {{ candidateGroups.a.length }} / 港股 {{ candidateGroups.hk.length }}</small>
-          </div>
-          <div class="diagnostics">
-            <div v-for="m in ['a', 'hk']" :key="m" class="diag">
-              <strong>{{ marketLabel[m] }}</strong>
-              <span>{{ diagnostics[m]?.enabled === false ? '未启用' : '已启用' }}</span>
-              <span>返回 {{ diagnostics[m]?.returned ?? 0 }} / 请求 {{ diagnostics[m]?.requested ?? 0 }}</span>
-              <span>过滤 {{ diagnostics[m]?.filtered ?? 0 }}</span>
-              <em v-if="diagnostics[m]?.error">{{ diagnostics[m].error }}</em>
-              <em v-else-if="diagnostics[m]?.filter_reasons && Object.keys(diagnostics[m].filter_reasons).length">
-                {{ diagnostics[m].filter_reasons }}
-              </em>
+        <section class="mr-panel">
+          <div class="mr-panel-header">
+            <div>
+              <h2 class="mr-panel-title">候选标的</h2>
+              <p class="mr-panel-sub">A股 {{ candidateGroups.a.length }} / 港股 {{ candidateGroups.hk.length }}</p>
             </div>
+            <MrStatusBadge :status="candidates.length ? 'ok' : 'neutral'" :label="candidates.length ? '可处理' : '未扫描'" />
           </div>
-          <div v-if="!candidates.length" class="empty">先扫描候选，或手动添加一只标的。</div>
-          <template v-for="m in ['a', 'hk']" :key="m">
-            <div v-if="candidateGroups[m].length" class="market-group">{{ marketLabel[m] }}</div>
-            <div v-for="c in candidateGroups[m]" :key="`${c.market}-${c.symbol}`" class="record">
-              <div class="record-main">
-                <strong>{{ c.name || c.symbol }}</strong>
-                <span>{{ marketLabel[c.market] }} / {{ c.symbol }} / 热度 {{ c.hot_rank ?? '-' }}</span>
+
+          <MrState v-if="!candidates.length" title="暂无候选" text="先扫描候选，或手动添加一只标的。" />
+          <template v-else>
+            <template v-for="m in markets" :key="m">
+              <div v-if="candidateGroups[m].length" class="mr-section-label">{{ marketLabel[m] }}</div>
+              <div v-for="c in candidateGroups[m]" :key="`${c.market}-${c.symbol}`" class="mr-record">
+                <div class="mr-record-main">
+                  <div class="mr-record-title">
+                    <strong>{{ c.name || c.symbol }}</strong>
+                    <MrStatusBadge :status="c.already_generated ? (c.existing_status || 'info') : 'neutral'" :label="c.already_generated ? (statusLabel[c.existing_status] || '已生成') : '未生成'" />
+                  </div>
+                  <div class="mr-record-meta">{{ marketLabel[c.market] }} / {{ c.symbol }} / 热度 {{ c.hot_rank ?? '-' }}</div>
+                </div>
+                <div class="mr-record-actions">
+                  <MrButton
+                    v-if="c.already_generated"
+                    size="sm"
+                    variant="secondary"
+                    :disabled="!predictionIdForCandidate(c)"
+                    @click="openCandidateReview(c)"
+                  >
+                    完整审核
+                  </MrButton>
+                  <MrButton v-else size="sm" variant="primary" :disabled="isGenerating(c.symbol)" @click="generateSingle(c)">
+                    <template #icon><PhPlay :size="15" weight="bold" /></template>
+                    {{ isGenerating(c.symbol) ? '生成中' : '生成分析' }}
+                  </MrButton>
+                </div>
               </div>
-              <div class="record-actions">
-                <button
-                  v-if="c.already_generated"
-                  class="small state-link"
-                  :disabled="!predictionIdForCandidate(c)"
-                  @click="openCandidateReview(c)"
-                >
-                  {{ statusLabel[c.existing_status] || '已生成' }}
-                </button>
-                <button v-else class="small ok" :disabled="isGenerating(c.symbol)" @click="generateSingle(c)">
-                  {{ isGenerating(c.symbol) ? '生成中...' : '生成分析' }}
-                </button>
-              </div>
-            </div>
+            </template>
           </template>
         </section>
 
-        <StagePanel title="待生成" :items="[]" empty="候选标的生成分析后会进入待审核。" />
+        <MrStagePanel title="待生成" :items="[]" empty="候选标的生成分析后会进入待审核。" status="neutral" />
 
-        <StagePanel title="待审核" :items="pendingPreds" empty="暂无待审核记录。">
+        <MrStagePanel title="待审核" :items="pendingPreds" empty="暂无待审核记录。" status="pending">
           <template #default="{ item }">
-            <button class="small" @click="openReview(item.id)">完整审核</button>
-            <button class="small ok" @click="approvePred(item)">通过</button>
-            <button class="small danger" @click="rejectPred(item)">拒绝</button>
+            <MrButton size="sm" variant="secondary" @click="openReview(item.id)">完整审核</MrButton>
+            <MrButton size="sm" variant="primary" :disabled="loading === `approve-${item.id}`" @click="approvePred(item)">
+              <template #icon><PhCheckCircle :size="15" weight="bold" /></template>
+              通过
+            </MrButton>
+            <MrButton size="sm" variant="danger" :disabled="loading === `reject-${item.id}`" @click="rejectPred(item)">
+              <template #icon><PhXCircle :size="15" weight="bold" /></template>
+              拒绝
+            </MrButton>
           </template>
-        </StagePanel>
+        </MrStagePanel>
 
-        <StagePanel title="已通过待结算" :items="approvedPreds" empty="暂无已通过记录。">
+        <MrStagePanel title="已通过待结算" :items="approvedPreds" empty="暂无已通过记录。" status="approved">
           <template #default="{ item }">
-            <button class="small" @click="openReview(item.id)">查看</button>
-            <button class="small danger" @click="rejectPred(item)">拒绝</button>
+            <MrButton size="sm" variant="secondary" @click="openReview(item.id)">查看</MrButton>
+            <MrButton size="sm" variant="danger" :disabled="loading === `reject-${item.id}`" @click="rejectPred(item)">拒绝</MrButton>
           </template>
-        </StagePanel>
+        </MrStagePanel>
 
-        <StagePanel title="已结算复盘" :items="settledPreds" empty="暂无结算复盘。">
+        <MrStagePanel title="已结算复盘" :items="settledPreds" empty="暂无结算复盘。" status="settled">
           <template #default="{ item }">
-            <NuxtLink class="small" :to="`/research/${item.market}/${item.symbol}/${item.prediction_date}`" target="_blank">查看公开复盘</NuxtLink>
+            <NuxtLink class="mr-btn mr-btn-secondary mr-btn-small" :to="`/research/${item.market}/${item.symbol}/${item.prediction_date}`" target="_blank">
+              <PhGlobeHemisphereEast :size="15" weight="bold" />
+              查看公开复盘
+            </NuxtLink>
           </template>
-        </StagePanel>
+        </MrStagePanel>
 
-        <StagePanel title="已拒绝" :items="rejectedPreds" empty="暂无已拒绝记录。">
+        <MrStagePanel title="已拒绝" :items="rejectedPreds" empty="暂无已拒绝记录。" status="rejected">
           <template #default="{ item }">
-            <button class="small" @click="openReview(item.id)">查看</button>
+            <MrButton size="sm" variant="secondary" @click="openReview(item.id)">查看</MrButton>
           </template>
-        </StagePanel>
+        </MrStagePanel>
 
-        <section class="panel">
-          <button class="text-btn advanced-toggle" @click="showAdvanced = !showAdvanced">
-            {{ showAdvanced ? '收起高级操作' : '显示高级操作' }}
-          </button>
-          <div v-if="showAdvanced" class="advanced-actions">
-            <button class="secondary" :disabled="!pendingPreds.length || loading === 'bulk-approve'" @click="approveAllPending">
+        <section class="mr-panel">
+          <div class="mr-panel-header">
+            <div>
+              <h2 class="mr-panel-title">高级批量操作</h2>
+              <p class="mr-panel-sub">默认建议逐条进入完整审核页；批量操作只在流程稳定时使用。</p>
+            </div>
+            <MrButton variant="ghost" size="sm" @click="showAdvanced = !showAdvanced">
+              <template #icon><PhSlidersHorizontal :size="16" weight="bold" /></template>
+              {{ showAdvanced ? '收起' : '展开' }}
+            </MrButton>
+          </div>
+          <div v-if="showAdvanced" class="mr-toolbar">
+            <MrButton variant="secondary" :disabled="!pendingPreds.length || loading === 'bulk-approve'" @click="approveAllPending">
               批量通过当前待审核
-            </button>
-            <span>默认建议逐条进入完整审核页。</span>
+            </MrButton>
           </div>
         </section>
-      </section>
+      </template>
+    </section>
 
-      <section v-else-if="activePanel === 'history'" class="panel">
-        <div class="filter">
-          <select v-model="historyStatus" @change="loadHistory">
-            <option value="">全部状态</option>
-            <option value="approved">已通过</option>
-            <option value="settled">已结算</option>
-            <option value="rejected">已拒绝</option>
+    <section v-else-if="activePanel === 'history'" class="mr-panel">
+      <div class="mr-panel-header">
+        <div>
+          <h2 class="mr-panel-title">历史复盘</h2>
+          <p class="mr-panel-sub">按状态筛选最近 100 条记录。</p>
+        </div>
+        <select v-model="historyStatus" class="mr-select" style="max-width: 180px" @change="loadHistory">
+          <option value="">全部状态</option>
+          <option value="approved">已通过</option>
+          <option value="settled">已结算</option>
+          <option value="rejected">已拒绝</option>
+        </select>
+      </div>
+      <div v-if="historyPreds.length" class="mr-list-table">
+        <div v-for="p in historyPreds" :key="p.id" class="mr-list-row">
+          <div><strong>{{ p.symbol_name }}</strong><span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span></div>
+          <div><strong>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</strong><span>目标日 {{ p.target_date || '-' }}</span></div>
+          <div><strong>{{ pctText(p.actual_change_pct) }}</strong><span>结算涨跌</span></div>
+          <MrButton size="sm" variant="secondary" @click="openReview(p.id)">查看</MrButton>
+        </div>
+      </div>
+      <MrState v-else title="暂无历史记录" text="切换状态或先完成审核与结算。" />
+    </section>
+
+    <section v-else class="mr-panel">
+      <div class="mr-panel-header">
+        <div>
+          <h2 class="mr-panel-title">运行设置</h2>
+          <p class="mr-panel-sub">影响自动候选、生成时间和结算时间。</p>
+        </div>
+        <MrStatusBadge :status="settings.xbot_enabled === 'true' ? 'ok' : 'neutral'" :label="settings.xbot_enabled === 'true' ? '自动调度' : '手动模式'" />
+      </div>
+      <div class="mr-grid mr-grid-2">
+        <label class="mr-field">
+          <span class="mr-label">启用自动调度</span>
+          <input v-model="settings.xbot_enabled" true-value="true" false-value="false" type="checkbox">
+        </label>
+        <label class="mr-field">
+          <span class="mr-label">运行模式</span>
+          <select v-model="settings.xbot_operation_mode" class="mr-select">
+            <option value="manual">手动</option>
+            <option value="auto">自动</option>
           </select>
-        </div>
-        <div v-for="p in historyPreds" :key="p.id" class="history-row">
-          <div>
-            <strong>{{ p.symbol_name }}</strong>
-            <span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span>
-          </div>
-          <div>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</div>
-          <div>{{ pctText(p.actual_change_pct) }}</div>
-          <button class="small" @click="openReview(p.id)">查看</button>
-        </div>
-        <div v-if="!historyPreds.length" class="empty">暂无记录</div>
-      </section>
-
-      <section v-else class="settings panel">
-        <label><span>启用自动调度</span><input v-model="settings.xbot_enabled" true-value="true" false-value="false" type="checkbox"></label>
-        <label><span>运行模式</span><select v-model="settings.xbot_operation_mode"><option value="manual">手动</option><option value="auto">自动</option></select></label>
-        <label><span>市场</span><input v-model="settings.xbot_markets" placeholder="a,hk"></label>
-        <label><span>每市场候选数</span><input v-model="settings.xbot_hot_stock_count" type="number"></label>
-        <label><span>A 股最低价格</span><input v-model="settings.xbot_min_price_a" type="number"></label>
-        <label><span>港股最低价格</span><input v-model="settings.xbot_min_price_hk" type="number"></label>
-        <label><span>A 股结算时间</span><input v-model="settings.xbot_a_settle_time" type="time"></label>
-        <label><span>港股结算时间</span><input v-model="settings.xbot_hk_settle_time" type="time"></label>
-        <label><span>生成时间</span><input v-model="settings.xbot_predict_time" type="time"></label>
-        <label><span>旧产品链接兜底</span><input v-model="settings.xbot_product_url" placeholder="App Base URL 缺失时使用"></label>
-        <button class="primary full" :disabled="loading === 'save-settings'" @click="saveSettings">
-          {{ loading === 'save-settings' ? '保存中...' : '保存设置' }}
-        </button>
-      </section>
-    </main>
-  </div>
+        </label>
+        <label class="mr-field"><span class="mr-label">市场</span><input v-model="settings.xbot_markets" class="mr-input" placeholder="a,hk"></label>
+        <label class="mr-field"><span class="mr-label">每市场候选数</span><input v-model="settings.xbot_hot_stock_count" class="mr-input" type="number"></label>
+        <label class="mr-field"><span class="mr-label">A股最低价格</span><input v-model="settings.xbot_min_price_a" class="mr-input" type="number"></label>
+        <label class="mr-field"><span class="mr-label">港股最低价格</span><input v-model="settings.xbot_min_price_hk" class="mr-input" type="number"></label>
+        <label class="mr-field"><span class="mr-label">A股结算时间</span><input v-model="settings.xbot_a_settle_time" class="mr-input" type="time"></label>
+        <label class="mr-field"><span class="mr-label">港股结算时间</span><input v-model="settings.xbot_hk_settle_time" class="mr-input" type="time"></label>
+        <label class="mr-field"><span class="mr-label">生成时间</span><input v-model="settings.xbot_predict_time" class="mr-input" type="time"></label>
+        <label class="mr-field"><span class="mr-label">公开页链接兜底</span><input v-model="settings.xbot_product_url" class="mr-input" placeholder="App Base URL 缺失时使用"></label>
+      </div>
+      <div class="mr-toolbar" style="margin-top: 16px">
+        <MrButton variant="primary" :disabled="loading === 'save-settings'" @click="saveSettings">
+          {{ loading === 'save-settings' ? '保存中' : '保存设置' }}
+        </MrButton>
+      </div>
+    </section>
+  </MrShell>
 </template>
-
-<script lang="ts">
-export default {
-  components: {
-    StagePanel: {
-      props: ['title', 'items', 'empty'],
-      template: `
-        <section class="panel">
-          <div class="panel-title"><span>{{ title }}</span><small>{{ items?.length || 0 }}</small></div>
-          <div v-if="!items?.length" class="empty">{{ empty }}</div>
-          <div v-for="item in items" :key="item.id" class="record">
-            <div class="record-main">
-              <strong>{{ item.symbol_name }}</strong>
-              <span>{{ item.market }} / {{ item.symbol }} / 目标日 {{ item.target_date }}</span>
-              <p v-if="item.analysis_summary">{{ item.analysis_summary }}</p>
-            </div>
-            <div class="record-actions"><slot :item="item" /></div>
-          </div>
-        </section>
-      `,
-    },
-  },
-}
-</script>
-
-<style scoped>
-.page { min-height: 100vh; background: #f3f4f6; color: #111827; }
-.topbar { position: sticky; top: 0; z-index: 10; height: 52px; display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; padding: 0 16px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(14px); text-align: center; }
-.back, .text-btn { color: #2563eb; text-decoration: none; background: none; border: 0; font-size: 14px; }
-.tabs { max-width: 1180px; margin: 16px auto; display: flex; gap: 6px; padding: 4px; background: #e5e7eb; border-radius: 10px; }
-.tabs button { flex: 1; height: 36px; border: 0; border-radius: 8px; background: transparent; color: #4b5563; font-weight: 700; }
-.tabs button.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.content { max-width: 1180px; margin: 0 auto; padding: 0 16px 48px; }
-.toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 10px 16px; border-radius: 10px; color: #fff; font-weight: 700; }
-.toast.ok { background: #16a34a; }
-.toast.err { background: #dc2626; }
-.workflow-hero {
-  display: flex;
-  justify-content: space-between;
-  align-items: stretch;
-  gap: 14px;
-  margin-bottom: 14px;
-  padding: 20px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-}
-.workflow-hero h1 { margin: 6px 0 8px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
-.workflow-hero p { margin: 0; color: #6b7280; line-height: 1.6; }
-.eyebrow { color: #2563eb; font-size: 12px; font-weight: 900; letter-spacing: 0; }
-.run-card {
-  width: min(360px, 38%);
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  padding: 16px;
-  border-radius: 8px;
-  background: #111827;
-  color: #f9fafb;
-}
-.run-card span, .run-card small { color: #9ca3af; font-size: 12px; }
-.run-card strong { font-size: 28px; line-height: 1; }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
-.stats div, .panel, .toolbar { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
-.stats div { padding: 16px; }
-.stats b { display: block; margin-top: 8px; font-size: 28px; color: #111827; line-height: 1; }
-.stats span, .panel-title small, .record-main span, .record-main p, .advanced-actions span { color: #6b7280; font-size: 12px; }
-.toolbar { display: flex; gap: 10px; padding: 14px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
-.panel { padding: 14px; margin-bottom: 14px; }
-.panel-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 800; color: #374151; }
-.manual-form { display: grid; grid-template-columns: 110px 1fr 1fr auto auto; gap: 8px; }
-input, select { height: 40px; border: 1px solid #d1d5db; border-radius: 8px; padding: 0 10px; background: #fff; min-width: 0; }
-button { cursor: pointer; }
-button:disabled { opacity: .55; cursor: default; }
-.primary, .secondary, .small { border: 0; border-radius: 8px; font-weight: 800; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-.primary { height: 40px; padding: 0 16px; color: #fff; background: #2563eb; box-shadow: 0 8px 20px rgba(37,99,235,.18); }
-.secondary { height: 40px; padding: 0 16px; color: #2563eb; background: #eff6ff; }
-.small { min-height: 32px; padding: 0 10px; color: #2563eb; background: #eff6ff; font-size: 13px; }
-.small.ok { color: #15803d; background: #ecfdf5; }
-.small.danger { color: #dc2626; background: #fef2f2; }
-.link { width: auto; }
-.full { width: 100%; }
-.diagnostics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
-.diag { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; background: #f9fafb; border-radius: 8px; color: #6b7280; font-size: 12px; }
-.diag strong { color: #111827; }
-.diag em { flex-basis: 100%; color: #b45309; font-style: normal; word-break: break-word; }
-.market-group { margin: 14px 0 4px; font-size: 12px; font-weight: 800; color: #6b7280; }
-.record { display: flex; gap: 12px; align-items: center; padding: 13px 0; border-top: 1px solid #f3f4f6; }
-.record:first-of-type { border-top: 0; }
-.record-main { flex: 1; min-width: 0; }
-.record-main strong { display: block; }
-.record-main p { margin: 4px 0 0; line-height: 1.5; }
-.record-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.state { font-size: 12px; font-weight: 800; color: #047857; }
-.empty { text-align: center; color: #6b7280; padding: 18px; background: #f9fafb; border-radius: 8px; }
-.advanced-toggle { padding: 0; font-weight: 700; }
-.advanced-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.filter { margin-bottom: 12px; }
-.history-row { display: grid; grid-template-columns: 1.7fr .7fr .7fr auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid #f3f4f6; }
-.history-row span { display: block; color: #6b7280; font-size: 12px; margin-top: 2px; }
-.settings { display: grid; gap: 12px; }
-.settings label { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; }
-.settings label span { font-weight: 700; color: #374151; font-size: 14px; }
-.settings input[type='checkbox'] { width: 20px; height: 20px; }
-@media (max-width: 760px) {
-  .stats, .diagnostics { grid-template-columns: 1fr 1fr; }
-  .workflow-hero { flex-direction: column; padding: 16px; }
-  .workflow-hero h1 { font-size: 26px; }
-  .run-card { width: auto; min-width: 0; }
-  .manual-form, .history-row, .settings label { grid-template-columns: 1fr; }
-  .record, .toolbar, .advanced-actions { flex-direction: column; align-items: stretch; }
-}
-</style>

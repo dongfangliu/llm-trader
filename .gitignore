@@ -56,6 +56,7 @@ backend/.env
 htmlcov/
 .tox/
 .hypothesis/
+frontend/test-results/
 
 # Node modules (for web frontend)
 node_modules/

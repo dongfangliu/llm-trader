@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { PhArchive, PhChartLineUp, PhGlobeHemisphereEast, PhMagnifyingGlass, PhTarget } from '@phosphor-icons/vue'
 import { SITE_NAME } from '~/constants/seo'
+import MrMetric from '~/components/model-review/MrMetric.vue'
+import MrState from '~/components/model-review/MrState.vue'
+import MrStatusBadge from '~/components/model-review/MrStatusBadge.vue'
 
 const { data } = await useAsyncData('research-index', () =>
   $fetch<any>('/api/public/research', { query: { limit: 100 } }).catch(() => ({ predictions: [], accuracy: null }))
@@ -47,64 +51,80 @@ const records = computed(() => [...(data.value?.predictions || [])].sort((a, b) 
   if (dateOrder) return dateOrder
   return Number(a.hot_rank || 0) - Number(b.hot_rank || 0)
 }))
+const awaitingCount = computed(() => records.value.filter(isAwaitingResult).length)
+const settledCount = computed(() => records.value.filter(r => !isAwaitingResult(r)).length)
+const accuracyLabel = computed(() => data.value?.accuracy?.total ? `${data.value.accuracy.pct}%` : '待统计')
 </script>
 
 <template>
-  <main class="seo-page">
-    <header class="hero">
-      <NuxtLink to="/" class="back">返回分析工具</NuxtLink>
-      <h1>模型复盘档案</h1>
-      <p>这里展示已通过预测和已结算复盘。待验证记录会保留完整原始判断，结算后同一页面自动变成复盘记录。</p>
-      <div class="actions">
-        <NuxtLink class="cta primary" to="/">打开 AI 分析工具</NuxtLink>
-        <NuxtLink class="cta secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
-      </div>
-      <div v-if="data?.accuracy?.total" class="badge">已结算准确率 {{ data.accuracy.correct }}/{{ data.accuracy.total }}，{{ data.accuracy.pct }}%</div>
-    </header>
-
-    <section class="list">
-      <NuxtLink
-        v-for="p in records"
-        :key="p.id"
-        class="record"
-        :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
-      >
-        <div>
-          <strong>{{ p.symbol_name }}</strong>
-          <span>{{ p.market }} / {{ p.symbol }} / 目标日 {{ p.target_date || '-' }}</span>
+  <main class="mr-page">
+    <div class="mr-public-shell">
+      <section class="mr-hero">
+        <div class="mr-hero-main">
+          <NuxtLink to="/" class="mr-btn mr-btn-ghost mr-btn-small">
+            <PhMagnifyingGlass :size="16" weight="bold" />
+            返回分析工具
+          </NuxtLink>
+          <div class="mr-kicker" style="margin-top: 18px">
+            <PhArchive :size="16" weight="bold" />
+            公开技术面档案
+          </div>
+          <h1 class="mr-title">模型复盘档案</h1>
+          <p class="mr-lead">已通过预测会先进入待验证状态，结算后同一路径自动变成复盘记录，保留原始方向、关键价格和实际结果。</p>
+          <div class="mr-toolbar" style="margin: 18px 0 0">
+            <NuxtLink class="mr-btn mr-btn-primary" to="/">打开 AI 分析工具</NuxtLink>
+            <NuxtLink class="mr-btn mr-btn-secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
+          </div>
         </div>
-        <div class="direction">{{ directionLabel(p.predicted_direction) }}<span>预测日 {{ p.prediction_date }}</span></div>
-        <div class="confidence">置信度 <strong>{{ confidenceLabel(p.confidence) }}</strong></div>
-        <div :class="['status-badge', statusClass(p)]">{{ statusLabel(p) }}</div>
-      </NuxtLink>
-      <div v-if="!records.length" class="empty">暂无公开预测记录</div>
-    </section>
+        <aside class="mr-hero-side">
+          <div>
+            <div class="mr-kicker">结算准确率</div>
+            <strong>{{ accuracyLabel }}</strong>
+            <small v-if="data?.accuracy?.total">已结算 {{ data.accuracy.correct }}/{{ data.accuracy.total }} 条。</small>
+            <small v-else>记录结算后自动统计。</small>
+          </div>
+          <MrStatusBadge status="info" :label="`${records.length} 条公开记录`" />
+        </aside>
+      </section>
+
+      <div class="mr-metrics">
+        <MrMetric label="公开记录" :value="records.length" sub="按最新预测日排序">
+          <template #icon><PhGlobeHemisphereEast :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="待验证" :value="awaitingCount" sub="目标日后自动复盘">
+          <template #icon><PhTarget :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="已结算" :value="settledCount" sub="含命中和未命中">
+          <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="命中率" :value="accuracyLabel" sub="公开样本">
+          <template #icon><PhArchive :size="18" weight="bold" /></template>
+        </MrMetric>
+      </div>
+
+      <section class="mr-list-table" aria-label="公开复盘记录">
+        <NuxtLink
+          v-for="p in records"
+          :key="p.id"
+          class="mr-list-row"
+          :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
+        >
+          <div>
+            <strong>{{ p.symbol_name }}</strong>
+            <span>{{ p.market }} / {{ p.symbol }} / 目标日 {{ p.target_date || '-' }}</span>
+          </div>
+          <div>
+            <strong>{{ directionLabel(p.predicted_direction) }}</strong>
+            <span>预测日 {{ p.prediction_date }}</span>
+          </div>
+          <div>
+            <strong>{{ confidenceLabel(p.confidence) }}</strong>
+            <span>置信度</span>
+          </div>
+          <MrStatusBadge :status="statusClass(p)" :label="statusLabel(p)" />
+        </NuxtLink>
+        <MrState v-if="!records.length" title="暂无公开预测记录" text="审核通过后的记录会显示在这里。" />
+      </section>
+    </div>
   </main>
 </template>
-
-<style scoped>
-.seo-page { min-height: 100vh; background: #f8fafc; color: #111827; padding: 24px 16px 56px; }
-.hero, .list { max-width: 920px; margin: 0 auto 16px; }
-.back { color: #2563eb; text-decoration: none; font-weight: 600; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
-.cta.primary { background: #2563eb; color: #fff; }
-.cta.secondary { background: #eef2ff; color: #3730a3; }
-h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
-p { color: #4b5563; line-height: 1.8; }
-.badge { display: inline-flex; margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: #eff6ff; color: #1d4ed8; font-weight: 700; }
-.list { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-.record { display: grid; grid-template-columns: 1.4fr .75fr .65fr .6fr; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; color: inherit; text-decoration: none; }
-.record:hover { background: #f8fafc; }
-.record span { display: block; color: #6b7280; font-size: 12px; margin-top: 3px; }
-.direction { font-weight: 800; }
-.confidence { color: #4b5563; font-size: 13px; }
-.confidence strong { display: block; color: #111827; font-size: 16px; margin-top: 3px; }
-.status-badge { justify-self: start; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 800; }
-.status-badge.pending { color: #92400e; background: #fffbeb; }
-.status-badge.settled { color: #1d4ed8; background: #eff6ff; }
-.hit { color: #15803d; background: #f0fdf4; }
-.miss { color: #b91c1c; background: #fef2f2; }
-.empty { padding: 40px; text-align: center; color: #6b7280; }
-@media (max-width: 680px) { .record { grid-template-columns: 1fr; } }
-</style>

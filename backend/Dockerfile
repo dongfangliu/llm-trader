@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua
 
 # Copy source code and runtime config
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY initial_settings.json .
 COPY supervisord.conf /app/supervisord.conf
 

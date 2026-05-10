@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import {
+  PhArrowLeft,
+  PhChartLineUp,
+  PhDatabase,
+  PhDeviceMobile,
+  PhGear,
+  PhListChecks,
+  PhShieldCheck,
+  PhUsers,
+} from '@phosphor-icons/vue'
 import api from '~/lib/api'
+import MrButton from '~/components/model-review/MrButton.vue'
+import MrMetric from '~/components/model-review/MrMetric.vue'
+import MrShell from '~/components/model-review/MrShell.vue'
+import MrState from '~/components/model-review/MrState.vue'
 
 const stats = ref<any>(null)
 const dsStats = ref<any>(null)
@@ -30,6 +44,8 @@ async function fetchStats() {
     if (e.response?.status === 403) {
       error.value = '令牌错误或无管理员权限'
       stats.value = null
+    } else {
+      error.value = e?.message || '后台数据加载失败'
     }
   } finally {
     loading.value = false
@@ -45,140 +61,128 @@ function saveAdminToken() {
 </script>
 
 <template>
-  <div style="position: fixed; inset: 0; background: #f2f2f7; display: flex; flex-direction: column; overflow-y: auto;">
-    <!-- Header -->
-    <div style="display: flex; align-items: center; padding: 52px 16px 12px;">
-      <NuxtLink to="/" style="color: #007aff; text-decoration: none; font-size: 15px;">← 返回</NuxtLink>
-      <h1 style="flex: 1; text-align: center; font-size: 17px; font-weight: 600; color: #000; margin: 0 0 0 -40px;">管理后台</h1>
-    </div>
+  <MrShell title="管理后台" back-to="/" back-label="返回">
+    <template #backIcon>
+      <PhArrowLeft :size="16" weight="bold" />
+    </template>
+    <template #titleIcon>
+      <PhShieldCheck :size="18" weight="bold" />
+    </template>
 
-    <div style="padding: 0 16px 40px; max-width: 600px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px;">
+    <section class="mr-hero">
+      <div class="mr-hero-main">
+        <div class="mr-kicker">
+          <PhShieldCheck :size="16" weight="bold" />
+          管理控制台
+        </div>
+        <h1 class="mr-title">后台运营入口</h1>
+        <p class="mr-lead">验证管理员令牌后查看系统概览、用户设备、行情数据和模型复盘工作流。</p>
+      </div>
+      <aside class="mr-hero-side">
+        <div>
+          <div class="mr-kicker">当前状态</div>
+          <strong>{{ stats ? 'Ready' : 'Locked' }}</strong>
+          <small>{{ stats ? `统计日期 ${stats.date}` : '输入 ADMIN_TOKEN 后读取后台数据。' }}</small>
+        </div>
+      </aside>
+    </section>
 
-      <!-- Admin token card -->
-      <div style="background: white; border-radius: 14px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-        <label style="display: block; font-size: 13px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;">管理员令牌</label>
-        <input
-          v-model="adminToken"
-          type="password"
-          placeholder="输入 ADMIN_TOKEN"
-          style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #000; outline: none; box-sizing: border-box;"
-        />
-        <div v-if="error" style="font-size: 13px; color: #ff3b30; margin-top: 8px;">{{ error }}</div>
-        <button
-          @click="saveAdminToken"
-          style="margin-top: 12px; width: 100%; height: 44px; background: #007aff; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;"
-        >
-          {{ loading ? '验证中…' : '确认' }}
-        </button>
+    <section class="mr-panel">
+      <div class="mr-panel-header">
+        <div>
+          <h2 class="mr-panel-title">管理员令牌</h2>
+          <p class="mr-panel-sub">令牌保存在本机 localStorage，用于后台 API 请求。</p>
+        </div>
+      </div>
+      <div class="mr-form-grid" style="grid-template-columns: minmax(0, 1fr) auto">
+        <label class="mr-field">
+          <span class="mr-label">ADMIN_TOKEN</span>
+          <input v-model="adminToken" type="password" class="mr-input" placeholder="输入 ADMIN_TOKEN">
+        </label>
+        <MrButton variant="primary" :disabled="loading" @click="saveAdminToken">
+          {{ loading ? '验证中' : '确认' }}
+        </MrButton>
+      </div>
+      <p v-if="error" class="mr-copy" style="margin-top: 10px; color: var(--mr-bad)">{{ error }}</p>
+    </section>
+
+    <template v-if="stats">
+      <div class="mr-metrics">
+        <MrMetric label="注册用户" :value="stats.total_users ?? 0" sub="账户总量">
+          <template #icon><PhUsers :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="今日分析" :value="stats.analysis_last_24h ?? 0" sub="近 24 小时">
+          <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="活跃设备" :value="stats.active_devices_today ?? 0" sub="今日游客设备">
+          <template #icon><PhDeviceMobile :size="18" weight="bold" /></template>
+        </MrMetric>
+        <MrMetric label="今日请求" :value="stats.total_requests_today ?? 0" sub="所有设备请求">
+          <template #icon><PhDatabase :size="18" weight="bold" /></template>
+        </MrMetric>
       </div>
 
-      <!-- Stats -->
-      <template v-if="stats">
-        <div style="background: white; border-radius: 14px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-          <h3 style="font-size: 15px; font-weight: 600; color: #000; margin: 0 0 14px;">系统概览</h3>
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-            <div style="text-align: center;">
-              <div style="font-size: 28px; font-weight: 700; color: #007aff;">{{ stats.total_users ?? 0 }}</div>
-              <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">注册用户</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="font-size: 28px; font-weight: 700; color: #34c759;">{{ stats.analysis_last_24h ?? 0 }}</div>
-              <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">今日分析</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="font-size: 28px; font-weight: 700; color: #ff9500;">{{ stats.active_devices_today ?? 0 }}</div>
-              <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">游客设备</div>
-            </div>
-          </div>
-          <div v-if="stats.tier_distribution" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid rgba(60,60,67,0.1);">
-            <div style="text-align: center;">
-              <div style="font-size: 20px; font-weight: 700; color: #5856d6;">{{ stats.tier_distribution.premium ?? 0 }}</div>
-              <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">专业版</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="font-size: 20px; font-weight: 700; color: #34c759;">{{ stats.tier_distribution.basic ?? 0 }}</div>
-              <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">标准版</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="font-size: 20px; font-weight: 700; color: #8e8e93;">{{ stats.total_requests_today ?? 0 }}</div>
-              <div style="font-size: 12px; color: #8e8e93; margin-top: 2px;">今日请求</div>
-            </div>
+      <section v-if="dsStats" class="mr-panel">
+        <div class="mr-panel-header">
+          <div>
+            <h2 class="mr-panel-title">行情数据来源</h2>
+            <p class="mr-panel-sub">近 7 天客户端拉取与服务端 akshare 兜底比例。</p>
           </div>
         </div>
-
-        <!-- 数据来源监控卡 -->
-        <div v-if="dsStats" style="background: white; border-radius: 14px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-          <h3 style="font-size: 15px; font-weight: 600; color: #000; margin: 0 0 4px;">行情数据来源（近7天）</h3>
-          <p style="font-size: 12px; color: #8e8e93; margin: 0 0 14px;">客户端拉取 vs 服务端 akshare 兜底</p>
-          <!-- Summary row -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px;">
-            <div style="text-align: center;">
-              <div style="font-size: 24px; font-weight: 700; color: #34c759;">{{ dsStats.summary.client }}</div>
-              <div style="font-size: 11px; color: #8e8e93; margin-top: 2px;">客户端</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="font-size: 24px; font-weight: 700; color: #ff9500;">{{ dsStats.summary.akshare }}</div>
-              <div style="font-size: 11px; color: #8e8e93; margin-top: 2px;">akshare</div>
-            </div>
-            <div style="text-align: center;">
-              <div style="font-size: 24px; font-weight: 700; color: #007aff;">{{ dsStats.summary.client_pct }}%</div>
-              <div style="font-size: 11px; color: #8e8e93; margin-top: 2px;">客户端占比</div>
-            </div>
-          </div>
-          <!-- Progress bar -->
-          <div style="height: 8px; background: #f2f2f7; border-radius: 4px; overflow: hidden; margin-bottom: 14px;">
-            <div :style="`width: ${dsStats.summary.client_pct}%; height: 100%; background: #34c759; border-radius: 4px; transition: width 0.3s;`" />
-          </div>
-          <!-- Daily breakdown -->
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <div
-              v-for="day in dsStats.days.slice().reverse()"
-              :key="day.date"
-              style="display: flex; align-items: center; gap: 8px; font-size: 12px;"
-            >
-              <span style="color: #8e8e93; min-width: 68px;">{{ day.date.slice(5) }}</span>
-              <div style="flex: 1; height: 6px; background: #f2f2f7; border-radius: 3px; overflow: hidden;">
-                <div :style="`width: ${day.client_pct}%; height: 100%; background: #34c759; border-radius: 3px;`" />
-              </div>
-              <span style="min-width: 52px; text-align: right; color: #3a3a3c;">
-                {{ day.client }}<span style="color: #c7c7cc;">/{{ day.total }}</span>
-              </span>
-            </div>
-          </div>
-          <div style="margin-top: 10px; font-size: 11px; color: #8e8e93;">
-            绿色 = 客户端成功（分布式IP）/ 橙色 = 服务端兜底（akshare）
+        <div class="mr-metrics" style="margin-bottom: 14px">
+          <MrMetric label="客户端" :value="dsStats.summary.client" sub="分布式 IP 成功" />
+          <MrMetric label="akshare" :value="dsStats.summary.akshare" sub="服务端兜底" />
+          <MrMetric label="客户端占比" :value="`${dsStats.summary.client_pct}%`" sub="近 7 天" />
+          <MrMetric label="总计" :value="dsStats.summary.total" sub="数据请求" />
+        </div>
+        <div class="mr-analysis-list">
+          <div v-for="day in dsStats.days.slice().reverse()" :key="day.date" class="mr-price-row">
+            <span>{{ day.date.slice(5) }}</span>
+            <strong>{{ day.client }} / {{ day.total }} · {{ day.client_pct }}%</strong>
           </div>
         </div>
+      </section>
 
-        <!-- Nav cards -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <NuxtLink to="/admin/users" style="text-decoration: none; background: white; border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-            <span style="font-size: 24px;">👥</span>
-            <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; margin-top: 4px;">用户 & 设备</span>
-            <span style="font-size: 12px; color: #8e8e93; line-height: 1.4;">管理注册用户和游客设备</span>
-          </NuxtLink>
-          <NuxtLink to="/admin/settings" style="text-decoration: none; background: white; border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-            <span style="font-size: 24px;">⚙️</span>
-            <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; margin-top: 4px;">系统设置</span>
-            <span style="font-size: 12px; color: #8e8e93; line-height: 1.4;">LLM、定价、邮件配置</span>
-          </NuxtLink>
-          <NuxtLink to="/admin/market-data" style="text-decoration: none; background: white; border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-            <span style="font-size: 24px;">📈</span>
-            <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; margin-top: 4px;">市场数据</span>
-            <span style="font-size: 12px; color: #8e8e93; line-height: 1.4;">K线数据状态与采集</span>
-          </NuxtLink>
-          <NuxtLink to="/admin/model-review" style="text-decoration: none; background: linear-gradient(135deg, #007aff 0%, #5856d6 100%); border-radius: 16px; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 12px rgba(0,122,255,0.3);">
-            <span style="font-size: 24px;">🤖</span>
-            <span style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 4px;">模型复盘档案</span>
-            <span style="font-size: 12px; color: rgba(255,255,255,0.8); line-height: 1.4;">自动记录 · 结算复盘 · SEO素材</span>
-          </NuxtLink>
-        </div>
-      </template>
+      <section class="mr-grid mr-grid-2 mr-grid-flow">
+        <NuxtLink to="/admin/users" class="mr-panel" style="text-decoration: none; color: inherit">
+          <div class="mr-panel-header">
+            <div>
+              <h2 class="mr-panel-title">用户与设备</h2>
+              <p class="mr-panel-sub">管理注册用户、游客设备和订阅状态。</p>
+            </div>
+            <PhUsers :size="22" weight="bold" />
+          </div>
+        </NuxtLink>
+        <NuxtLink to="/admin/settings" class="mr-panel" style="text-decoration: none; color: inherit">
+          <div class="mr-panel-header">
+            <div>
+              <h2 class="mr-panel-title">系统设置</h2>
+              <p class="mr-panel-sub">LLM、定价、邮件与运行配置。</p>
+            </div>
+            <PhGear :size="22" weight="bold" />
+          </div>
+        </NuxtLink>
+        <NuxtLink to="/admin/market-data" class="mr-panel" style="text-decoration: none; color: inherit">
+          <div class="mr-panel-header">
+            <div>
+              <h2 class="mr-panel-title">市场数据</h2>
+              <p class="mr-panel-sub">K线数据状态与采集任务。</p>
+            </div>
+            <PhDatabase :size="22" weight="bold" />
+          </div>
+        </NuxtLink>
+        <NuxtLink to="/admin/model-review" class="mr-panel" style="text-decoration: none; color: inherit; border-color: var(--mr-accent); background: var(--mr-accent-soft)">
+          <div class="mr-panel-header">
+            <div>
+              <h2 class="mr-panel-title">模型复盘档案</h2>
+              <p class="mr-panel-sub">候选扫描、完整审核、结算复盘与 SEO 素材。</p>
+            </div>
+            <PhListChecks :size="22" weight="bold" />
+          </div>
+        </NuxtLink>
+      </section>
+    </template>
 
-      <!-- Loading state -->
-      <div v-if="loading" style="text-align: center; padding: 40px 0; color: #8e8e93; font-size: 15px;">
-        加载中…
-      </div>
-    </div>
-  </div>
+    <MrState v-if="loading && !stats" title="加载中" text="正在验证令牌并读取后台概览。" variant="loading" />
+  </MrShell>
 </template>
