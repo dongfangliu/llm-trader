@@ -107,6 +107,12 @@ else
   fi
 fi
 
+# ── 停止现有服务 ──────────────────────────────────────────────────────────────
+log_section "停止现有服务"
+log_info "执行 docker compose down（保留 volumes）..."
+docker compose down --remove-orphans
+log_ok "已停止现有服务"
+
 # ── 构建镜像 ──────────────────────────────────────────────────────────────────
 log_section "构建 Docker 镜像"
 
