@@ -403,7 +403,12 @@ async function repredictPred(pred: Prediction) {
 }
 
 async function settleSinglePred(pred: Prediction) {
-  if (!confirm(`为 ${pred.symbol_name || pred.symbol} 拉取目标日 ${pred.target_date} 收盘价并结算？`)) return
+  const note = pred.status === 'rejected'
+    ? '（结算后状态会变为「已结算」，如需仍隐藏可再次拒绝）'
+    : pred.status === 'settled'
+      ? '（将以最新逻辑重新计算）'
+      : ''
+  if (!confirm(`为 ${pred.symbol_name || pred.symbol} 拉取目标日 ${pred.target_date} 收盘价并结算？${note}`)) return
   loading.value = `settle-${pred.id}`
   try {
     const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', 5)
@@ -413,24 +418,12 @@ async function settleSinglePred(pred: Prediction) {
       showMsg('未拉到目标日收盘价，结算失败', 'err')
       return
     }
-    const res = await api.post(
-      '/api/admin/xbot/actions/settle/client',
-      {
-        settlements: [{
-          market: pred.market,
-          symbol: pred.symbol,
-          close: targetBar.c,
-          high: targetBar.h,
-          low: targetBar.l,
-        }],
-      },
+    await api.post(
+      `/api/admin/xbot/predictions/${pred.id}/settle`,
+      { close: targetBar.c, high: targetBar.h, low: targetBar.l },
       { headers: getAdminHeaders() },
     )
-    if (res.data?.settled) {
-      showMsg(`${pred.symbol_name || pred.symbol} 结算完成`)
-    } else {
-      showMsg(`${pred.symbol_name || pred.symbol} 未匹配（已结算或非待结算状态）`, 'err')
-    }
+    showMsg(`${pred.symbol_name || pred.symbol} 结算完成`)
     await Promise.all([loadHistory(), loadTodayPreds(), loadDashboard()])
   } catch (e: any) {
     showMsg(apiErrorMessage(e, '结算失败'), 'err')
@@ -454,7 +447,8 @@ async function rejectFromHistory(pred: Prediction) {
 }
 
 function canSettle(p: Prediction) {
-  return (p.status === 'approved' || p.status === 'posted') && p.actual_close == null
+  // 已拒绝也允许结算（之前的 ±0.5% 死区可能误拒）；已结算允许重算
+  return p.status !== 'pending'
 }
 
 async function approveAllPending() {

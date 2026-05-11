@@ -447,6 +447,47 @@ async def reject_prediction(
     return {"ok": True, "status": "rejected"}
 
 
+class SinglePredSettleRequest(BaseModel):
+    close: float
+    high: Optional[float] = None
+    low: Optional[float] = None
+
+
+@router.post("/predictions/{prediction_id}/settle")
+async def settle_single_prediction(
+    prediction_id: int,
+    body: SinglePredSettleRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Force-settle one prediction by id, bypassing the queue's status/actual_close filters.
+
+    Allows resettling rejected records (whose earlier rejection may have stemmed
+    from the buggy ±0.5% dead-zone judgment) and recomputing already-settled
+    records with current logic. Status is set to 'settled' on success — admin
+    can reject again afterwards if they want it kept out of the public feed.
+    """
+    from src.services.xbot.result_service import _apply_settlement
+
+    if body.close <= 0:
+        raise HTTPException(status_code=400, detail="close must be positive")
+
+    pred = await _get_prediction(db, prediction_id)
+    if pred.status == "pending":
+        raise HTTPException(status_code=400, detail="Cannot settle a pending prediction; approve or reject first")
+
+    high = float(body.high) if body.high and body.high > 0 else None
+    low = float(body.low) if body.low and body.low > 0 else None
+    if not _apply_settlement(pred, float(body.close), high=high, low=low):
+        raise HTTPException(
+            status_code=400,
+            detail="Settlement could not be applied (missing entry price or invalid prediction direction)",
+        )
+    await db.commit()
+    await db.refresh(pred)
+    return _pred_dict(pred)
+
+
 @router.post("/predictions/{prediction_id}/re-predict")
 async def re_predict_prediction(
     prediction_id: int,
