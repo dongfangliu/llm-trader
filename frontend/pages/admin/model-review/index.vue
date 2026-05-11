@@ -893,8 +893,8 @@ onMounted(refreshAll)
           <div><strong>{{ p.symbol_name }}</strong><span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span></div>
           <div><strong>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</strong><span>目标日 {{ p.target_date || '-' }}</span></div>
           <div>
-            <strong>{{ p.predicted_direction === 'hold' && p.status === 'settled' ? '不评判' : pctText(p.actual_change_pct) }}</strong>
-            <span>{{ p.predicted_direction === 'hold' ? '震荡 · 不计入' : '结算涨跌' }}</span>
+            <strong>{{ p.predicted_direction === 'hold' ? '—' : pctText(p.actual_change_pct) }}</strong>
+            <span>{{ p.predicted_direction === 'hold' ? '震荡 · 暂不结算' : '结算涨跌' }}</span>
           </div>
           <div class="mr-row-actions">
             <MrButton size="sm" variant="secondary" @click="openReview(p.id)">查看</MrButton>

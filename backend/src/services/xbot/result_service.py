@@ -31,10 +31,6 @@ async def settle_predictions_for_market(db: AsyncSession, market: str | None) ->
     settled = 0
     for pred in predictions:
         try:
-            if pred.predicted_direction == "hold":
-                if _apply_settlement(pred, None):
-                    settled += 1
-                continue
             actual_close = await _fetch_actual_close(pred.symbol, pred.market, today)
             if _apply_settlement(pred, actual_close):
                 settled += 1
@@ -65,10 +61,6 @@ async def settle_predictions_with_prices(
     missing: List[Tuple[str, str]] = []
     for pred in predictions:
         try:
-            if pred.predicted_direction == "hold":
-                if _apply_settlement(pred, None):
-                    settled += 1
-                continue
             key = (pred.market, pred.symbol)
             actual_close = prices.get(key)
             if actual_close is None:
@@ -86,9 +78,11 @@ async def settle_predictions_with_prices(
 async def _load_pending_settlements(
     db: AsyncSession, market: str | None, target_day: date
 ):
+    # 观望/震荡预测暂不入结算队列：还没定方向判定标准，留作以后处理。
     q = select(XBotPrediction).where(
         XBotPrediction.target_date == target_day,
         XBotPrediction.status.in_(["approved", "posted"]),
+        XBotPrediction.predicted_direction.in_(["up", "down"]),
         XBotPrediction.actual_close.is_(None),
     )
     if market:
@@ -102,30 +96,17 @@ def _apply_settlement(pred: XBotPrediction, actual_close: Optional[float]) -> bo
 
     Direction match is sign-based (any positive move counts as ``up``, any negative
     as ``down``) — earlier ±0.5% dead zone caused tiny gainers to be marked as
-    misses against an ``up`` call. ``hold``/震荡 predictions are auto-resolved
-    without an actual close because there's no direction to judge.
+    misses against an ``up`` call. ``hold``/震荡 predictions are not settled here
+    because no judgment criterion has been agreed on yet; the load query filters
+    them out so they stay in the approved queue.
     """
-    if pred.close_price is None or pred.close_price <= 0:
+    if actual_close is None or pred.close_price is None or pred.close_price <= 0:
         return False
-
-    if pred.predicted_direction == "hold":
-        pred.actual_close = None
-        pred.actual_change_pct = None
-        pred.is_correct = None
-        pred.status = "settled"
-        logger.info(f"Auto-resolved hold prediction {pred.symbol}: no direction to judge")
-        return True
-
-    if actual_close is None:
+    if pred.predicted_direction not in ("up", "down"):
         return False
 
     change_pct = (actual_close - pred.close_price) / pred.close_price * 100
-    if pred.predicted_direction == "up":
-        is_correct = change_pct > 0
-    elif pred.predicted_direction == "down":
-        is_correct = change_pct < 0
-    else:
-        is_correct = None
+    is_correct = change_pct > 0 if pred.predicted_direction == "up" else change_pct < 0
 
     pred.actual_close = float(actual_close)
     pred.actual_change_pct = round(change_pct, 2)
