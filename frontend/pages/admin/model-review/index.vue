@@ -495,6 +495,18 @@ function pctText(v: number | null | undefined) {
   return `${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`
 }
 
+function hitLabel(p: Prediction) {
+  if (p.is_correct === true) return '命中'
+  if (p.is_correct === false) return '未命中'
+  return '持平'
+}
+
+function hitClass(p: Prediction) {
+  if (p.is_correct === true) return 'is-hit'
+  if (p.is_correct === false) return 'is-miss'
+  return 'is-flat'
+}
+
 function filterReasonsText(value: any) {
   if (!value || typeof value !== 'object') return ''
   return Object.entries(value).map(([key, val]) => `${key}: ${val}`).join(' / ')
@@ -915,7 +927,13 @@ onMounted(refreshAll)
             <span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span>
           </div>
           <div><strong>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</strong><span>目标日 {{ p.target_date || '-' }}</span></div>
-          <div><strong>{{ pctText(p.actual_change_pct) }}</strong><span>结算涨跌</span></div>
+          <div>
+            <strong>
+              {{ pctText(p.actual_change_pct) }}
+              <span v-if="p.status === 'settled'" :class="['mr-hit-badge', hitClass(p)]">{{ hitLabel(p) }}</span>
+            </strong>
+            <span>结算涨跌</span>
+          </div>
           <div class="mr-row-actions">
             <MrButton size="sm" variant="secondary" @click="openReview(p.id)">查看</MrButton>
             <MrButton
@@ -1086,6 +1104,33 @@ onMounted(refreshAll)
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.mr-hit-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  vertical-align: middle;
+}
+
+.mr-hit-badge.is-hit {
+  color: #1f7a45;
+  background: rgba(52, 199, 89, 0.16);
+}
+
+.mr-hit-badge.is-miss {
+  color: #c0392b;
+  background: rgba(255, 59, 48, 0.14);
+}
+
+.mr-hit-badge.is-flat {
+  color: #8e8e93;
+  background: rgba(120, 120, 128, 0.14);
 }
 
 @media (max-width: 760px) {
