@@ -382,6 +382,67 @@ async function settleRecords() {
   }
 }
 
+async function repredictPred(pred: Prediction) {
+  if (!confirm(`重新预测会覆盖 ${pred.symbol_name || pred.symbol} 的当前分析并重置为待审核，确认？`)) return
+  loading.value = `repredict-${pred.id}`
+  try {
+    await api.post(`/api/admin/xbot/predictions/${pred.id}/re-predict`, {}, { headers: getAdminHeaders() })
+    showMsg(`${pred.symbol_name || pred.symbol} 已重新预测`)
+    await Promise.all([loadHistory(), loadTodayPreds(), loadDashboard()])
+  } catch (e: any) {
+    showMsg(apiErrorMessage(e, '重新预测失败'), 'err')
+  } finally {
+    loading.value = ''
+  }
+}
+
+async function settleSinglePred(pred: Prediction) {
+  if (!confirm(`为 ${pred.symbol_name || pred.symbol} 拉取目标日 ${pred.target_date} 收盘价并结算？`)) return
+  loading.value = `settle-${pred.id}`
+  try {
+    const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', 5)
+    const targetBar = bars.find(b => b.d === pred.target_date)
+      ?? (bars.length ? bars[bars.length - 1] : null)
+    if (!targetBar || !(targetBar.c > 0)) {
+      showMsg('未拉到目标日收盘价，结算失败', 'err')
+      return
+    }
+    const res = await api.post(
+      '/api/admin/xbot/actions/settle/client',
+      { settlements: [{ market: pred.market, symbol: pred.symbol, close: targetBar.c }] },
+      { headers: getAdminHeaders() },
+    )
+    if (res.data?.settled) {
+      showMsg(`${pred.symbol_name || pred.symbol} 结算完成`)
+    } else {
+      showMsg(`${pred.symbol_name || pred.symbol} 未匹配（已结算或非待结算状态）`, 'err')
+    }
+    await Promise.all([loadHistory(), loadTodayPreds(), loadDashboard()])
+  } catch (e: any) {
+    showMsg(apiErrorMessage(e, '结算失败'), 'err')
+  } finally {
+    loading.value = ''
+  }
+}
+
+async function rejectFromHistory(pred: Prediction) {
+  if (!confirm(`确认拒绝 ${pred.symbol_name || pred.symbol}？已发布/已结算的将从公开列表移除。`)) return
+  loading.value = `reject-${pred.id}`
+  try {
+    await api.post(`/api/admin/xbot/predictions/${pred.id}/reject`, {}, { headers: getAdminHeaders() })
+    showMsg('已拒绝')
+    await Promise.all([loadHistory(), loadTodayPreds(), loadDashboard()])
+  } catch (e: any) {
+    showMsg(apiErrorMessage(e, '拒绝失败'), 'err')
+  } finally {
+    loading.value = ''
+  }
+}
+
+function canSettle(p: Prediction) {
+  return (p.status === 'approved' || p.status === 'posted') && p.actual_close == null
+}
+
 async function approveAllPending() {
   const ids = pendingPreds.value.map(p => p.id)
   if (!ids.length) return
@@ -826,7 +887,33 @@ onMounted(refreshAll)
           <div><strong>{{ p.symbol_name }}</strong><span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span></div>
           <div><strong>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</strong><span>目标日 {{ p.target_date || '-' }}</span></div>
           <div><strong>{{ pctText(p.actual_change_pct) }}</strong><span>结算涨跌</span></div>
-          <MrButton size="sm" variant="secondary" @click="openReview(p.id)">查看</MrButton>
+          <div class="mr-row-actions">
+            <MrButton size="sm" variant="secondary" @click="openReview(p.id)">查看</MrButton>
+            <MrButton
+              size="sm"
+              variant="ghost"
+              :disabled="loading === `repredict-${p.id}`"
+              @click="repredictPred(p)"
+            >
+              {{ loading === `repredict-${p.id}` ? '生成中' : '重新预测' }}
+            </MrButton>
+            <MrButton
+              size="sm"
+              variant="primary"
+              :disabled="!canSettle(p) || loading === `settle-${p.id}`"
+              @click="settleSinglePred(p)"
+            >
+              {{ loading === `settle-${p.id}` ? '结算中' : '结算' }}
+            </MrButton>
+            <MrButton
+              size="sm"
+              variant="danger"
+              :disabled="p.status === 'rejected' || loading === `reject-${p.id}`"
+              @click="rejectFromHistory(p)"
+            >
+              {{ loading === `reject-${p.id}` ? '处理中' : '拒绝' }}
+            </MrButton>
+          </div>
         </div>
       </div>
       <MrState v-else title="暂无历史记录" text="切换状态或先完成审核与结算。" />
@@ -963,6 +1050,13 @@ onMounted(refreshAll)
 .mr-input-sm {
   height: 36px;
   max-width: 240px;
+}
+
+.mr-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 @media (max-width: 760px) {

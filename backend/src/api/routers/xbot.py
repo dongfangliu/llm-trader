@@ -438,13 +438,33 @@ async def reject_prediction(
     _=_Admin,
 ):
     pred = await _get_prediction(db, prediction_id)
-    if pred.status not in ("pending", "approved"):
+    if pred.status not in ("pending", "approved", "posted", "settled"):
         raise HTTPException(status_code=400, detail=f"Cannot reject prediction with status '{pred.status}'")
     await db.execute(
         update(XBotPrediction).where(XBotPrediction.id == prediction_id).values(status="rejected")
     )
     await db.commit()
     return {"ok": True, "status": "rejected"}
+
+
+@router.post("/predictions/{prediction_id}/re-predict")
+async def re_predict_prediction(
+    prediction_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Overwrite an existing prediction with a freshly generated analysis.
+
+    Keeps the original prediction_date/target_date but resets status to 'pending'
+    and clears settlement fields so the record re-enters the review queue.
+    """
+    from src.services.xbot.prediction_service import regenerate_prediction
+    pred = await _get_prediction(db, prediction_id)
+    try:
+        updated = await regenerate_prediction(pred, db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"{pred.symbol} 重新预测失败：{exc}")
+    return _pred_dict(updated)
 
 
 # ---------------------------------------------------------------------------

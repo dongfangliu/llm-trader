@@ -125,6 +125,43 @@ async def _analyze_stock(
     )
 
 
+async def regenerate_prediction(existing: XBotPrediction, db: AsyncSession) -> XBotPrediction:
+    """Re-run analysis for an existing prediction record and overwrite fields in place.
+
+    Keeps id/prediction_date/target_date/created_at; resets status to 'pending' and
+    clears settlement fields so the record re-enters the review queue.
+    """
+    try:
+        fresh = await _analyze_stock(
+            symbol=existing.symbol,
+            market=existing.market,
+            symbol_name=existing.symbol_name,
+            hot_rank=existing.hot_rank or 0,
+            prediction_date=existing.prediction_date,
+            target_date=existing.target_date,
+        )
+    except Exception as e:
+        await db.rollback()
+        reason = str(e) or e.__class__.__name__
+        logger.error(f"[Regenerate] Failed to re-analyze {existing.symbol}: {reason}")
+        raise RuntimeError(reason) from e
+
+    for attr in (
+        "predicted_direction", "confidence", "target_price", "stop_loss",
+        "close_price", "analysis_summary", "market_diagnosis",
+        "opportunity_assessment", "risk_analysis", "execution_plan",
+    ):
+        setattr(existing, attr, getattr(fresh, attr))
+    existing.status = "pending"
+    existing.actual_close = None
+    existing.actual_change_pct = None
+    existing.is_correct = None
+    await db.commit()
+    await db.refresh(existing)
+    logger.info(f"[Regenerate] Refreshed prediction {existing.id} ({existing.symbol})")
+    return existing
+
+
 async def generate_single_prediction(stock: Dict, db: AsyncSession) -> XBotPrediction:
     """Generate AI prediction for a single stock dict and save it.
 
