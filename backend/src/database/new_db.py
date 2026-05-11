@@ -1,5 +1,6 @@
 """New async database setup using the refactored models."""
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from src.config import settings
@@ -54,3 +55,14 @@ async def init_db():
     """Create all tables defined in Base.metadata (idempotent)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _migrate_db()
+
+
+async def _migrate_db():
+    """Idempotently add new columns to existing tables (poor man's Alembic)."""
+    async with engine.begin() as conn:
+        for col_sql in [
+            "ALTER TABLE xbot_predictions ADD COLUMN IF NOT EXISTS attempts INTEGER",
+            "ALTER TABLE xbot_predictions ADD COLUMN IF NOT EXISTS met_confidence BOOLEAN",
+        ]:
+            await conn.execute(text(col_sql))
