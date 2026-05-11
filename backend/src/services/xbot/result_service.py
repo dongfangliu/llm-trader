@@ -31,6 +31,10 @@ async def settle_predictions_for_market(db: AsyncSession, market: str | None) ->
     settled = 0
     for pred in predictions:
         try:
+            if pred.predicted_direction == "hold":
+                if _apply_settlement(pred, None):
+                    settled += 1
+                continue
             actual_close = await _fetch_actual_close(pred.symbol, pred.market, today)
             if _apply_settlement(pred, actual_close):
                 settled += 1
@@ -60,12 +64,16 @@ async def settle_predictions_with_prices(
     settled = 0
     missing: List[Tuple[str, str]] = []
     for pred in predictions:
-        key = (pred.market, pred.symbol)
-        actual_close = prices.get(key)
-        if actual_close is None:
-            missing.append(key)
-            continue
         try:
+            if pred.predicted_direction == "hold":
+                if _apply_settlement(pred, None):
+                    settled += 1
+                continue
+            key = (pred.market, pred.symbol)
+            actual_close = prices.get(key)
+            if actual_close is None:
+                missing.append(key)
+                continue
             if _apply_settlement(pred, actual_close):
                 settled += 1
         except Exception as e:
@@ -90,13 +98,34 @@ async def _load_pending_settlements(
 
 
 def _apply_settlement(pred: XBotPrediction, actual_close: Optional[float]) -> bool:
-    """Write the settlement fields onto ``pred``. Returns True when applied."""
-    if actual_close is None or pred.close_price is None or pred.close_price <= 0:
+    """Write the settlement fields onto ``pred``. Returns True when applied.
+
+    Direction match is sign-based (any positive move counts as ``up``, any negative
+    as ``down``) — earlier ±0.5% dead zone caused tiny gainers to be marked as
+    misses against an ``up`` call. ``hold``/震荡 predictions are auto-resolved
+    without an actual close because there's no direction to judge.
+    """
+    if pred.close_price is None or pred.close_price <= 0:
+        return False
+
+    if pred.predicted_direction == "hold":
+        pred.actual_close = None
+        pred.actual_change_pct = None
+        pred.is_correct = None
+        pred.status = "settled"
+        logger.info(f"Auto-resolved hold prediction {pred.symbol}: no direction to judge")
+        return True
+
+    if actual_close is None:
         return False
 
     change_pct = (actual_close - pred.close_price) / pred.close_price * 100
-    actual_direction = "up" if change_pct > 0.5 else ("down" if change_pct < -0.5 else "hold")
-    is_correct = actual_direction == pred.predicted_direction
+    if pred.predicted_direction == "up":
+        is_correct = change_pct > 0
+    elif pred.predicted_direction == "down":
+        is_correct = change_pct < 0
+    else:
+        is_correct = None
 
     pred.actual_close = float(actual_close)
     pred.actual_change_pct = round(change_pct, 2)
@@ -104,7 +133,7 @@ def _apply_settlement(pred: XBotPrediction, actual_close: Optional[float]) -> bo
     pred.status = "settled"
     logger.info(
         f"Settled {pred.symbol}: predicted={pred.predicted_direction}, "
-        f"actual={actual_direction} ({change_pct:+.2f}%), correct={is_correct}"
+        f"change={change_pct:+.2f}%, correct={is_correct}"
     )
     return True
 

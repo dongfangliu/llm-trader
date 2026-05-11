@@ -325,7 +325,9 @@ async function settleRecords() {
       return
     }
 
-    settleProgress.value = { fetched: 0, total: pendingForToday.length, failed: 0 }
+    // 观望/震荡预测无方向可判，由服务器自动关单，不需要浏览器拉行情
+    const needsPrice = pendingForToday.filter(p => p.predicted_direction !== 'hold')
+    settleProgress.value = { fetched: 0, total: needsPrice.length, failed: 0 }
 
     // 浏览器并发拉收盘价，限制并发 6
     const settlements: { market: string; symbol: string; close: number }[] = []
@@ -333,9 +335,9 @@ async function settleRecords() {
     let cursor = 0
 
     async function worker() {
-      while (cursor < pendingForToday.length) {
+      while (cursor < needsPrice.length) {
         const idx = cursor++
-        const pred = pendingForToday[idx]
+        const pred = needsPrice[idx]
         try {
           const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', 5)
           const targetBar = bars.find(b => b.d === pred.target_date)
@@ -353,10 +355,12 @@ async function settleRecords() {
       }
     }
 
-    const workers = Array.from({ length: Math.min(concurrency, pendingForToday.length) }, () => worker())
-    await Promise.all(workers)
+    if (needsPrice.length) {
+      const workers = Array.from({ length: Math.min(concurrency, needsPrice.length) }, () => worker())
+      await Promise.all(workers)
+    }
 
-    if (!settlements.length) {
+    if (!settlements.length && needsPrice.length) {
       showMsg('未能从浏览器拉到任何收盘价，结算未执行', 'err')
       return
     }
@@ -440,7 +444,9 @@ async function rejectFromHistory(pred: Prediction) {
 }
 
 function canSettle(p: Prediction) {
-  return (p.status === 'approved' || p.status === 'posted') && p.actual_close == null
+  return (p.status === 'approved' || p.status === 'posted')
+    && p.predicted_direction !== 'hold'
+    && p.actual_close == null
 }
 
 async function approveAllPending() {
@@ -886,7 +892,10 @@ onMounted(refreshAll)
         <div v-for="p in historyPreds" :key="p.id" class="mr-list-row">
           <div><strong>{{ p.symbol_name }}</strong><span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span></div>
           <div><strong>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</strong><span>目标日 {{ p.target_date || '-' }}</span></div>
-          <div><strong>{{ pctText(p.actual_change_pct) }}</strong><span>结算涨跌</span></div>
+          <div>
+            <strong>{{ p.predicted_direction === 'hold' && p.status === 'settled' ? '不评判' : pctText(p.actual_change_pct) }}</strong>
+            <span>{{ p.predicted_direction === 'hold' ? '震荡 · 不计入' : '结算涨跌' }}</span>
+          </div>
           <div class="mr-row-actions">
             <MrButton size="sm" variant="secondary" @click="openReview(p.id)">查看</MrButton>
             <MrButton
