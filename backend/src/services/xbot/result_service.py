@@ -43,12 +43,14 @@ async def settle_predictions_for_market(db: AsyncSession, market: str | None) ->
 
 async def settle_predictions_with_prices(
     db: AsyncSession,
-    prices: dict[tuple[str, str], float],
+    bars: dict[tuple[str, str], dict],
     market: str | None = None,
 ) -> Tuple[int, List[Tuple[str, str]]]:
-    """Settle pending predictions using closes supplied by the caller (no akshare).
+    """Settle pending predictions using OHLC bars supplied by the caller (no akshare).
 
-    ``prices`` keys are ``(market, symbol)`` tuples. Predictions without a
+    ``bars`` keys are ``(market, symbol)`` tuples; values are dicts with at least
+    ``close`` and optionally ``high``/``low``. ``high``/``low`` are needed for
+    accurate band-touch judgment on hold predictions. Predictions without a
     matching key are left untouched and returned in the second element so the
     caller can report what still needs server-side fetching.
     """
@@ -62,11 +64,11 @@ async def settle_predictions_with_prices(
     for pred in predictions:
         try:
             key = (pred.market, pred.symbol)
-            actual_close = prices.get(key)
-            if actual_close is None:
+            bar = bars.get(key)
+            if not bar or bar.get("close") is None:
                 missing.append(key)
                 continue
-            if _apply_settlement(pred, actual_close):
+            if _apply_settlement(pred, bar["close"], high=bar.get("high"), low=bar.get("low")):
                 settled += 1
         except Exception as e:
             logger.error(f"Failed to settle {pred.symbol}: {e}")
@@ -78,11 +80,9 @@ async def settle_predictions_with_prices(
 async def _load_pending_settlements(
     db: AsyncSession, market: str | None, target_day: date
 ):
-    # 观望/震荡预测暂不入结算队列：还没定方向判定标准，留作以后处理。
     q = select(XBotPrediction).where(
         XBotPrediction.target_date == target_day,
         XBotPrediction.status.in_(["approved", "posted"]),
-        XBotPrediction.predicted_direction.in_(["up", "down"]),
         XBotPrediction.actual_close.is_(None),
     )
     if market:
@@ -91,22 +91,37 @@ async def _load_pending_settlements(
     return result.scalars().all()
 
 
-def _apply_settlement(pred: XBotPrediction, actual_close: Optional[float]) -> bool:
+_HOLD_FALLBACK_BAND_PCT = 2.0  # 当 target/stop 不可用时，hold 预测的 ±% 兜底带宽
+
+
+def _apply_settlement(
+    pred: XBotPrediction,
+    actual_close: Optional[float],
+    *,
+    high: Optional[float] = None,
+    low: Optional[float] = None,
+) -> bool:
     """Write the settlement fields onto ``pred``. Returns True when applied.
 
-    Direction match is sign-based (any positive move counts as ``up``, any negative
-    as ``down``) — earlier ±0.5% dead zone caused tiny gainers to be marked as
-    misses against an ``up`` call. ``hold``/震荡 predictions are not settled here
-    because no judgment criterion has been agreed on yet; the load query filters
-    them out so they stay in the approved queue.
+    - up/down: 按收盘价相对入场价的正负号判定，任何同向变动都算命中（早期
+      ±0.5% 死区会把 +0.06% 这类小涨判成"未命中"）。
+    - hold/震荡：用预测自带的 target_price 和 stop_loss 作为允许的波动带；
+      持仓期内最高价没破上沿、最低价没破下沿即算命中。当 target/stop 缺失
+      或不构成有效带（≤ close 之类），退到 ±2% 收盘带兜底。
     """
     if actual_close is None or pred.close_price is None or pred.close_price <= 0:
         return False
-    if pred.predicted_direction not in ("up", "down"):
-        return False
 
     change_pct = (actual_close - pred.close_price) / pred.close_price * 100
-    is_correct = change_pct > 0 if pred.predicted_direction == "up" else change_pct < 0
+
+    if pred.predicted_direction == "up":
+        is_correct = change_pct > 0
+    elif pred.predicted_direction == "down":
+        is_correct = change_pct < 0
+    elif pred.predicted_direction == "hold":
+        is_correct = _judge_hold(pred, actual_close, high, low)
+    else:
+        is_correct = None
 
     pred.actual_close = float(actual_close)
     pred.actual_change_pct = round(change_pct, 2)
@@ -117,6 +132,41 @@ def _apply_settlement(pred: XBotPrediction, actual_close: Optional[float]) -> bo
         f"change={change_pct:+.2f}%, correct={is_correct}"
     )
     return True
+
+
+def _judge_hold(
+    pred: XBotPrediction,
+    actual_close: float,
+    high: Optional[float],
+    low: Optional[float],
+) -> bool:
+    """震荡命中判定：价格全程留在 (lower, upper) 带内即命中。
+
+    优先使用 target_price 和 stop_loss 作为带边界（取 min/max）。若它们
+    缺失或没有把入场价夹在中间，则退回到 ±_HOLD_FALLBACK_BAND_PCT% 兜底带。
+    没有 high/low 时用 close 作代理（精度退化但不影响逻辑）。
+    """
+    entry = pred.close_price
+    target = pred.target_price
+    stop = pred.stop_loss
+
+    upper: Optional[float] = None
+    lower: Optional[float] = None
+    if target and stop and target > 0 and stop > 0 and target != stop:
+        cand_upper = max(target, stop)
+        cand_lower = min(target, stop)
+        if cand_lower < entry < cand_upper:
+            upper = cand_upper
+            lower = cand_lower
+
+    if upper is None or lower is None:
+        margin = entry * (_HOLD_FALLBACK_BAND_PCT / 100.0)
+        upper = entry + margin
+        lower = entry - margin
+
+    h = high if high is not None and high > 0 else actual_close
+    l = low if low is not None and low > 0 else actual_close
+    return l > lower and h < upper
 
 
 async def get_accuracy_stats(db: AsyncSession) -> dict:

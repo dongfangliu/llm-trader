@@ -700,6 +700,8 @@ class ClientSettlementItem(BaseModel):
     market: str
     symbol: str
     close: float
+    high: Optional[float] = None
+    low: Optional[float] = None
 
 
 class ClientSettleRequest(BaseModel):
@@ -721,16 +723,20 @@ async def action_settle_client(
     from src.services.xbot.hot_stocks_service import normalize_candidate_symbol
     from src.services.xbot.result_service import settle_predictions_with_prices
 
-    prices: dict[tuple[str, str], float] = {}
+    bars: dict[tuple[str, str], dict] = {}
     invalid: List[dict] = []
     for item in body.settlements:
         normalized_market, code = normalize_candidate_symbol(item.symbol, item.market)
         if normalized_market not in ("a", "hk") or not code or item.close <= 0:
             invalid.append({"market": item.market, "symbol": item.symbol, "close": item.close})
             continue
-        prices[(normalized_market, code)] = float(item.close)
+        bars[(normalized_market, code)] = {
+            "close": float(item.close),
+            "high": float(item.high) if item.high and item.high > 0 else None,
+            "low": float(item.low) if item.low and item.low > 0 else None,
+        }
 
-    settled, missing = await settle_predictions_with_prices(db, prices)
+    settled, missing = await settle_predictions_with_prices(db, bars)
     return {
         "ok": True,
         "settled": settled,
