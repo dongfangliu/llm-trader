@@ -19,6 +19,8 @@ import {
   PhXCircle,
 } from '@phosphor-icons/vue'
 import api from '~/lib/api'
+import { fetchOhlcv } from '~/composables/useMarketDataFetcher'
+import { fetchHotA, fetchHotHk, type HotStock } from '~/composables/useHotStocksFetcher'
 import MrButton from '~/components/model-review/MrButton.vue'
 import MrMetric from '~/components/model-review/MrMetric.vue'
 import MrMotion from '~/components/model-review/MrMotion.vue'
@@ -53,6 +55,7 @@ const showAdvanced = ref(false)
 const showGenerationTools = ref(false)
 const candidateMarket = ref<'all' | 'a' | 'hk'>('all')
 const candidateSearch = ref('')
+const settleProgress = ref<{ fetched: number; total: number; failed: number } | null>(null)
 let toastTimer: number | null = null
 
 const markets = ['a', 'hk']
@@ -180,10 +183,25 @@ async function scanCandidates() {
   candidatesLoading.value = true
   showGenerationTools.value = true
   try {
-    const res = await api.get('/api/admin/xbot/candidates', { headers: getAdminHeaders() })
+    // 浏览器直连东方财富拉热门榜，绕开服务器 IP 限流
+    const [aHot, hkHot] = await Promise.all([fetchHotA(20), fetchHotHk(20)])
+    const body: { a: HotStock[] | null; hk: HotStock[] | null } = { a: aHot, hk: hkHot }
+    const res = await api.post('/api/admin/xbot/candidates/client', body, { headers: getAdminHeaders() })
     candidates.value = res.data.candidates || []
     diagnostics.value = res.data.diagnostics || {}
-    if (!candidates.value.length) showMsg('未扫描到候选标的，请查看数据源状态和过滤原因', 'err')
+
+    const browserMarkets: string[] = []
+    if (aHot) browserMarkets.push('A股')
+    if (hkHot) browserMarkets.push('港股')
+    const fallbackMarkets: string[] = []
+    if (!aHot) fallbackMarkets.push('A股')
+    if (!hkHot) fallbackMarkets.push('港股')
+
+    if (!candidates.value.length) {
+      showMsg('未扫描到候选标的，请查看数据源状态和过滤原因', 'err')
+    } else if (fallbackMarkets.length) {
+      showMsg(`${browserMarkets.join('/')} 浏览器直连成功；${fallbackMarkets.join('/')} 走服务器兜底`)
+    }
   } catch (e: any) {
     showMsg(apiErrorMessage(e, '扫描候选失败'), 'err')
   } finally {
@@ -295,14 +313,72 @@ async function rejectPred(pred: Prediction) {
 async function settleRecords() {
   if (!confirm('确认结算已通过且到达目标日的模型复盘记录？')) return
   loading.value = 'settle'
+  settleProgress.value = null
   try {
-    await api.post('/api/admin/xbot/actions/settle', {}, { headers: getAdminHeaders() })
-    showMsg('结算任务已启动，稍后刷新查看')
-    window.setTimeout(() => { refreshAll(); loadHistory() }, 8000)
+    const today = new Date().toISOString().slice(0, 10)
+    const pendingForToday = approvedPreds.value.filter(p =>
+      p.target_date === today && p.actual_close == null,
+    )
+
+    if (!pendingForToday.length) {
+      showMsg('暂无到达目标日的待结算记录')
+      return
+    }
+
+    settleProgress.value = { fetched: 0, total: pendingForToday.length, failed: 0 }
+
+    // 浏览器并发拉收盘价，限制并发 6
+    const settlements: { market: string; symbol: string; close: number }[] = []
+    const concurrency = 6
+    let cursor = 0
+
+    async function worker() {
+      while (cursor < pendingForToday.length) {
+        const idx = cursor++
+        const pred = pendingForToday[idx]
+        try {
+          const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', 5)
+          const targetBar = bars.find(b => b.d === pred.target_date)
+            ?? (bars.length ? bars[bars.length - 1] : null)
+          if (targetBar && targetBar.c > 0) {
+            settlements.push({ market: pred.market, symbol: pred.symbol, close: targetBar.c })
+          } else {
+            settleProgress.value!.failed += 1
+          }
+        } catch {
+          settleProgress.value!.failed += 1
+        } finally {
+          settleProgress.value!.fetched += 1
+        }
+      }
+    }
+
+    const workers = Array.from({ length: Math.min(concurrency, pendingForToday.length) }, () => worker())
+    await Promise.all(workers)
+
+    if (!settlements.length) {
+      showMsg('未能从浏览器拉到任何收盘价，结算未执行', 'err')
+      return
+    }
+
+    const res = await api.post(
+      '/api/admin/xbot/actions/settle/client',
+      { settlements },
+      { headers: getAdminHeaders() },
+    )
+    const { settled, missing } = res.data
+    const failedCount = settleProgress.value.failed + (missing?.length || 0)
+    if (failedCount) {
+      showMsg(`结算 ${settled} 条；${failedCount} 条未匹配或拉取失败`, failedCount > settled ? 'err' : 'ok')
+    } else {
+      showMsg(`结算 ${settled} 条`)
+    }
+    await Promise.all([refreshAll(), loadHistory()])
   } catch (e: any) {
     showMsg(apiErrorMessage(e, '结算失败'), 'err')
   } finally {
     loading.value = ''
+    settleProgress.value = null
   }
 }
 
@@ -549,7 +625,15 @@ onMounted(refreshAll)
               </MrButton>
               <MrButton variant="secondary" size="sm" :disabled="loading === 'settle'" @click="settleRecords">
                 <template #icon><PhClockCounterClockwise :size="15" weight="bold" /></template>
-                {{ loading === 'settle' ? '结算中' : '结算到期' }}
+                <template v-if="loading === 'settle' && settleProgress">
+                  结算中 {{ settleProgress.fetched }}/{{ settleProgress.total }}
+                </template>
+                <template v-else-if="loading === 'settle'">
+                  结算中
+                </template>
+                <template v-else>
+                  结算到期
+                </template>
               </MrButton>
               <NuxtLink class="mr-btn mr-btn-secondary mr-btn-small" to="/admin/xbot-card-preview">
                 <PhCards :size="15" weight="bold" />

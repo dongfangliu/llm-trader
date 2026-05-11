@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import date, timedelta
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from loguru import logger
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,16 +23,7 @@ async def settle_predictions_for_market(db: AsyncSession, market: str | None) ->
     Returns number of settled predictions.
     """
     today = date.today()
-    q = select(XBotPrediction).where(
-        XBotPrediction.target_date == today,
-        XBotPrediction.status.in_(["approved", "posted"]),
-        XBotPrediction.actual_close.is_(None),
-    )
-    if market:
-        q = q.where(XBotPrediction.market == market)
-    result = await db.execute(q)
-    predictions = result.scalars().all()
-
+    predictions = await _load_pending_settlements(db, market, today)
     if not predictions:
         logger.info(f"No predictions to settle for market={market or 'all'}")
         return 0
@@ -41,27 +32,81 @@ async def settle_predictions_for_market(db: AsyncSession, market: str | None) ->
     for pred in predictions:
         try:
             actual_close = await _fetch_actual_close(pred.symbol, pred.market, today)
-            if actual_close is None or pred.close_price is None or pred.close_price <= 0:
-                continue
-
-            change_pct = (actual_close - pred.close_price) / pred.close_price * 100
-            actual_direction = "up" if change_pct > 0.5 else ("down" if change_pct < -0.5 else "hold")
-            is_correct = actual_direction == pred.predicted_direction
-
-            pred.actual_close = actual_close
-            pred.actual_change_pct = round(change_pct, 2)
-            pred.is_correct = is_correct
-            pred.status = "settled"
-            settled += 1
-            logger.info(
-                f"Settled {pred.symbol}: predicted={pred.predicted_direction}, "
-                f"actual={actual_direction} ({change_pct:+.2f}%), correct={is_correct}"
-            )
+            if _apply_settlement(pred, actual_close):
+                settled += 1
         except Exception as e:
             logger.error(f"Failed to settle {pred.symbol}: {e}")
 
     await db.commit()
     return settled
+
+
+async def settle_predictions_with_prices(
+    db: AsyncSession,
+    prices: dict[tuple[str, str], float],
+    market: str | None = None,
+) -> Tuple[int, List[Tuple[str, str]]]:
+    """Settle pending predictions using closes supplied by the caller (no akshare).
+
+    ``prices`` keys are ``(market, symbol)`` tuples. Predictions without a
+    matching key are left untouched and returned in the second element so the
+    caller can report what still needs server-side fetching.
+    """
+    today = date.today()
+    predictions = await _load_pending_settlements(db, market, today)
+    if not predictions:
+        return 0, []
+
+    settled = 0
+    missing: List[Tuple[str, str]] = []
+    for pred in predictions:
+        key = (pred.market, pred.symbol)
+        actual_close = prices.get(key)
+        if actual_close is None:
+            missing.append(key)
+            continue
+        try:
+            if _apply_settlement(pred, actual_close):
+                settled += 1
+        except Exception as e:
+            logger.error(f"Failed to settle {pred.symbol}: {e}")
+
+    await db.commit()
+    return settled, missing
+
+
+async def _load_pending_settlements(
+    db: AsyncSession, market: str | None, target_day: date
+):
+    q = select(XBotPrediction).where(
+        XBotPrediction.target_date == target_day,
+        XBotPrediction.status.in_(["approved", "posted"]),
+        XBotPrediction.actual_close.is_(None),
+    )
+    if market:
+        q = q.where(XBotPrediction.market == market)
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+def _apply_settlement(pred: XBotPrediction, actual_close: Optional[float]) -> bool:
+    """Write the settlement fields onto ``pred``. Returns True when applied."""
+    if actual_close is None or pred.close_price is None or pred.close_price <= 0:
+        return False
+
+    change_pct = (actual_close - pred.close_price) / pred.close_price * 100
+    actual_direction = "up" if change_pct > 0.5 else ("down" if change_pct < -0.5 else "hold")
+    is_correct = actual_direction == pred.predicted_direction
+
+    pred.actual_close = float(actual_close)
+    pred.actual_change_pct = round(change_pct, 2)
+    pred.is_correct = is_correct
+    pred.status = "settled"
+    logger.info(
+        f"Settled {pred.symbol}: predicted={pred.predicted_direction}, "
+        f"actual={actual_direction} ({change_pct:+.2f}%), correct={is_correct}"
+    )
+    return True
 
 
 async def get_accuracy_stats(db: AsyncSession) -> dict:

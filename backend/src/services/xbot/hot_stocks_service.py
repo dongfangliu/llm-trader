@@ -201,3 +201,68 @@ def _find_col(df, candidates: List[str]):
         if col in df.columns:
             return col
     return None
+
+
+def filter_hot_candidates(
+    rows: List[Dict],
+    market: str,
+    min_price: float,
+    count: int,
+) -> Tuple[List[Dict], Dict]:
+    """Filter a list of pre-fetched hot stocks (e.g. from the admin browser).
+
+    Each input row must include ``symbol`` and may include ``name``,
+    ``hot_rank`` and ``latest_price``. Rows missing ``latest_price`` skip the
+    price filter (we still keep them — partial enrichment beats nothing).
+    Returns the filtered slice plus a diagnostics dict matching the shape used
+    by :func:`get_hot_stocks`.
+    """
+    diag = _new_diagnostics(market)
+    diag["requested"] = len(rows)
+
+    results: List[Dict] = []
+    for idx, row in enumerate(rows):
+        if len(results) >= count:
+            break
+
+        raw_symbol = str(row.get("symbol", "")).strip()
+        normalized_market, code = normalize_candidate_symbol(raw_symbol, market)
+        if normalized_market != market or not code:
+            _bump_filter(diag, "invalid_symbol")
+            continue
+
+        name = str(row.get("name", "") or "").strip()
+        if name:
+            upper = name.upper()
+            if "ST" in upper or "*" in name or "退" in name:
+                _bump_filter(diag, "st_or_delisted")
+                continue
+
+        price_raw = row.get("latest_price")
+        if price_raw is not None and min_price > 0:
+            try:
+                price = float(price_raw)
+                if 0 < price < min_price:
+                    _bump_filter(diag, "below_min_price")
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+        hot_rank = row.get("hot_rank")
+        try:
+            hot_rank = int(hot_rank) if hot_rank is not None else idx + 1
+        except (ValueError, TypeError):
+            hot_rank = idx + 1
+
+        results.append(
+            {
+                "symbol": code,
+                "market": market,
+                "name": name or code,
+                "hot_rank": hot_rank,
+            }
+        )
+
+    diag["returned"] = len(results)
+    logger.info(f"{market} hot stocks (client-fed) filtered: {len(results)}")
+    return results, diag

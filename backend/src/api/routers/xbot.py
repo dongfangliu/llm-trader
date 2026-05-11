@@ -488,6 +488,89 @@ async def get_candidates(db: AsyncSession = Depends(get_db), _=_Admin):
     }
 
 
+class ClientHotStock(BaseModel):
+    symbol: str
+    name: Optional[str] = None
+    hot_rank: Optional[int] = None
+    latest_price: Optional[float] = None
+
+
+class ClientCandidatesRequest(BaseModel):
+    a: Optional[List[ClientHotStock]] = None
+    hk: Optional[List[ClientHotStock]] = None
+
+
+@router.post("/candidates/client")
+async def post_candidates_client(
+    body: ClientCandidatesRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Same shape as ``GET /candidates`` but seeded by the admin browser.
+
+    For each market: if a list is supplied, filter it server-side using the
+    same rules as the AKShare path. If the field is null, fall back to
+    AKShare so admins can mix-and-match (e.g. browser succeeded for HK but
+    failed for A).
+    """
+    from src.services.xbot.hot_stocks_service import (
+        filter_hot_candidates,
+        get_hot_stocks,
+        get_hk_hot_stocks,
+    )
+
+    config = await _load_config(db)
+    enabled_markets = {
+        m.strip() for m in config.get("xbot_markets", "a,hk").split(",") if m.strip()
+    }
+    count = int(config.get("xbot_hot_stock_count", 5))
+
+    candidates: List[dict] = []
+    diagnostics = {
+        "a": {"market": "a", "enabled": "a" in enabled_markets, "requested": 0, "returned": 0, "filtered": 0, "filter_reasons": {}, "error": None},
+        "hk": {"market": "hk", "enabled": "hk" in enabled_markets, "requested": 0, "returned": 0, "filtered": 0, "filter_reasons": {}, "error": None},
+    }
+
+    async def _resolve(market: str, payload: Optional[List[ClientHotStock]], min_price: float):
+        if market not in enabled_markets:
+            return [], diagnostics[market]
+        if payload is not None:
+            rows, diag = filter_hot_candidates(
+                [item.model_dump() for item in payload],
+                market=market,
+                min_price=min_price,
+                count=count,
+            )
+            diag["enabled"] = True
+            return rows, diag
+        # Fallback to server-side akshare for this market.
+        fetcher = get_hot_stocks if market == "a" else get_hk_hot_stocks
+        rows, diag = await fetcher(count=count, min_price=min_price, with_diagnostics=True)
+        return rows, diag
+
+    a_rows, diagnostics["a"] = await _resolve(
+        "a", body.a, float(config.get("xbot_min_price_a", 5))
+    )
+    hk_rows, diagnostics["hk"] = await _resolve(
+        "hk", body.hk, float(config.get("xbot_min_price_hk", 1))
+    )
+    candidates.extend(a_rows)
+    candidates.extend(hk_rows)
+
+    # Fill in names from the local SymbolName table when the client did not
+    # provide them (browser-side enrichment is best-effort).
+    for c in candidates:
+        if not c.get("name") or c["name"] == c["symbol"]:
+            looked_up = await _lookup_symbol_name(db, c["market"], c["symbol"])
+            if looked_up:
+                c["name"] = looked_up
+
+    return {
+        "candidates": await _mark_candidate_status(db, candidates),
+        "diagnostics": diagnostics,
+    }
+
+
 class GenerateSingleRequest(BaseModel):
     symbol: str
     market: str
@@ -591,6 +674,49 @@ async def action_settle(
         task = asyncio.create_task(_settle_all())
     task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] settle task error: {t.exception()}"))
     return {"ok": True, "message": f"Settlement started for market={market or 'all'}"}
+
+
+class ClientSettlementItem(BaseModel):
+    market: str
+    symbol: str
+    close: float
+
+
+class ClientSettleRequest(BaseModel):
+    settlements: List[ClientSettlementItem]
+
+
+@router.post("/actions/settle/client")
+async def action_settle_client(
+    body: ClientSettleRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Settle today's predictions using close prices fetched by the admin's browser.
+
+    Skips AKShare entirely. Predictions without a matching ``(market, symbol)``
+    in the payload are left untouched and returned under ``missing`` so the
+    admin can re-fetch.
+    """
+    from src.services.xbot.hot_stocks_service import normalize_candidate_symbol
+    from src.services.xbot.result_service import settle_predictions_with_prices
+
+    prices: dict[tuple[str, str], float] = {}
+    invalid: List[dict] = []
+    for item in body.settlements:
+        normalized_market, code = normalize_candidate_symbol(item.symbol, item.market)
+        if normalized_market not in ("a", "hk") or not code or item.close <= 0:
+            invalid.append({"market": item.market, "symbol": item.symbol, "close": item.close})
+            continue
+        prices[(normalized_market, code)] = float(item.close)
+
+    settled, missing = await settle_predictions_with_prices(db, prices)
+    return {
+        "ok": True,
+        "settled": settled,
+        "missing": [{"market": m, "symbol": s} for m, s in missing],
+        "invalid": invalid,
+    }
 
 
 # ---------------------------------------------------------------------------
