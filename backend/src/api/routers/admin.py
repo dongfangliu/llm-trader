@@ -614,6 +614,21 @@ def _build_default_settings() -> dict:
             "thinking_enabled": settings.llm_thinking_enabled,
             "thinking_effort": settings.llm_thinking_effort,
         },
+        "llm_model_review": {
+            "inherit": False,
+            "provider": "openai",
+            "api_key": "",
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-v4-pro",
+            "max_tokens": 2000,
+            "temperature": 0.6,
+            "timeout_seconds": 300,
+            "thinking_enabled": False,
+            "thinking_effort": "high",
+            "confidence_threshold": 75.0,
+            "max_attempts": 3,
+            "retry_temperature_step": 0.1,
+        },
         "afdian": {
             "webhook_token": settings.afdian_webhook_token,
             "basic_plan_id": settings.afdian_basic_plan_id,
@@ -655,7 +670,7 @@ def _build_default_settings() -> dict:
 
 async def _overlay_db_settings(db: AsyncSession, result: dict) -> dict:
     """Overlay DB-saved values on top of defaults."""
-    for section in ("llm", "afdian", "email", "app", "pricing"):
+    for section in ("llm", "llm_model_review", "afdian", "email", "app", "pricing"):
         row = await db.get(SystemSetting, section)
         if not row:
             continue
@@ -676,7 +691,7 @@ async def _overlay_db_settings(db: AsyncSession, result: dict) -> dict:
     return result
 
 
-_ALLOWED_SETTINGS_SECTIONS = {"llm", "afdian", "email", "app", "pricing"}
+_ALLOWED_SETTINGS_SECTIONS = {"llm", "llm_model_review", "afdian", "email", "app", "pricing"}
 
 
 @router.get("/settings")
@@ -736,7 +751,7 @@ async def admin_update_settings(
         else:
             for k, v in data.items():
                 if v is not None:
-                    if section == "llm" and k == "timeout_seconds":
+                    if section in ("llm", "llm_model_review") and k == "timeout_seconds":
                         existing[k] = normalize_timeout_seconds(v)
                     else:
                         existing[k] = v

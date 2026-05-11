@@ -60,6 +60,11 @@ const headerId = computed(() => `mr-stage-${Math.random().toString(36).slice(2, 
             <div class="mr-record-title">
               <strong>{{ item.symbol_name }}</strong>
               <MrStatusBadge :status="item.status" />
+              <span
+                v-if="item.met_confidence === false"
+                class="mr-best-effort-badge"
+                :title="`未达置信门槛 · ${item.attempts || 1} 次尝试`"
+              >best-effort ×{{ item.attempts || 1 }}</span>
             </div>
             <div class="mr-record-meta">{{ item.market }} / {{ item.symbol }} / 目标日 {{ item.target_date }}</div>
             <p v-if="item.analysis_summary" class="mr-record-copy">{{ item.analysis_summary }}</p>
@@ -72,3 +77,18 @@ const headerId = computed(() => `mr-stage-${Math.random().toString(36).slice(2, 
     </div>
   </section>
 </template>
+
+<style scoped>
+.mr-best-effort-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8e8e93;
+  background: rgba(120, 120, 128, 0.12);
+  letter-spacing: 0.2px;
+  margin-left: 4px;
+}
+</style>

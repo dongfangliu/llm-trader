@@ -38,8 +38,8 @@ def normalize_timeout_seconds(value: Any) -> int:
     return max(MIN_LLM_TIMEOUT_SECONDS, min(MAX_LLM_TIMEOUT_SECONDS, timeout))
 
 
-async def get_llm_config_from_db() -> dict:
-    """Read LLM config exclusively from admin-configured DB settings.
+async def get_llm_config_from_db(section: str = "llm") -> dict:
+    """Read LLM config from admin-configured DB settings.
 
     Raises RuntimeError if not configured, so callers get a clear error
     rather than silently falling back to empty/env values.
@@ -48,13 +48,13 @@ async def get_llm_config_from_db() -> dict:
     from src.database.db import async_session, SystemSetting
 
     async with async_session() as _db:
-        _row = await _db.get(SystemSetting, "llm")
+        _row = await _db.get(SystemSetting, section)
         if not _row:
-            raise RuntimeError("LLM 未配置，请在管理后台 Admin → Settings → LLM 中配置")
+            raise RuntimeError(f"LLM 未配置 (section={section})，请在管理后台 Admin → Settings 中配置")
         cfg = _json.loads(_row.value)
 
     if not cfg.get("api_key"):
-        raise RuntimeError("LLM API Key 未配置，请在管理后台 Admin → Settings → LLM 中配置")
+        raise RuntimeError(f"LLM API Key 未配置 (section={section})，请在管理后台 Admin → Settings 中配置")
 
     return {
         "provider": cfg.get("provider", "openai"),
@@ -67,6 +67,84 @@ async def get_llm_config_from_db() -> dict:
         "thinking_enabled": bool(cfg.get("thinking_enabled", False)),
         "thinking_effort": cfg.get("thinking_effort", "high"),
     }
+
+
+# Defaults for model-review LLM scheduling. Kept in one place so admin defaults,
+# settings overlay, and the retry loop all stay in sync.
+MODEL_REVIEW_DEFAULTS = {
+    "confidence_threshold": 75.0,
+    "max_attempts": 3,
+    "retry_temperature_step": 0.1,
+}
+
+
+async def get_model_review_llm_config() -> dict:
+    """Read model-review LLM config, fall back to main "llm" when set to inherit.
+
+    Always returns three scheduler fields (threshold/max_attempts/step) — those
+    apply even when inheriting the base LLM provider config.
+    """
+    import json as _json
+    from src.database.db import async_session, SystemSetting
+
+    async with async_session() as _db:
+        row = await _db.get(SystemSetting, "llm_model_review")
+
+    overrides: dict = {}
+    inherit = True
+    if row:
+        try:
+            overrides = _json.loads(row.value) or {}
+        except Exception:
+            overrides = {}
+        inherit = bool(overrides.get("inherit", True))
+
+    if inherit or not overrides.get("api_key"):
+        base = await get_llm_config_from_db("llm")
+    else:
+        base = {
+            "provider": overrides.get("provider", "openai"),
+            "api_key": overrides["api_key"],
+            "base_url": overrides.get("base_url", ""),
+            "model": overrides.get("model", ""),
+            "max_tokens": int(overrides.get("max_tokens", 1500)),
+            "temperature": float(overrides.get("temperature", 0.7)),
+            "timeout_seconds": normalize_timeout_seconds(overrides.get("timeout_seconds")),
+            "thinking_enabled": bool(overrides.get("thinking_enabled", False)),
+            "thinking_effort": overrides.get("thinking_effort", "high"),
+        }
+
+    def _clamp_threshold(v) -> float:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return MODEL_REVIEW_DEFAULTS["confidence_threshold"]
+        return max(0.0, min(100.0, f))
+
+    def _clamp_attempts(v) -> int:
+        try:
+            i = int(v)
+        except (TypeError, ValueError):
+            return MODEL_REVIEW_DEFAULTS["max_attempts"]
+        return max(1, min(5, i))
+
+    def _clamp_step(v) -> float:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return MODEL_REVIEW_DEFAULTS["retry_temperature_step"]
+        return max(0.0, min(0.5, f))
+
+    base["confidence_threshold"] = _clamp_threshold(
+        overrides.get("confidence_threshold", MODEL_REVIEW_DEFAULTS["confidence_threshold"])
+    )
+    base["max_attempts"] = _clamp_attempts(
+        overrides.get("max_attempts", MODEL_REVIEW_DEFAULTS["max_attempts"])
+    )
+    base["retry_temperature_step"] = _clamp_step(
+        overrides.get("retry_temperature_step", MODEL_REVIEW_DEFAULTS["retry_temperature_step"])
+    )
+    return base
 
 
 async def analyze_with_llm(

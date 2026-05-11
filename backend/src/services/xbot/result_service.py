@@ -170,11 +170,11 @@ def _judge_hold(
 
 
 async def get_accuracy_stats(db: AsyncSession) -> dict:
-    """Compute accuracy stats for 7d, 30d, and all time."""
+    """Compute accuracy stats for 7d, 30d, all time, and high-confidence-only."""
     from datetime import timedelta
     today = date.today()
 
-    async def _count(days: Optional[int]) -> Tuple[int, int]:
+    async def _count(days: Optional[int], high_conf_only: bool = False) -> Tuple[int, int]:
         q = select(func.count()).where(
             XBotPrediction.status == "settled",
             XBotPrediction.is_correct.is_not(None),
@@ -182,6 +182,8 @@ async def get_accuracy_stats(db: AsyncSession) -> dict:
         if days:
             since = today - timedelta(days=days)
             q = q.where(XBotPrediction.prediction_date >= since)
+        if high_conf_only:
+            q = q.where(XBotPrediction.met_confidence.is_(True))
 
         total_q = q
         correct_q = q.where(XBotPrediction.is_correct.is_(True))
@@ -193,11 +195,21 @@ async def get_accuracy_stats(db: AsyncSession) -> dict:
     c7, t7 = await _count(7)
     c30, t30 = await _count(30)
     call, tall = await _count(None)
+    chc, thc = await _count(None, high_conf_only=True)
+
+    def _bucket(correct: int, total: int) -> dict:
+        return {
+            "correct": correct,
+            "total": total,
+            "pct": round(correct / total * 100) if total else 0,
+            "label": f"{correct}/{total}",
+        }
 
     return {
-        "7d": {"correct": c7, "total": t7, "pct": round(c7 / t7 * 100) if t7 else 0, "label": f"{c7}/{t7}"},
-        "30d": {"correct": c30, "total": t30, "pct": round(c30 / t30 * 100) if t30 else 0, "label": f"{c30}/{t30}"},
-        "all": {"correct": call, "total": tall, "pct": round(call / tall * 100) if tall else 0, "label": f"{call}/{tall}"},
+        "7d": _bucket(c7, t7),
+        "30d": _bucket(c30, t30),
+        "all": _bucket(call, tall),
+        "high_conf": _bucket(chc, thc),
     }
 
 

@@ -105,6 +105,16 @@ const accuracyLabel = computed(() => {
   return all.label || `${all.pct ?? 0}%`
 })
 
+const highConfAccuracyLabel = computed(() => {
+  const hc = dashboard.value?.accuracy?.high_conf
+  if (!hc) return '—'
+  return hc.label || `${hc.pct ?? 0}%`
+})
+
+const highConfSettledCount = computed(() => {
+  return dashboard.value?.accuracy?.high_conf?.total ?? 0
+})
+
 const nextAction = computed(() => {
   if (pendingPreds.value.length) {
     return { label: `${pendingPreds.value.length} 条待审核 · 立即处理`, action: 'review-first' }
@@ -597,6 +607,9 @@ onMounted(refreshAll)
         <MrMetric label="累计命中率" :value="accuracyLabel" :sub="`${dashboard?.totals?.settled ?? 0} 条已结算`">
           <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
         </MrMetric>
+        <MrMetric label="高置信命中率" :value="highConfAccuracyLabel" :sub="`${highConfSettledCount} 条达门槛`">
+          <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
+        </MrMetric>
       </div>
 
       <MrState
@@ -892,7 +905,15 @@ onMounted(refreshAll)
       </div>
       <div v-if="historyPreds.length" class="mr-list-table">
         <div v-for="p in historyPreds" :key="p.id" class="mr-list-row">
-          <div><strong>{{ p.symbol_name }}</strong><span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span></div>
+          <div>
+            <strong>{{ p.symbol_name }}</strong>
+            <span
+              v-if="p.met_confidence === false"
+              style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;color:#8e8e93;background:rgba(120,120,128,0.12);letter-spacing:0.2px;margin-left:6px;"
+              :title="`未达置信门槛 · ${p.attempts || 1} 次尝试`"
+            >best-effort ×{{ p.attempts || 1 }}</span>
+            <span>{{ p.market }} / {{ p.symbol }} / {{ p.prediction_date }}</span>
+          </div>
           <div><strong>{{ directionLabel[p.predicted_direction] || p.predicted_direction }}</strong><span>目标日 {{ p.target_date || '-' }}</span></div>
           <div><strong>{{ pctText(p.actual_change_pct) }}</strong><span>结算涨跌</span></div>
           <div class="mr-row-actions">

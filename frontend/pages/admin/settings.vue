@@ -17,6 +17,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 const tabs = [
   { key: 'llm', label: '🤖 AI 模型' },
+  { key: 'llm_model_review', label: '🔬 模型复盘 LLM' },
   { key: 'pricing', label: '💰 定价展示' },
   { key: 'afdian', label: '💳 爱发电' },
   { key: 'email', label: '📧 邮件服务' },
@@ -367,6 +368,189 @@ async function onFileChange(e: Event) {
                   <option value="max">max（更深度推理）</option>
                 </select>
               </div>
+            </div>
+          </template>
+
+          <!-- ===================== MODEL REVIEW LLM TAB ===================== -->
+          <template v-if="activeTab === 'llm_model_review'">
+            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 8px;">模型复盘专用 LLM</h2>
+            <p style="margin:0 0 20px;font-size:13px;color:#8e8e93;line-height:1.5;">独立配置 model-review 调用的 LLM，并设置置信度门槛与最大尝试次数。生成时会重复采样直到达到门槛，否则保留最高置信度结果并标记为 best-effort。</p>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <!-- Inherit toggle -->
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">
+                <div style="flex:1;">
+                  <label style="font-size:13px;font-weight:600;color:#1c1c1e;">继承主 LLM 配置</label>
+                  <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;line-height:1.4;">开启时直接复用 AI 模型 Tab 中的 provider / api_key / model 等；关闭后下方字段才生效</p>
+                </div>
+                <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;flex-shrink:0;margin-top:2px;">
+                  <input
+                    type="checkbox"
+                    :checked="!!getField('llm_model_review','inherit')"
+                    @change="setField('llm_model_review','inherit',($event.target as HTMLInputElement).checked)"
+                    style="opacity:0;width:0;height:0;"
+                  />
+                  <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm_model_review','inherit')?'#007aff':'rgba(120,120,128,0.32)'}" />
+                  <span :style="{position:'absolute',top:'3px',left:getField('llm_model_review','inherit')?'21px':'3px',width:'20px',height:'20px',borderRadius:'50%',background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.3)',transition:'left 0.2s'}" />
+                </label>
+              </div>
+
+              <!-- Scheduler params (always visible) -->
+              <div>
+                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">置信度门槛（0-100）</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :value="getField('llm_model_review','confidence_threshold')"
+                  @input="setField('llm_model_review','confidence_threshold',Number(($event.target as HTMLInputElement).value))"
+                  placeholder="75"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                />
+                <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">达到该值即视为高置信预测；未达到则继续重试</p>
+              </div>
+              <div>
+                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">最大尝试次数（1-5）</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  step="1"
+                  :value="getField('llm_model_review','max_attempts')"
+                  @input="setField('llm_model_review','max_attempts',Number(($event.target as HTMLInputElement).value))"
+                  placeholder="3"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                />
+              </div>
+              <div>
+                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">重试温度步长（0-0.5）</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="0.5"
+                  step="0.05"
+                  :value="getField('llm_model_review','retry_temperature_step')"
+                  @input="setField('llm_model_review','retry_temperature_step',Number(($event.target as HTMLInputElement).value))"
+                  placeholder="0.1"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                />
+                <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">每次重试 temperature 递增该步长，避免重复采样到相同结果</p>
+              </div>
+
+              <!-- Override fields (only when inherit=false) -->
+              <template v-if="!getField('llm_model_review','inherit')">
+                <div style="height:1px;background:rgba(0,0,0,0.08);margin:4px 0;"></div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Provider</label>
+                  <input
+                    type="text"
+                    :value="getField('llm_model_review','provider')"
+                    @input="setField('llm_model_review','provider',($event.target as HTMLInputElement).value)"
+                    placeholder="openai / anthropic"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  />
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">API Key</label>
+                  <input
+                    type="password"
+                    :value="getField('llm_model_review','api_key')"
+                    @input="setField('llm_model_review','api_key',($event.target as HTMLInputElement).value)"
+                    placeholder="sk-..."
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  />
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Base URL</label>
+                  <input
+                    type="text"
+                    :value="getField('llm_model_review','base_url')"
+                    @input="setField('llm_model_review','base_url',($event.target as HTMLInputElement).value)"
+                    placeholder="https://api.deepseek.com/v1"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  />
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Model</label>
+                  <input
+                    type="text"
+                    :value="getField('llm_model_review','model')"
+                    @input="setField('llm_model_review','model',($event.target as HTMLInputElement).value)"
+                    placeholder="deepseek-v4-pro"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  />
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Max Tokens</label>
+                  <input
+                    type="number"
+                    :value="getField('llm_model_review','max_tokens')"
+                    @input="setField('llm_model_review','max_tokens',Number(($event.target as HTMLInputElement).value))"
+                    placeholder="2000"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  />
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Temperature（首次尝试）</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    :disabled="!!getField('llm_model_review','thinking_enabled')"
+                    :value="getField('llm_model_review','temperature')"
+                    @input="setField('llm_model_review','temperature',Number(($event.target as HTMLInputElement).value))"
+                    placeholder="0.6"
+                    :style="{
+                      width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:'8px',
+                      border:'1px solid rgba(0,0,0,0.12)',fontSize:'15px',outline:'none',
+                      opacity: getField('llm_model_review','thinking_enabled') ? 0.4 : 1,
+                      background: getField('llm_model_review','thinking_enabled') ? '#f2f2f7' : '#fff',
+                    }"
+                  />
+                  <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">每次重试 temperature 会在此基础上叠加"重试温度步长"</p>
+                </div>
+                <div>
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">超时（秒）</label>
+                  <input
+                    type="number"
+                    min="30"
+                    max="1800"
+                    :value="getField('llm_model_review','timeout_seconds')"
+                    @input="setField('llm_model_review','timeout_seconds',Number(($event.target as HTMLInputElement).value))"
+                    placeholder="300"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
+                  />
+                </div>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">
+                  <div style="flex:1;">
+                    <label style="font-size:13px;font-weight:600;color:#1c1c1e;">DeepSeek Thinking 模式</label>
+                    <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;line-height:1.4;">deepseek-v4-pro / deepseek-reasoner 专用</p>
+                  </div>
+                  <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;flex-shrink:0;margin-top:2px;">
+                    <input
+                      type="checkbox"
+                      :checked="!!getField('llm_model_review','thinking_enabled')"
+                      @change="setField('llm_model_review','thinking_enabled',($event.target as HTMLInputElement).checked)"
+                      style="opacity:0;width:0;height:0;"
+                    />
+                    <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm_model_review','thinking_enabled')?'#007aff':'rgba(120,120,128,0.32)'}" />
+                    <span :style="{position:'absolute',top:'3px',left:getField('llm_model_review','thinking_enabled')?'21px':'3px',width:'20px',height:'20px',borderRadius:'50%',background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.3)',transition:'left 0.2s'}" />
+                  </label>
+                </div>
+                <div v-if="getField('llm_model_review','thinking_enabled')">
+                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Reasoning Effort</label>
+                  <select
+                    :value="getField('llm_model_review','thinking_effort') || 'high'"
+                    @change="setField('llm_model_review','thinking_effort',($event.target as HTMLSelectElement).value)"
+                    style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;background:#fff;appearance:none;-webkit-appearance:none;"
+                  >
+                    <option value="high">high（默认）</option>
+                    <option value="max">max（更深度推理）</option>
+                  </select>
+                </div>
+              </template>
             </div>
           </template>
 

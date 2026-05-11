@@ -49,5 +49,9 @@ class XBotPrediction(Base):
     likes_count = Column(Integer, nullable=False, default=0)
     retweets_count = Column(Integer, nullable=False, default=0)
 
+    # Model-review retry metadata
+    attempts = Column(Integer, nullable=True)               # number of LLM calls used to produce this record
+    met_confidence = Column(Boolean, nullable=True)         # True = at least one attempt hit the configured threshold
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

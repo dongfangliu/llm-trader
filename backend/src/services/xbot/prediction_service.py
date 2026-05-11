@@ -68,7 +68,7 @@ async def _analyze_stock(
     target_date: date,
 ) -> XBotPrediction:
     from src.services.data.data_service import fetch_market_data
-    from src.services.llm.llm_service import analyze_with_llm, get_llm_config_from_db
+    from src.services.llm.llm_service import get_model_review_llm_config
 
     df = await fetch_market_data(
         symbol=symbol,
@@ -81,21 +81,8 @@ async def _analyze_stock(
     if df is None or df.empty:
         raise ValueError(f"No market data for {symbol}")
 
-    llm_cfg = await get_llm_config_from_db()
-    result = await analyze_with_llm(
-        df=df,
-        symbol=symbol,
-        market=market,
-        provider=llm_cfg["provider"],
-        api_key=llm_cfg["api_key"],
-        base_url=llm_cfg["base_url"],
-        model=llm_cfg["model"],
-        max_tokens=llm_cfg["max_tokens"],
-        temperature=llm_cfg["temperature"],
-        timeout=llm_cfg["timeout_seconds"],
-        thinking_enabled=llm_cfg["thinking_enabled"],
-        thinking_effort=llm_cfg["thinking_effort"],
-    )
+    llm_cfg = await get_model_review_llm_config()
+    result, attempts, met_confidence = await _analyze_with_retry(llm_cfg, df, symbol, market)
 
     direction = _map_action_to_direction(result.get("action", "hold"))
     confidence = _extract_confidence(result)
@@ -122,7 +109,70 @@ async def _analyze_stock(
         risk_analysis=result.get("risk_analysis"),
         execution_plan=result.get("execution_plan"),
         status="pending",
+        attempts=attempts,
+        met_confidence=met_confidence,
     )
+
+
+async def _analyze_with_retry(
+    llm_cfg: dict,
+    df,
+    symbol: str,
+    market: str,
+):
+    """Repeatedly sample the LLM until a result clears the configured confidence
+    threshold, then return that result. If no attempt clears, return the
+    best-effort result (highest confidence seen).
+
+    Returns: (result_dict, attempts_used, met_threshold)
+    """
+    from src.services.llm.llm_service import analyze_with_llm
+
+    threshold = float(llm_cfg.get("confidence_threshold", 75.0))
+    max_attempts = int(llm_cfg.get("max_attempts", 3))
+    step = float(llm_cfg.get("retry_temperature_step", 0.1))
+    base_temp = float(llm_cfg.get("temperature", 0.7))
+
+    best_conf = -1.0
+    best_result = None
+    last_error: Exception | None = None
+
+    for i in range(max_attempts):
+        temp_i = max(0.0, min(2.0, base_temp + i * step))
+        try:
+            r = await analyze_with_llm(
+                df=df,
+                symbol=symbol,
+                market=market,
+                provider=llm_cfg["provider"],
+                api_key=llm_cfg["api_key"],
+                base_url=llm_cfg["base_url"],
+                model=llm_cfg["model"],
+                max_tokens=llm_cfg["max_tokens"],
+                temperature=temp_i,
+                timeout=llm_cfg["timeout_seconds"],
+                thinking_enabled=llm_cfg["thinking_enabled"],
+                thinking_effort=llm_cfg["thinking_effort"],
+            )
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[ModelReview] {symbol} attempt {i+1}/{max_attempts} failed: {e}")
+            continue
+
+        c = _extract_confidence(r) or 0.0
+        logger.info(f"[ModelReview] {symbol} attempt {i+1}/{max_attempts} confidence={c} threshold={threshold} temp={temp_i:.2f}")
+        if c >= threshold:
+            return r, i + 1, True
+        if c > best_conf:
+            best_conf = c
+            best_result = r
+
+    if best_result is None:
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError(f"LLM 未能产出有效预测 ({max_attempts} 次尝试均失败)")
+
+    return best_result, max_attempts, False
 
 
 async def regenerate_prediction(existing: XBotPrediction, db: AsyncSession) -> XBotPrediction:
@@ -150,6 +200,7 @@ async def regenerate_prediction(existing: XBotPrediction, db: AsyncSession) -> X
         "predicted_direction", "confidence", "target_price", "stop_loss",
         "close_price", "analysis_summary", "market_diagnosis",
         "opportunity_assessment", "risk_analysis", "execution_plan",
+        "attempts", "met_confidence",
     ):
         setattr(existing, attr, getattr(fresh, attr))
     existing.status = "pending"

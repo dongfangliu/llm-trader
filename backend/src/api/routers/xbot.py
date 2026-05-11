@@ -1026,5 +1026,7 @@ def _pred_dict(p: XBotPrediction) -> dict:
         "actual_close": p.actual_close,
         "actual_change_pct": p.actual_change_pct,
         "is_correct": p.is_correct,
+        "attempts": p.attempts,
+        "met_confidence": p.met_confidence,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
