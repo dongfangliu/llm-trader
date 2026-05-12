@@ -35,6 +35,7 @@ function confidenceLabel(value: number | null | undefined) {
 
 function statusLabel(p: Prediction) {
   if (isAwaitingResult(p)) return '待验证'
+  if (p?.settlement_verdict_label) return p.settlement_verdict_label
   if (p?.is_correct === true) return '命中'
   if (p?.is_correct === false) return '未命中'
   return '已结算'

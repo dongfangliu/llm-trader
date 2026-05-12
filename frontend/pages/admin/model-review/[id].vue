@@ -79,9 +79,8 @@ async function loadDetail() {
 
 async function loadQueue() {
   try {
-    const today = new Date().toISOString().slice(0, 10)
     const res = await api.get('/api/admin/xbot/predictions', {
-      params: { prediction_date: today, status: 'pending', limit: 100 },
+      params: { status: 'pending', limit: 1000 },
       headers: getAdminHeaders(),
     })
     queueIds.value = (res.data || []).map((p: any) => p.id)
@@ -95,7 +94,7 @@ async function loadCardPreview() {
   previewError.value = ''
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   previewUrl.value = ''
-  const variant = pred.value.actual_change_pct != null ? 'proof' : 'promise'
+  const variant = hasCompleteSettlement(pred.value) ? 'proof' : 'promise'
   previewLoading.value = true
   try {
     const res = await api.get(`/api/admin/xbot/predictions/${pred.value.id}/card-preview`, {
@@ -109,6 +108,10 @@ async function loadCardPreview() {
   } finally {
     previewLoading.value = false
   }
+}
+
+function hasCompleteSettlement(p: Record<string, any> | null | undefined) {
+  return p?.actual_close != null && p?.actual_change_pct != null && p?.is_correct != null
 }
 
 const checklist = computed(() => {
@@ -284,12 +287,13 @@ const statusText = computed(() => {
     : s === 'rejected' ? '已拒绝'
     : s || '-'
 })
-const previewVariantText = computed(() => pred.value?.actual_change_pct != null ? 'Proof 结算卡' : 'Promise 预测卡')
+const previewVariantText = computed(() => hasCompleteSettlement(pred.value) ? 'Proof 结算卡' : 'Promise 预测卡')
 const resultStatusText = computed(() => {
   if (!pred.value) return '-'
   if (pred.value.status === 'pending') return '待审核'
   if (pred.value.status === 'rejected') return '已拒绝'
   if (isAwaitingResult(pred.value)) return '待验证'
+  if (pred.value.settlement_verdict_label) return pred.value.settlement_verdict_label
   if (pred.value.is_correct === true) return '命中'
   if (pred.value.is_correct === false) return '未命中'
   return pred.value.status === 'settled' ? '已结算' : '-'
@@ -319,6 +323,14 @@ const resultTone = computed(() => {
   if (pred.value.is_correct === true) return 'hit'
   if (pred.value.is_correct === false) return 'miss'
   return 'settled'
+})
+const settlementRuleText = computed(() => pred.value?.settlement_rule_label || '')
+const settlementExplanation = computed(() => pred.value?.settlement_explanation || '')
+const settlementBandText = computed(() => {
+  const low = pred.value?.settlement_band_low
+  const high = pred.value?.settlement_band_high
+  if (low == null || high == null) return ''
+  return `${formatPrice(low)} - ${formatPrice(high)}`
 })
 const publicLead = computed(() => {
   if (!pred.value) return ''
@@ -464,7 +476,7 @@ onUnmounted(() => {
             <div>
               <div class="mr-kicker">模型信号</div>
               <strong>{{ directionText }}</strong>
-              <small>置信度 {{ confidenceLabel }}，结算状态 {{ resultStatusText }}。</small>
+              <small>置信度 {{ confidenceLabel }}，结算状态 {{ resultStatusText }}<template v-if="settlementRuleText"> · {{ settlementRuleText }}</template>。</small>
             </div>
             <MrStatusBadge :status="pred.status" :label="statusText" />
           </aside>
@@ -503,6 +515,7 @@ onUnmounted(() => {
           <div class="mr-price-row"><span>止损价</span><strong>{{ formatPrice(pred.stop_loss) }}</strong></div>
           <div class="mr-price-row"><span>目标日</span><strong>{{ pred.target_date || '-' }}</strong></div>
           <div class="mr-price-row"><span>验证状态</span><strong>{{ resultStatusText }}</strong></div>
+          <div v-if="settlementBandText" class="mr-price-row"><span>震荡区间</span><strong>{{ settlementBandText }}</strong></div>
           <div class="mr-price-row"><span>结算涨跌</span><strong>{{ settlementText }}</strong></div>
 
           <div class="mr-toolbar mr-actions-desktop" style="margin: 16px 0 0">
@@ -575,7 +588,7 @@ onUnmounted(() => {
               <figure class="mr-public-figure">
                 <img v-if="previewUrl" :src="previewUrl" alt="公开页卡图预览">
                 <div v-else class="mr-skeleton-card" aria-hidden="true" />
-                <figcaption>{{ pred.actual_change_pct == null ? '预测卡片预览' : '原始预测卡片' }}</figcaption>
+                <figcaption>{{ hasCompleteSettlement(pred) ? '结算卡片预览' : '预测卡片预览' }}</figcaption>
               </figure>
             </header>
 
@@ -583,7 +596,7 @@ onUnmounted(() => {
               <div class="mr-result-cell">
                 <span>{{ isAwaitingResult(pred) ? '验证状态' : '结算结果' }}</span>
                 <strong>{{ resultStatusText }}</strong>
-                <p>{{ isDraftStatus ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : isAwaitingResult(pred) ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : `预测方向 ${directionText}，实际涨跌 ${settlementText}` }}</p>
+                <p>{{ settlementExplanation || (isDraftStatus ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : isAwaitingResult(pred) ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : `预测方向 ${directionText}，实际涨跌 ${settlementText}`) }}</p>
               </div>
               <div class="mr-result-cell"><span>实际涨跌</span><strong>{{ settlementText }}</strong></div>
               <div class="mr-result-cell"><span>目标日</span><strong>{{ pred.target_date || '-' }}</strong></div>

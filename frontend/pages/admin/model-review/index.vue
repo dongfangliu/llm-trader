@@ -71,6 +71,9 @@ const pendingPreds = computed(() => todayPreds.value.filter(p => p.status === 'p
 const approvedPreds = computed(() => todayPreds.value.filter(p => p.status === 'approved' || p.status === 'posted'))
 const settledPreds = computed(() => todayPreds.value.filter(p => p.status === 'settled'))
 const rejectedPreds = computed(() => todayPreds.value.filter(p => p.status === 'rejected'))
+const dueSettlePreds = computed(() => approvedPreds.value.filter(p =>
+  p.target_date && p.target_date <= localDateString() && !hasCompleteSettlement(p),
+))
 const candidateGroups = computed<Record<string, Candidate[]>>(() => {
   const term = candidateSearch.value.trim().toLowerCase()
   const matches = (c: Candidate) => {
@@ -158,12 +161,20 @@ async function loadDashboard() {
 }
 
 async function loadTodayPreds() {
-  const today = new Date().toISOString().slice(0, 10)
-  const res = await api.get('/api/admin/xbot/predictions', {
-    params: { prediction_date: today, limit: 100 },
-    headers: getAdminHeaders(),
-  })
-  todayPreds.value = res.data
+  const all: Prediction[] = []
+  const limit = 500
+  let offset = 0
+  while (true) {
+    const res = await api.get('/api/admin/xbot/predictions', {
+      params: { limit, offset },
+      headers: getAdminHeaders(),
+    })
+    const batch = res.data || []
+    all.push(...batch)
+    if (batch.length < limit) break
+    offset += limit
+  }
+  todayPreds.value = all
 }
 
 async function loadSettings() {
@@ -320,40 +331,55 @@ async function rejectPred(pred: Prediction) {
   }
 }
 
-async function settleRecords() {
-  if (!confirm('确认结算已通过且到达目标日的模型复盘记录？')) return
+function localDateString(d = new Date()) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function historyDaysForTarget(targetDate: string | null | undefined) {
+  if (!targetDate) return 10
+  const target = new Date(`${targetDate}T00:00:00`)
+  if (Number.isNaN(target.getTime())) return 10
+  const now = new Date()
+  const diff = Math.ceil((now.getTime() - target.getTime()) / 86400000)
+  return Math.max(10, diff + 10)
+}
+
+function hasCompleteSettlement(p: Prediction) {
+  return p.actual_close != null && p.actual_change_pct != null && p.is_correct != null
+}
+
+async function settlePredictionsBatch(records: Prediction[], confirmText: string, emptyText: string, donePrefix: string) {
+  if (!records.length) {
+    showMsg(emptyText)
+    return
+  }
+  if (!confirm(confirmText)) return
   loading.value = 'settle'
   settleProgress.value = null
   try {
-    const today = new Date().toISOString().slice(0, 10)
-    const pendingForToday = approvedPreds.value.filter(p =>
-      p.target_date === today && p.actual_close == null,
-    )
-
-    if (!pendingForToday.length) {
-      showMsg('暂无到达目标日的待结算记录')
-      return
-    }
-
-    settleProgress.value = { fetched: 0, total: pendingForToday.length, failed: 0 }
+    settleProgress.value = { fetched: 0, total: records.length, failed: 0 }
 
     // 浏览器并发拉行情，限制并发 6
-    const settlements: { market: string; symbol: string; close: number; high?: number; low?: number }[] = []
+    const settlements: { id: number; market: string; symbol: string; target_date: string; close: number; high?: number; low?: number }[] = []
     const concurrency = 6
     let cursor = 0
 
     async function worker() {
-      while (cursor < pendingForToday.length) {
+      while (cursor < records.length) {
         const idx = cursor++
-        const pred = pendingForToday[idx]
+        const pred = records[idx]
         try {
-          const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', 5)
+          const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', historyDaysForTarget(pred.target_date))
           const targetBar = bars.find(b => b.d === pred.target_date)
-            ?? (bars.length ? bars[bars.length - 1] : null)
           if (targetBar && targetBar.c > 0) {
             settlements.push({
+              id: pred.id,
               market: pred.market,
               symbol: pred.symbol,
+              target_date: pred.target_date,
               close: targetBar.c,
               high: targetBar.h,
               low: targetBar.l,
@@ -382,12 +408,12 @@ async function settleRecords() {
       { settlements },
       { headers: getAdminHeaders() },
     )
-    const { settled, missing } = res.data
-    const failedCount = settleProgress.value.failed + (missing?.length || 0)
+    const { settled, missing, skipped, invalid } = res.data
+    const failedCount = settleProgress.value.failed + (missing?.length || 0) + (skipped?.length || 0) + (invalid?.length || 0)
     if (failedCount) {
-      showMsg(`结算 ${settled} 条；${failedCount} 条未匹配或拉取失败`, failedCount > settled ? 'err' : 'ok')
+      showMsg(`${donePrefix} ${settled} 条；${failedCount} 条未匹配、跳过或拉取失败`, failedCount > settled ? 'err' : 'ok')
     } else {
-      showMsg(`结算 ${settled} 条`)
+      showMsg(`${donePrefix} ${settled} 条`)
     }
     await Promise.all([refreshAll(), loadHistory()])
   } catch (e: any) {
@@ -396,6 +422,24 @@ async function settleRecords() {
     loading.value = ''
     settleProgress.value = null
   }
+}
+
+async function settleRecords() {
+  await settlePredictionsBatch(
+    dueSettlePreds.value,
+    `确认结算全部到期待结算记录（${dueSettlePreds.value.length} 条）？`,
+    '暂无到达目标日的待结算记录',
+    '结算',
+  )
+}
+
+async function resettleSettledRecords() {
+  await settlePredictionsBatch(
+    settledPreds.value,
+    `确认按最新规则重新结算全部已结算记录（${settledPreds.value.length} 条）？会覆盖旧结果。`,
+    '暂无已结算记录可重新结算',
+    '重新结算',
+  )
 }
 
 async function repredictPred(pred: Prediction) {
@@ -421,9 +465,8 @@ async function settleSinglePred(pred: Prediction) {
   if (!confirm(`为 ${pred.symbol_name || pred.symbol} 拉取目标日 ${pred.target_date} 收盘价并结算？${note}`)) return
   loading.value = `settle-${pred.id}`
   try {
-    const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', 5)
+    const bars = await fetchOhlcv(pred.symbol, pred.market, 'daily', historyDaysForTarget(pred.target_date))
     const targetBar = bars.find(b => b.d === pred.target_date)
-      ?? (bars.length ? bars[bars.length - 1] : null)
     if (!targetBar || !(targetBar.c > 0)) {
       showMsg('未拉到目标日收盘价，结算失败', 'err')
       return
@@ -466,8 +509,8 @@ async function approveAllPending() {
   if (!ids.length) return
   loading.value = 'bulk-approve'
   try {
-    await api.post('/api/admin/xbot/actions/bulk-approve', { ids }, { headers: getAdminHeaders() })
-    showMsg(`${ids.length} 条记录已通过`)
+    const res = await api.post('/api/admin/xbot/actions/bulk-approve', { ids }, { headers: getAdminHeaders() })
+    showMsg(`${res.data?.approved ?? 0} 条记录已通过`)
     await refreshAll()
   } catch (e: any) {
     showMsg(apiErrorMessage(e, '批量通过失败'), 'err')
@@ -496,9 +539,14 @@ function pctText(v: number | null | undefined) {
 }
 
 function hitLabel(p: Prediction) {
+  if (p.settlement_verdict_label) return p.settlement_verdict_label
   if (p.is_correct === true) return '命中'
   if (p.is_correct === false) return '未命中'
   return '持平'
+}
+
+function settlementRuleLabel(p: Prediction) {
+  return p.predicted_direction === 'hold' && p.settlement_rule_label ? p.settlement_rule_label : ''
 }
 
 function hitClass(p: Prediction) {
@@ -600,7 +648,7 @@ onMounted(refreshAll)
     </MrMotion>
 
     <nav class="mr-tabs" aria-label="模型复盘分区">
-      <button :class="{ active: activePanel === 'workflow' }" @click="activePanel = 'workflow'">今日工作流</button>
+      <button :class="{ active: activePanel === 'workflow' }" @click="activePanel = 'workflow'">工作流</button>
       <button :class="{ active: activePanel === 'history' }" @click="activePanel = 'history'; loadHistory()">历史复盘</button>
       <button :class="{ active: activePanel === 'settings' }" @click="activePanel = 'settings'">运行设置</button>
     </nav>
@@ -627,7 +675,7 @@ onMounted(refreshAll)
       <MrState
         v-if="initialLoading"
         title="正在读取工作流"
-        text="加载今日记录、调度状态和运行设置。"
+        text="加载全部工作流记录、调度状态和运行设置。"
         variant="loading"
       />
 
@@ -726,7 +774,7 @@ onMounted(refreshAll)
                   结算中
                 </template>
                 <template v-else>
-                  结算到期
+                  结算到期（{{ dueSettlePreds.length }}）
                 </template>
               </MrButton>
               <NuxtLink class="mr-btn mr-btn-secondary mr-btn-small" to="/admin/xbot-card-preview">
@@ -884,7 +932,7 @@ onMounted(refreshAll)
               <div class="mr-panel-header">
                 <div>
                   <h3 class="mr-subpanel-title">高级批量操作</h3>
-                  <p class="mr-panel-sub">建议先逐条审核；批量操作仅在流程稳定后使用。</p>
+                  <p class="mr-panel-sub">对当前工作流全部记录执行快速操作，重算会覆盖旧结算结果。</p>
                 </div>
                 <MrButton variant="ghost" size="sm" @click="showAdvanced = !showAdvanced">
                   <template #icon><PhSlidersHorizontal :size="16" weight="bold" /></template>
@@ -893,7 +941,13 @@ onMounted(refreshAll)
               </div>
               <div v-if="showAdvanced" class="mr-toolbar">
                 <MrButton variant="secondary" :disabled="!pendingPreds.length || loading === 'bulk-approve'" @click="approveAllPending">
-                  批量通过当前待审核（{{ pendingPreds.length }}）
+                  批量通过待审核（{{ pendingPreds.length }}）
+                </MrButton>
+                <MrButton variant="secondary" :disabled="!dueSettlePreds.length || loading === 'settle'" @click="settleRecords">
+                  结算全部到期（{{ dueSettlePreds.length }}）
+                </MrButton>
+                <MrButton variant="secondary" :disabled="!settledPreds.length || loading === 'settle'" @click="resettleSettledRecords">
+                  重新结算已结算（{{ settledPreds.length }}）
                 </MrButton>
               </div>
             </section>
@@ -931,6 +985,7 @@ onMounted(refreshAll)
             <strong>
               {{ pctText(p.actual_change_pct) }}
               <span v-if="p.status === 'settled'" :class="['mr-hit-badge', hitClass(p)]">{{ hitLabel(p) }}</span>
+              <span v-if="settlementRuleLabel(p)" class="mr-rule-badge">{{ settlementRuleLabel(p) }}</span>
             </strong>
             <span>结算涨跌</span>
           </div>
@@ -1131,6 +1186,21 @@ onMounted(refreshAll)
 .mr-hit-badge.is-flat {
   color: #8e8e93;
   background: rgba(120, 120, 128, 0.14);
+}
+
+.mr-rule-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border: 1px solid rgba(47, 111, 104, .22);
+  border-radius: 999px;
+  color: var(--mr-accent-strong);
+  background: rgba(47, 111, 104, .07);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.2px;
+  vertical-align: middle;
 }
 
 @media (max-width: 760px) {

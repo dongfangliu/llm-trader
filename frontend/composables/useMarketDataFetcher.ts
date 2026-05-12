@@ -58,12 +58,16 @@ function periodToKlt(period: string): number {
 /** 计算拉取日期范围，多取 90 天供 MA60 预热 */
 function calcDateRange(historyDays: number): { beg: string; end: string } {
   const now = new Date()
-  const endDate = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const localYmd = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}${m}${day}`
+  }
+  const endDate = localYmd(now)
   const begDate = new Date(now.getTime() - (historyDays + 90) * 86400 * 1000)
-    .toISOString()
-    .slice(0, 10)
-    .replace(/-/g, '')
-  return { beg: begDate, end: endDate }
+  const beg = localYmd(begDate)
+  return { beg, end: endDate }
 }
 
 /** 解析东财 klines 字符串数组 → OhlcvBar[] */
@@ -193,7 +197,7 @@ export function fetchOhlcv(
   period: string,
   historyDays: number = 90,
 ): Promise<OhlcvBar[]> {
-  const key = `${market}:${symbol.toUpperCase()}:${period}`
+  const key = `${market}:${symbol.toUpperCase()}:${period}:${historyDays}`
 
   if (_inFlight.has(key)) return _inFlight.get(key)!
 

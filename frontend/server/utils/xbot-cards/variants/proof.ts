@@ -19,8 +19,11 @@ import {
  */
 export function renderProof(p: CardPayload): any {
   const dir       = getDir(p)
-  const correct   = p.is_correct ?? false
-  const verdictCn = correct ? '兑现' : '失效'
+  const correct   = p.is_correct === true
+  const isHold    = dir === 'hold'
+  const verdictCn = isHold
+    ? (p.settlement_verdict_label || (correct ? '区间命中' : '区间失效'))
+    : (correct ? '兑现' : '失效')
   // 注意：✗ (U+2717) 在很多 CJK 字体里没有 glyph，会显示成 [x] 框；
   // 改用 × (U+00D7 multiplication sign)，NotoSansSC 等字体都覆盖。
   const vGlyph    = correct ? '✓' : '×'
@@ -58,6 +61,12 @@ export function renderProof(p: CardPayload): any {
   const actualText = actualPct == null ? '待结算' : fmtPct(actualPct)
   const targetText = upside == null ? '—' : fmtPct(upside)
   const actualColor = actualPct == null ? dimColor : stampColor
+  const bandText = p.settlement_band_low != null && p.settlement_band_high != null
+    ? `${fmtPrice(p.settlement_band_low)} - ${fmtPrice(p.settlement_band_high)}`
+    : '—'
+  const ruleLabel = p.settlement_rule_label || (isHold ? '收盘区间' : 'vs 目标')
+  const ruleValue = isHold ? bandText : targetText
+  const explanation = p.settlement_explanation || (isHold ? '目标日收盘价按区间验证' : '按收盘方向验证')
 
   const MONO = 'NotoSansSC'
 
@@ -180,10 +189,19 @@ export function renderProof(p: CardPayload): any {
         h('div', { fontSize: '32px', fontWeight: '800', letterSpacing: '-1px', color: actualColor }, txt(actualText)),
       ),
       h('div', { display: 'flex', alignItems: 'baseline', gap: '10px' },
-        h('div', { fontSize: '15px', letterSpacing: '4px', color: dimColor, fontWeight: '600' }, txt('vs 目标')),
-        h('div', { fontSize: '20px', color: dimColor, fontWeight: '700' }, txt(targetText)),
+        h('div', { fontSize: '15px', letterSpacing: '4px', color: dimColor, fontWeight: '600' }, txt(ruleLabel)),
+        h('div', { fontSize: '20px', color: dimColor, fontWeight: '700' }, txt(ruleValue)),
       ),
     ),
+
+    h('div', {
+      display: 'flex',
+      marginTop: '10px',
+      fontSize: '15px',
+      color: dimColor,
+      letterSpacing: '1px',
+      fontWeight: '600',
+    }, txt(explanation)),
 
     // ── 下方留白区：左侧摘要 / 右下角印章（asymmetric anchor） ──
     // 节奏：当时摘要小标 → 引文 → 留白 → 印章
@@ -237,9 +255,9 @@ export function renderProof(p: CardPayload): any {
         borderRadius: '14px',
         padding: '26px 60px',
         color: stampColor,
-        fontSize: '82px',
+        fontSize: isHold ? '68px' : '82px',
         fontWeight: '900',
-        letterSpacing: '18px',
+        letterSpacing: isHold ? '8px' : '18px',
         lineHeight: '1',
         transform: 'rotate(-7deg)',
         opacity: '0.88',

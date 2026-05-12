@@ -9,6 +9,8 @@ export interface SummaryItem {
   predicted_direction: Direction
   actual_change_pct: number | null
   is_correct: boolean | null
+  settlement_verdict_label?: string | null
+  settlement_rule_label?: string | null
 }
 
 export interface CardPayload {
@@ -34,7 +36,12 @@ export interface CardPayload {
   execution_plan?: string
   disclaimer?: string
   actual_change_pct?: number
-  is_correct?: boolean
+  is_correct?: boolean | null
+  settlement_rule_label?: string | null
+  settlement_verdict_label?: string | null
+  settlement_explanation?: string | null
+  settlement_band_low?: number | null
+  settlement_band_high?: number | null
   brand_name?: string
   /** Summary-card specific */
   summary_items?: SummaryItem[]

@@ -77,6 +77,97 @@ async def settle_predictions_with_prices(
     return settled, missing
 
 
+async def settle_prediction_items_with_prices(
+    db: AsyncSession,
+    items: list[dict],
+) -> tuple[int, list[dict], list[dict]]:
+    """Settle/re-settle explicit prediction items using caller-supplied prices.
+
+    Items should include either ``id`` or ``(market, symbol, target_date)`` plus
+    a positive close. This is intentionally explicit so historical re-settlement
+    cannot accidentally apply one symbol's latest bar to a different prediction
+    date.
+    """
+    settled = 0
+    missing: list[dict] = []
+    skipped: list[dict] = []
+
+    for item in items:
+        pred = None
+        pred_id = item.get("id")
+        market = item.get("market")
+        symbol = item.get("symbol")
+        target_date = item.get("target_date")
+
+        if pred_id is not None:
+            pred = await db.get(XBotPrediction, int(pred_id))
+        elif market and symbol and target_date:
+            try:
+                target_day = date.fromisoformat(str(target_date))
+            except ValueError:
+                target_day = None
+            if target_day:
+                result = await db.execute(
+                    select(XBotPrediction).where(
+                        XBotPrediction.market == market,
+                        XBotPrediction.symbol == symbol,
+                        XBotPrediction.target_date == target_day,
+                    ).limit(1)
+                )
+                pred = result.scalars().first()
+
+        if pred is None:
+            missing.append({
+                "id": pred_id,
+                "market": market,
+                "symbol": symbol,
+                "target_date": target_date,
+                "reason": "not_found",
+            })
+            continue
+
+        if pred.status not in ("approved", "posted", "settled"):
+            skipped.append({
+                "id": pred.id,
+                "market": pred.market,
+                "symbol": pred.symbol,
+                "target_date": str(pred.target_date),
+                "status": pred.status,
+                "reason": "status_not_settleable",
+            })
+            continue
+
+        try:
+            if _apply_settlement(
+                pred,
+                item.get("close"),
+                high=item.get("high"),
+                low=item.get("low"),
+            ):
+                settled += 1
+            else:
+                skipped.append({
+                    "id": pred.id,
+                    "market": pred.market,
+                    "symbol": pred.symbol,
+                    "target_date": str(pred.target_date),
+                    "status": pred.status,
+                    "reason": "invalid_settlement_inputs",
+                })
+        except Exception as e:
+            logger.error(f"Failed to settle item {item}: {e}")
+            skipped.append({
+                "id": getattr(pred, "id", pred_id),
+                "market": getattr(pred, "market", market),
+                "symbol": getattr(pred, "symbol", symbol),
+                "target_date": str(getattr(pred, "target_date", target_date)),
+                "reason": str(e) or e.__class__.__name__,
+            })
+
+    await db.commit()
+    return settled, missing, skipped
+
+
 async def _load_pending_settlements(
     db: AsyncSession, market: str | None, target_day: date
 ):
@@ -140,15 +231,27 @@ def _judge_hold(
     high: Optional[float],
     low: Optional[float],
 ) -> bool:
-    """震荡命中判定：价格全程留在 (lower, upper) 带内即命中。
+    """震荡命中判定：目标日收盘价留在 [lower, upper] 带内即命中。
 
     优先使用 target_price 和 stop_loss 作为带边界（取 min/max）。若它们
     缺失或没有把入场价夹在中间，则退回到 ±_HOLD_FALLBACK_BAND_PCT% 兜底带。
-    没有 high/low 时用 close 作代理（精度退化但不影响逻辑）。
+    high/low 参数保留用于兼容旧调用，但不参与震荡结算，避免盘中影线误杀
+    收盘仍在震荡带内的记录。
     """
+    band = get_hold_settlement_band(pred)
+    if not band:
+        return False
+    lower, upper = band
+    return lower <= float(actual_close) <= upper
+
+
+def get_hold_settlement_band(pred: XBotPrediction) -> Optional[tuple[float, float]]:
+    """Return the effective settlement band for a hold prediction."""
     entry = pred.close_price
     target = pred.target_price
     stop = pred.stop_loss
+    if entry is None or entry <= 0:
+        return None
 
     upper: Optional[float] = None
     lower: Optional[float] = None
@@ -164,9 +267,41 @@ def _judge_hold(
         upper = entry + margin
         lower = entry - margin
 
-    h = high if high is not None and high > 0 else actual_close
-    l = low if low is not None and low > 0 else actual_close
-    return l > lower and h < upper
+    return float(lower), float(upper)
+
+
+def settlement_display_fields(pred: XBotPrediction) -> dict:
+    """Derived copy/metadata used by admin UI, public pages, and cards."""
+    is_hold = pred.predicted_direction == "hold"
+    is_settled = pred.actual_close is not None and pred.actual_change_pct is not None and pred.is_correct is not None
+
+    if is_hold:
+        band = get_hold_settlement_band(pred)
+        verdict = None
+        if is_settled:
+            verdict = "区间命中" if pred.is_correct is True else "区间失效"
+        explanation = "目标日收盘价留在目标价与止损价形成的区间" if pred.is_correct is True else "目标日收盘价离开目标价与止损价形成的区间"
+        if not is_settled:
+            explanation = "目标日收盘价将按目标价与止损价形成的区间验证"
+        return {
+            "settlement_rule_label": "收盘区间",
+            "settlement_verdict_label": verdict,
+            "settlement_explanation": explanation,
+            "settlement_band_low": round(band[0], 4) if band else None,
+            "settlement_band_high": round(band[1], 4) if band else None,
+        }
+
+    verdict = None
+    if is_settled:
+        verdict = "命中" if pred.is_correct is True else "未命中"
+    direction = "上涨" if pred.predicted_direction == "up" else "下跌" if pred.predicted_direction == "down" else "方向"
+    return {
+        "settlement_rule_label": "方向命中",
+        "settlement_verdict_label": verdict,
+        "settlement_explanation": f"目标日收盘价相对基准收盘价{direction}即为命中",
+        "settlement_band_low": None,
+        "settlement_band_high": None,
+    }
 
 
 async def get_accuracy_stats(db: AsyncSession) -> dict:

@@ -56,14 +56,18 @@ export function renderSummary(p: CardPayload): any {
   const BRAND_C = CL.BRAND
 
   // ── Stamp for each row ────────────────────────────────────
-  const stamp = (correct: boolean | null) => {
+  const stamp = (item: SummaryItem) => {
+    const correct = item.is_correct === true
+    const isHold = item.predicted_direction === 'hold'
     const color = correct ? CL.UP : CL.DOWN    // 命中=红（涨色），未中=绿（跌色）
-    const label = correct ? '命中 ✓' : '未中 ✗'
+    const label = item.settlement_verdict_label || (isHold
+      ? (correct ? '区间命中' : '区间失效')
+      : (correct ? '命中 ✓' : '未中 ×'))
     return h('div', {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: '148px',
+      width: isHold ? '178px' : '148px',
     },
       h('div', {
         display: 'flex',
@@ -71,10 +75,10 @@ export function renderSummary(p: CardPayload): any {
         justifyContent: 'center',
         border: `3.5px solid ${color}`,
         borderRadius: '6px',
-        padding: '10px 20px',
-        fontSize: '30px',
+        padding: isHold ? '9px 16px' : '10px 20px',
+        fontSize: isHold ? '24px' : '30px',
         fontWeight: '900',
-        letterSpacing: '8px',
+        letterSpacing: isHold ? '4px' : '8px',
         color,
         transform: 'rotate(-8deg)',
       }, txt(label))
@@ -119,7 +123,7 @@ export function renderSummary(p: CardPayload): any {
         txt(item.actual_change_pct != null ? fmtPct(item.actual_change_pct) : '—')
       ),
       // Stamp
-      stamp(item.is_correct),
+      stamp(item),
     )
 
   // ── Main vnode ────────────────────────────────────────────

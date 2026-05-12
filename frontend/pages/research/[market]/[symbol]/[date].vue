@@ -46,6 +46,7 @@ const marketLabel = computed(() => MARKET_LABELS[market.value] || market.value)
 const awaitingResult = computed(() => ['approved', 'posted'].includes(record.value?.status) && record.value?.actual_change_pct == null && record.value?.is_correct == null)
 const resultLabel = computed(() => {
   if (awaitingResult.value) return '待验证'
+  if (record.value?.settlement_verdict_label) return record.value.settlement_verdict_label
   if (record.value?.is_correct === true) return '命中'
   if (record.value?.is_correct === false) return '未命中'
   return '已结算'
@@ -62,6 +63,9 @@ const priceMetrics = computed(() => [
   { label: '基准收盘', value: record.value?.close_price == null ? '-' : Number(record.value.close_price).toFixed(2) },
   { label: '目标价', value: record.value?.target_price == null ? '-' : Number(record.value.target_price).toFixed(2) },
   { label: '止损价', value: record.value?.stop_loss == null ? '-' : Number(record.value.stop_loss).toFixed(2) },
+  ...(record.value?.settlement_band_low != null && record.value?.settlement_band_high != null
+    ? [{ label: '震荡区间', value: `${Number(record.value.settlement_band_low).toFixed(2)} - ${Number(record.value.settlement_band_high).toFixed(2)}` }]
+    : []),
   { label: '实际收盘', value: record.value?.actual_close == null ? '待结算' : Number(record.value.actual_close).toFixed(2) },
 ])
 const analysisSections = computed(() => [
@@ -72,7 +76,8 @@ const analysisSections = computed(() => [
 ].filter(item => item.text))
 
 const cardVariant = computed(() => awaitingResult.value ? 'promise' : (record.value?.is_correct != null ? 'proof' : 'promise'))
-const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=${cardVariant.value}`)
+const cardVersion = computed(() => encodeURIComponent(record.value?.updated_at || record.value?.prediction_date || date.value))
+const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=${cardVariant.value}&v=${cardVersion.value}`)
 const cardUrl = computed(() => `${requestUrl.origin}${cardPath.value}`)
 
 const pageModeLabel = computed(() => awaitingResult.value ? '待验证 AI K线预测' : '已结算AI K线分析复盘')
@@ -145,6 +150,7 @@ function isAwaitingResultRow(p: any) {
 }
 function statusLabelRow(p: any) {
   if (isAwaitingResultRow(p)) return '待验证'
+  if (p?.settlement_verdict_label) return p.settlement_verdict_label
   if (p?.is_correct === true) return '命中'
   if (p?.is_correct === false) return '未命中'
   return '已结算'
@@ -173,8 +179,8 @@ const shareTitle = computed(() => `${record.value?.symbol_name || symbol.value} 
 const shareText = computed(() => description.value)
 const shareCanonical = computed(() => `${requestUrl.origin}/research/${market.value}/${symbol.value}/${date.value}`)
 
-const proofUrl = computed(() => `${requestUrl.origin}/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=proof`)
-const promiseUrl = computed(() => `${requestUrl.origin}/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=promise`)
+const proofUrl = computed(() => `${requestUrl.origin}/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=proof&v=${cardVersion.value}`)
+const promiseUrl = computed(() => `${requestUrl.origin}/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=promise&v=${cardVersion.value}`)
 
 const proofShare = useShareCard({
   url: () => proofUrl.value,
@@ -295,7 +301,7 @@ async function copyLink() {
         <div class="mr-result-cell">
           <span>{{ awaitingResult ? '验证状态' : '结算结果' }}</span>
           <strong>{{ resultLabel }}</strong>
-          <p>{{ awaitingResult ? `预测方向 ${dir}，目标日 ${record.target_date || '-'}` : `预测方向 ${dir}，实际涨跌 ${signedPct}` }}</p>
+          <p>{{ record.settlement_explanation || (awaitingResult ? `预测方向 ${dir}，目标日 ${record.target_date || '-'}` : `预测方向 ${dir}，实际涨跌 ${signedPct}`) }}</p>
         </div>
         <div class="mr-result-cell"><span>实际涨跌</span><strong>{{ signedPct }}</strong></div>
         <div class="mr-result-cell"><span>目标日</span><strong>{{ record.target_date || '-' }}</strong></div>

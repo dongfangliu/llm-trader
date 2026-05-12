@@ -60,6 +60,16 @@ function stockCode(item: SummaryItem) {
   const suffix = item.symbol.startsWith('6') ? 'SH' : 'SZ'
   return `${item.symbol} · ${suffix}`
 }
+function stampLabel(item: SummaryItem) {
+  if (item.settlement_verdict_label) return item.settlement_verdict_label
+  if (item.predicted_direction === 'hold') {
+    return item.is_correct === true ? '区间命中' : '区间失效'
+  }
+  return item.is_correct === true ? '命中 ✓' : '未中 ×'
+}
+function stampClass(item: SummaryItem) {
+  return item.is_correct === true ? 'stamp-hit' : 'stamp-miss'
+}
 </script>
 
 <template>
@@ -111,8 +121,8 @@ function stockCode(item: SummaryItem) {
         <div class="sr-stamp-wrap">
           <div
             class="sr-stamp"
-            :class="item.is_correct ? 'stamp-hit' : 'stamp-miss'"
-          >{{ item.is_correct ? '命中 ✓' : '未中 ✗' }}</div>
+            :class="[stampClass(item), { 'stamp-hold': item.predicted_direction === 'hold' }]"
+          >{{ stampLabel(item) }}</div>
         </div>
       </div>
     </div>
@@ -245,6 +255,11 @@ function stockCode(item: SummaryItem) {
   font-size: 30px; font-weight: 900; letter-spacing: 8px;
   transform: rotate(-8deg);
   white-space: nowrap;
+}
+.sr-stamp.stamp-hold {
+  padding: 10px 16px;
+  font-size: 25px;
+  letter-spacing: 4px;
 }
 .stamp-hit  { color: #C23535; border-color: #C23535 }   /* 命中 = 红（涨色） */
 .stamp-miss { color: #1A7A4A; border-color: #1A7A4A }   /* 未中 = 绿（跌色） */

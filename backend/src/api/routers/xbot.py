@@ -195,14 +195,15 @@ async def _get_public_prediction(
 
 def _has_settlement_result(p: XBotPrediction) -> bool:
     return (
-        p.status == "settled"
-        or p.actual_close is not None
-        or p.actual_change_pct is not None
-        or p.is_correct is not None
+        p.actual_close is not None
+        and p.actual_change_pct is not None
+        and p.is_correct is not None
     )
 
 
 def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
+    from src.services.xbot.result_service import settlement_display_fields
+
     product_url = config.get("public_base_url") or config.get("xbot_product_url", "")
     return {
         "id": p.id,
@@ -226,7 +227,9 @@ def _public_pred_dict(p: XBotPrediction, config: dict) -> dict:
         "actual_change_pct": p.actual_change_pct,
         "actual_close": p.actual_close,
         "is_correct": p.is_correct,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         "product_url": product_url,
+        **settlement_display_fields(p),
     }
 
 
@@ -390,7 +393,7 @@ async def preview_card(
     acc_all = stats.get("all", {})
 
     result_variants = {"proof", "data_record"}
-    if variant in result_variants and pred.actual_change_pct is not None:
+    if variant in result_variants and _has_settlement_result(pred):
         cards = await generate_result_card_set(
             pred,
             accuracy_all=acc_all.get("label", "—"),
@@ -738,8 +741,10 @@ async def action_settle(
 
 
 class ClientSettlementItem(BaseModel):
+    id: Optional[int] = None
     market: str
     symbol: str
+    target_date: Optional[str] = None
     close: float
     high: Optional[float] = None
     low: Optional[float] = None
@@ -755,33 +760,44 @@ async def action_settle_client(
     db: AsyncSession = Depends(get_db),
     _=_Admin,
 ):
-    """Settle today's predictions using close prices fetched by the admin's browser.
+    """Settle/re-settle predictions using close prices fetched by the admin's browser.
 
-    Skips AKShare entirely. Predictions without a matching ``(market, symbol)``
-    in the payload are left untouched and returned under ``missing`` so the
-    admin can re-fetch.
+    Skips AKShare entirely. Items are matched by id first, then by
+    ``(market, symbol, target_date)``. This supports historical re-settlement
+    without cross-applying one symbol's latest bar to another prediction date.
     """
     from src.services.xbot.hot_stocks_service import normalize_candidate_symbol
-    from src.services.xbot.result_service import settle_predictions_with_prices
+    from src.services.xbot.result_service import settle_prediction_items_with_prices
 
-    bars: dict[tuple[str, str], dict] = {}
+    items: list[dict] = []
     invalid: List[dict] = []
     for item in body.settlements:
         normalized_market, code = normalize_candidate_symbol(item.symbol, item.market)
         if normalized_market not in ("a", "hk") or not code or item.close <= 0:
             invalid.append({"market": item.market, "symbol": item.symbol, "close": item.close})
             continue
-        bars[(normalized_market, code)] = {
+        if item.target_date:
+            try:
+                date.fromisoformat(item.target_date)
+            except ValueError:
+                invalid.append({"market": item.market, "symbol": item.symbol, "target_date": item.target_date})
+                continue
+        items.append({
+            "id": item.id,
+            "market": normalized_market,
+            "symbol": code,
+            "target_date": item.target_date,
             "close": float(item.close),
             "high": float(item.high) if item.high and item.high > 0 else None,
             "low": float(item.low) if item.low and item.low > 0 else None,
-        }
+        })
 
-    settled, missing = await settle_predictions_with_prices(db, bars)
+    settled, missing, skipped = await settle_prediction_items_with_prices(db, items)
     return {
         "ok": True,
         "settled": settled,
-        "missing": [{"market": m, "symbol": s} for m, s in missing],
+        "missing": missing,
+        "skipped": skipped,
         "invalid": invalid,
     }
 
@@ -799,13 +815,13 @@ async def action_bulk_approve(
     """Bulk approve pending/rejected predictions by ID list."""
     if not body.ids:
         return {"ok": True, "approved": 0}
-    await db.execute(
+    result = await db.execute(
         update(XBotPrediction)
         .where(XBotPrediction.id.in_(body.ids), XBotPrediction.status.in_(["pending", "rejected"]))
         .values(status="approved")
     )
     await db.commit()
-    return {"ok": True, "approved": len(body.ids)}
+    return {"ok": True, "approved": result.rowcount or 0}
 
 
 @router.post("/actions/bulk-reject")
@@ -817,13 +833,13 @@ async def action_bulk_reject(
     """Bulk reject pending/approved predictions by ID list."""
     if not body.ids:
         return {"ok": True, "rejected": 0}
-    await db.execute(
+    result = await db.execute(
         update(XBotPrediction)
         .where(XBotPrediction.id.in_(body.ids), XBotPrediction.status.in_(["pending", "approved"]))
         .values(status="rejected")
     )
     await db.commit()
-    return {"ok": True, "rejected": len(body.ids)}
+    return {"ok": True, "rejected": result.rowcount or 0}
 
 
 # ---------------------------------------------------------------------------
@@ -1004,6 +1020,8 @@ async def _count(db: AsyncSession, *filters) -> int:
 
 
 def _pred_dict(p: XBotPrediction) -> dict:
+    from src.services.xbot.result_service import settlement_display_fields
+
     return {
         "id": p.id,
         "symbol": p.symbol,
@@ -1029,4 +1047,6 @@ def _pred_dict(p: XBotPrediction) -> dict:
         "attempts": p.attempts,
         "met_confidence": p.met_confidence,
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        **settlement_display_fields(p),
     }

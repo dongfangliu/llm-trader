@@ -8,6 +8,7 @@ import httpx
 
 from src.models.xbot import XBotPrediction
 from src.services.xbot.prediction_service import summarize_prediction
+from src.services.xbot.result_service import settlement_display_fields
 
 # Nuxt frontend URL (internal Docker networking)
 _FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://frontend:3000")
@@ -54,6 +55,7 @@ async def generate_result_card(
     product_url: str = "",
 ) -> Optional[bytes]:
     """Generate result card PNG. Returns PNG bytes or None on failure."""
+    settlement = settlement_display_fields(prediction)
     payload = {
         "type": "result",
         "symbol": prediction.symbol,
@@ -68,6 +70,7 @@ async def generate_result_card(
         "is_correct": prediction.is_correct,
         "accuracy_all": accuracy_all,
         "product_url": product_url,
+        **settlement,
     }
     return await _post_card(payload)
 
@@ -79,6 +82,7 @@ async def generate_prediction_card_set(
     accuracy_all: str = "—",
 ) -> dict:
     """Concurrently generate 2 cards: promise + data_record. Returns dict keyed by variant name."""
+    settlement = settlement_display_fields(prediction)
     base = {
         "symbol": prediction.symbol,
         "symbol_name": prediction.symbol_name,
@@ -95,6 +99,7 @@ async def generate_prediction_card_set(
         "accuracy_all": accuracy_all,
         "product_url": product_url,
         "brand_name": brand_name or None,
+        **settlement,
     }
     variants = ["promise", "data_record"]
     results = await asyncio.gather(*[
@@ -113,6 +118,7 @@ async def generate_result_card_set(
     brand_name: str = "",
 ) -> dict:
     """Concurrently generate 2 cards: proof + data_record. Returns dict keyed by variant name."""
+    settlement = settlement_display_fields(prediction)
     base = {
         "symbol": prediction.symbol,
         "symbol_name": prediction.symbol_name,
@@ -132,6 +138,7 @@ async def generate_result_card_set(
         "accuracy_all": accuracy_all,
         "product_url": product_url,
         "brand_name": brand_name or None,
+        **settlement,
     }
     variants = ["proof", "data_record"]
     results = await asyncio.gather(*[
@@ -163,12 +170,15 @@ async def generate_summary_card(
     """
     items = []
     for pred in predictions:
+        settlement = settlement_display_fields(pred)
         items.append({
             "symbol": pred.symbol,
             "symbol_name": pred.symbol_name,
             "predicted_direction": pred.predicted_direction,
             "actual_change_pct": pred.actual_change_pct,
             "is_correct": pred.is_correct,
+            "settlement_verdict_label": settlement.get("settlement_verdict_label"),
+            "settlement_rule_label": settlement.get("settlement_rule_label"),
         })
 
     payload = {

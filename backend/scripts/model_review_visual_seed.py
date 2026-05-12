@@ -20,7 +20,7 @@ from src.database.new_db import async_session, init_db
 from src.models.xbot import XBotPrediction
 
 
-SEED_SYMBOLS = ("VSPEND", "VSAWAIT", "VSHIT", "VSMISS")
+SEED_SYMBOLS = ("VSPEND", "VSAWAIT", "VSHIT", "VSMISS", "VSHOLD", "VSHOLDX")
 
 
 def _guard() -> None:
@@ -155,6 +155,40 @@ async def seed() -> dict:
             status="settled",
             actual_close=7.58,
             actual_change_pct=-3.07,
+            is_correct=False,
+        ),
+        _record(
+            symbol="VSHOLD",
+            market="a",
+            name="衡岳银行",
+            hot_rank=5,
+            prediction_date=today - timedelta(days=5),
+            target_date=today - timedelta(days=4),
+            direction="hold",
+            confidence=76.0,
+            close_price=10.00,
+            target_price=10.30,
+            stop_loss=9.70,
+            status="settled",
+            actual_close=10.08,
+            actual_change_pct=0.80,
+            is_correct=True,
+        ),
+        _record(
+            symbol="VSHOLDX",
+            market="hk",
+            name="景湾医疗",
+            hot_rank=6,
+            prediction_date=today - timedelta(days=6),
+            target_date=today - timedelta(days=5),
+            direction="hold",
+            confidence=71.0,
+            close_price=6.50,
+            target_price=6.68,
+            stop_loss=6.32,
+            status="settled",
+            actual_close=6.82,
+            actual_change_pct=4.92,
             is_correct=False,
         ),
     ]

@@ -10,7 +10,7 @@ import {
   PhWarningCircle,
 } from '@phosphor-icons/vue'
 import type { CardPayload } from '~/server/utils/xbot-cards/types'
-import { MOCK_PREDICTION, MOCK_RESULT, MOCK_SUMMARY_A, MOCK_SUMMARY_HK } from '~/server/utils/xbot-cards/mock'
+import { MOCK_HOLD_RESULT, MOCK_PREDICTION, MOCK_RESULT, MOCK_SUMMARY_A, MOCK_SUMMARY_HK } from '~/server/utils/xbot-cards/mock'
 import api from '~/lib/api'
 
 type ZoomLevel = 0.25 | 0.42 | 0.75 | 1
@@ -45,6 +45,7 @@ const productUrl = computed(() => (xbotSettings.value as any)?.xbot_product_url 
 
 const basePred = computed(() => ({ ...MOCK_PREDICTION, brand_name: brandName.value, product_url: productUrl.value }))
 const baseResult = computed(() => ({ ...MOCK_RESULT, brand_name: brandName.value, product_url: productUrl.value }))
+const baseHoldResult = computed(() => ({ ...MOCK_HOLD_RESULT, brand_name: brandName.value, product_url: productUrl.value }))
 
 const slots: Slot[] = [
   {
@@ -81,6 +82,12 @@ const slots: Slot[] = [
       is_correct: false,
       actual_change_pct: -2.4,
     }) as CardPayload,
+  },
+  {
+    key: 'proof_hold',
+    name: 'proof · hold range',
+    width: 1080, height: 1350,
+    payload: () => ({ ...baseHoldResult.value, variant: 'proof' }) as CardPayload,
   },
   {
     key: 'summary_a',
@@ -182,7 +189,7 @@ onUnmounted(() => {
 
 const sectionPromise = computed(() => slots.filter((s) => ['promise', 'data_pred'].includes(s.key)))
 const sectionProof   = computed(() => slots.filter((s) => ['proof', 'data_proof'].includes(s.key)))
-const sectionMissed  = computed(() => slots.filter((s) => s.key === 'proof_miss'))
+const sectionMissed  = computed(() => slots.filter((s) => ['proof_miss', 'proof_hold'].includes(s.key)))
 const sectionSummary = computed(() => slots.filter((s) => s.key.startsWith('summary_')))
 </script>
 

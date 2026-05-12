@@ -33,6 +33,22 @@ export const MOCK_RESULT: Omit<CardPayload, 'variant'> = {
   is_correct: true,
 }
 
+export const MOCK_HOLD_RESULT: Omit<CardPayload, 'variant'> = {
+  ...BASE,
+  symbol: '600036',
+  symbol_name: '招商银行',
+  predicted_direction: 'hold',
+  actual_change_pct: 0.38,
+  is_correct: true,
+  target_price: 322.00,
+  stop_loss: 309.00,
+  settlement_rule_label: '收盘区间',
+  settlement_verdict_label: '区间命中',
+  settlement_explanation: '目标日收盘价留在目标价与止损价形成的区间',
+  settlement_band_low: 309.00,
+  settlement_band_high: 322.00,
+}
+
 export const MOCK_SUMMARY_A: Omit<CardPayload, 'variant'> = {
   ...BASE,
   summary_market: 'A',
@@ -44,7 +60,7 @@ export const MOCK_SUMMARY_A: Omit<CardPayload, 'variant'> = {
     { symbol: '600519', symbol_name: '贵州茅台', predicted_direction: 'down', actual_change_pct: -1.24, is_correct: true  },
     { symbol: '300750', symbol_name: '宁德时代', predicted_direction: 'up',   actual_change_pct: -0.88, is_correct: false },
     { symbol: '688981', symbol_name: '中芯国际', predicted_direction: 'down', actual_change_pct: -2.11, is_correct: true  },
-    { symbol: '600036', symbol_name: '招商银行', predicted_direction: 'up',   actual_change_pct:  1.20, is_correct: true  },
+    { symbol: '600036', symbol_name: '招商银行', predicted_direction: 'hold', actual_change_pct:  0.38, is_correct: true, settlement_verdict_label: '区间命中', settlement_rule_label: '收盘区间' },
   ],
 }
 
