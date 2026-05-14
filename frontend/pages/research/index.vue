@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { PhArchive, PhChartLineUp, PhGlobeHemisphereEast, PhMagnifyingGlass, PhTarget } from '@phosphor-icons/vue'
+import { PhArchive, PhCaretDown, PhChartLineUp, PhGlobeHemisphereEast, PhMagnifyingGlass, PhTarget } from '@phosphor-icons/vue'
 import { SITE_NAME } from '~/constants/seo'
 import MrMetric from '~/components/model-review/MrMetric.vue'
 import MrState from '~/components/model-review/MrState.vue'
@@ -77,16 +77,72 @@ const records = computed<Prediction[]>(() => {
   })
 })
 
-const initialPage = 30
-const pageSize = 30
-const visibleCount = ref(initialPage)
-watch(() => records.value.length, () => { visibleCount.value = initialPage })
+interface StockGroup {
+  key: string
+  symbol: string
+  market: string
+  symbol_name: string
+  records: Prediction[]
+  latestDate: string
+  hitCount: number
+  missCount: number
+  awaitingCount: number
+}
 
-const visibleRecords = computed<Prediction[]>(() => records.value.slice(0, visibleCount.value))
-const hasMore = computed(() => records.value.length > visibleCount.value)
+const groups = computed<StockGroup[]>(() => {
+  const map = new Map<string, StockGroup>()
+  for (const p of records.value) {
+    const key = `${p.market}-${p.symbol}`
+    let g = map.get(key)
+    if (!g) {
+      g = {
+        key,
+        symbol: p.symbol,
+        market: p.market,
+        symbol_name: p.symbol_name || p.symbol,
+        records: [],
+        latestDate: '',
+        hitCount: 0,
+        missCount: 0,
+        awaitingCount: 0,
+      }
+      map.set(key, g)
+    }
+    g.records.push(p)
+    const d = String(p.prediction_date || '')
+    if (d > g.latestDate) g.latestDate = d
+    if (isAwaitingResult(p)) g.awaitingCount += 1
+    else if (p.is_correct === true) g.hitCount += 1
+    else if (p.is_correct === false) g.missCount += 1
+  }
+  const list = [...map.values()]
+  for (const g of list) {
+    g.records.sort((a, b) => String(b.prediction_date || '').localeCompare(String(a.prediction_date || '')))
+  }
+  return list.sort((a, b) => b.latestDate.localeCompare(a.latestDate))
+})
+
+const initialPage = 20
+const pageSize = 20
+const visibleCount = ref(initialPage)
+watch(() => groups.value.length, () => { visibleCount.value = initialPage })
+
+const visibleGroups = computed<StockGroup[]>(() => groups.value.slice(0, visibleCount.value))
+const hasMore = computed(() => groups.value.length > visibleCount.value)
 
 function loadMore() {
-  visibleCount.value = Math.min(records.value.length, visibleCount.value + pageSize)
+  visibleCount.value = Math.min(groups.value.length, visibleCount.value + pageSize)
+}
+
+const expandedKeys = ref<Set<string>>(new Set())
+function isExpanded(key: string) {
+  return expandedKeys.value.has(key)
+}
+function toggleGroup(key: string) {
+  const next = new Set(expandedKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  expandedKeys.value = next
 }
 
 const marketCounts = computed(() => ({
@@ -105,11 +161,11 @@ const accuracyLabel = computed(() => data.value?.accuracy?.total ? `${data.value
 const itemListJsonLd = computed(() => ({
   '@context': 'https://schema.org',
   '@type': 'ItemList',
-  itemListElement: visibleRecords.value.slice(0, 30).map((p, idx) => ({
+  itemListElement: visibleGroups.value.slice(0, 30).map((g, idx) => ({
     '@type': 'ListItem',
     position: idx + 1,
-    url: `${requestUrl.origin}/research/${p.market}/${p.symbol}/${p.prediction_date}`,
-    name: `${p.symbol_name || p.symbol} ${p.prediction_date}`,
+    url: `${requestUrl.origin}/research/${g.market}/${g.symbol}`,
+    name: `${g.symbol_name} ${g.symbol}`,
   })),
 }))
 
@@ -240,33 +296,64 @@ function marketLabel(m: string) {
         >
       </div>
 
-      <section class="mr-public-list" aria-label="公开复盘记录">
-        <NuxtLink
-          v-for="p in visibleRecords"
-          :key="p.id"
-          class="mr-public-row"
-          :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
+      <section class="mr-public-list" aria-label="公开复盘记录（按股票分组）">
+        <div
+          v-for="g in visibleGroups"
+          :key="g.key"
+          class="mr-group"
+          :class="{ 'is-open': isExpanded(g.key) }"
         >
-          <div class="mr-public-row-main">
-            <div class="mr-public-row-title">
-              <strong>{{ p.symbol_name || p.symbol }}</strong>
-              <span class="mr-public-row-tag">{{ marketLabel(p.market) }} · {{ p.symbol }}</span>
+          <button
+            type="button"
+            class="mr-group-head"
+            :aria-expanded="isExpanded(g.key)"
+            @click="toggleGroup(g.key)"
+          >
+            <div class="mr-group-main">
+              <div class="mr-group-title">
+                <strong>{{ g.symbol_name }}</strong>
+                <span class="mr-public-row-tag">{{ marketLabel(g.market) }} · {{ g.symbol }}</span>
+              </div>
+              <div class="mr-public-row-meta">
+                {{ g.records.length }} 条复盘 · 最近 {{ g.latestDate }}
+              </div>
             </div>
-            <div class="mr-public-row-meta">
-              预测 {{ p.prediction_date }} · 目标 {{ p.target_date || '-' }} · 置信 {{ confidenceLabel(p.confidence) }}
+            <div class="mr-group-stats">
+              <span v-if="g.awaitingCount" class="mr-group-stat is-pending">待验证 {{ g.awaitingCount }}</span>
+              <span v-if="g.hitCount" class="mr-group-stat is-hit">命中 {{ g.hitCount }}</span>
+              <span v-if="g.missCount" class="mr-group-stat is-miss">未中 {{ g.missCount }}</span>
             </div>
-          </div>
-          <div class="mr-public-row-direction" :data-dir="p.predicted_direction">
-            <strong>{{ directionLabel(p.predicted_direction) }}</strong>
-            <span>{{ changeText(p) }}</span>
-          </div>
-          <MrStatusBadge :status="statusClass(p)" :label="statusLabel(p)" />
-        </NuxtLink>
+            <PhCaretDown :size="16" weight="bold" class="mr-group-chevron" />
+          </button>
 
-        <MrState v-if="!records.length" title="无符合条件的记录" text="清空筛选或换一个市场试试。" />
+          <div v-if="isExpanded(g.key)" class="mr-group-body">
+            <NuxtLink
+              v-for="p in g.records"
+              :key="p.id"
+              class="mr-public-row"
+              :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
+            >
+              <div class="mr-public-row-main">
+                <div class="mr-public-row-title">
+                  <strong>预测 {{ p.prediction_date }}</strong>
+                </div>
+                <div class="mr-public-row-meta">
+                  目标 {{ p.target_date || '-' }} · 置信 {{ confidenceLabel(p.confidence) }}
+                </div>
+              </div>
+              <div class="mr-public-row-direction" :data-dir="p.predicted_direction">
+                <strong>{{ directionLabel(p.predicted_direction) }}</strong>
+                <span>{{ changeText(p) }}</span>
+              </div>
+              <MrStatusBadge :status="statusClass(p)" :label="statusLabel(p)" />
+            </NuxtLink>
+          </div>
+        </div>
+
+        <MrState v-if="!groups.length" title="无符合条件的记录" text="清空筛选或换一个市场试试。" />
 
         <div v-if="hasMore" class="mr-public-loadmore">
-          <button type="button" class="mr-btn mr-btn-secondary" @click="loadMore">加载更多（剩余 {{ records.length - visibleCount }} 条）</button>
+          <button type="button" class="mr-btn mr-btn-secondary" @click="loadMore">加载更多（剩余 {{ groups.length - visibleCount }} 只股票）</button>
         </div>
       </section>
     </div>
@@ -376,6 +463,116 @@ function marketLabel(m: string) {
   margin-top: 16px;
 }
 
+.mr-group {
+  border: 1px solid var(--mr-line);
+  border-radius: var(--mr-radius-sm);
+  background: #fff;
+  box-shadow: var(--mr-elev-1);
+  overflow: hidden;
+  transition: border-color .18s ease;
+}
+
+.mr-group.is-open {
+  border-color: var(--mr-line-strong);
+}
+
+.mr-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+
+.mr-group-head:hover {
+  background: #fafbf8;
+}
+
+.mr-group-head:active {
+  transform: translateY(1px);
+}
+
+.mr-group-main {
+  min-width: 0;
+}
+
+.mr-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.mr-group-title strong {
+  color: var(--mr-text);
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mr-group-stats {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.mr-group-stat {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mr-group-stat.is-pending {
+  color: #8a6d1f;
+  background: rgba(255, 196, 0, .16);
+}
+
+.mr-group-stat.is-hit {
+  color: #1f7a45;
+  background: rgba(52, 199, 89, .16);
+}
+
+.mr-group-stat.is-miss {
+  color: #c0392b;
+  background: rgba(255, 59, 48, .14);
+}
+
+.mr-group-chevron {
+  color: var(--mr-faint);
+  transition: transform .2s ease;
+  flex-shrink: 0;
+}
+
+.mr-group.is-open .mr-group-chevron {
+  transform: rotate(180deg);
+}
+
+.mr-group-body {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--mr-line);
+}
+
+.mr-group-body .mr-public-row {
+  box-shadow: none;
+  background: #fafbf8;
+}
+
 @media (max-width: 760px) {
   .mr-public-row {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -395,6 +592,25 @@ function marketLabel(m: string) {
 
   .mr-public-row-direction strong {
     font-size: 13px;
+  }
+
+  .mr-group-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    row-gap: 8px;
+    column-gap: 10px;
+  }
+
+  .mr-group-chevron {
+    grid-row: 1;
+    grid-column: 2;
+    align-self: center;
+  }
+
+  .mr-group-stats {
+    grid-row: 2;
+    grid-column: 1 / span 2;
+    justify-content: flex-start;
   }
 }
 </style>

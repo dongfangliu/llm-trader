@@ -1,7 +1,7 @@
 """Legacy xbot admin router backing the model-review workflow."""
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional, List
 from loguru import logger
 
@@ -700,6 +700,118 @@ async def action_generate(_=_Admin):
     task = asyncio.create_task(job_generate_predictions(force=True))
     task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] generate task error: {t.exception()}"))
     return {"ok": True, "message": "Prediction generation started in background"}
+
+
+class BatchCandidate(BaseModel):
+    symbol: str
+    market: str
+    name: Optional[str] = None
+    hot_rank: int = 0
+
+
+class BatchGenerateRequest(BaseModel):
+    candidates: List[BatchCandidate]
+
+
+# In-memory progress for the one-click batch generation. The model-review tool
+# is single-admin, so a module-level state is enough; the frontend polls
+# /actions/generate-batch/status while the background task runs.
+_batch_gen_state: dict = {
+    "running": False,
+    "total": 0,
+    "done": 0,
+    "failed": 0,
+    "errors": [],
+    "started_at": None,
+    "finished_at": None,
+}
+
+
+async def _run_batch_generation(stocks: List[dict]) -> None:
+    """Background task: generate one prediction per stock, updating progress."""
+    from src.database.new_db import async_session
+    from src.services.xbot.prediction_service import generate_single_prediction
+
+    try:
+        for stock in stocks:
+            try:
+                async with async_session() as db:
+                    await generate_single_prediction(stock, db)
+            except Exception as exc:
+                reason = str(exc) or "未知错误"
+                _batch_gen_state["failed"] += 1
+                _batch_gen_state["errors"].append(f"{stock['symbol']}: {reason}")
+                logger.error(f"[XBot] batch generate failed for {stock['symbol']}: {reason}")
+            finally:
+                _batch_gen_state["done"] += 1
+    finally:
+        _batch_gen_state["running"] = False
+        _batch_gen_state["finished_at"] = datetime.now().isoformat()
+
+
+@router.post("/actions/generate-batch")
+async def action_generate_batch(
+    body: BatchGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    _=_Admin,
+):
+    """Generate AI predictions for many candidates in one background task.
+
+    Dedups against today's existing predictions; the frontend polls
+    GET /actions/generate-batch/status for progress.
+    """
+    import asyncio
+
+    if _batch_gen_state["running"]:
+        raise HTTPException(status_code=409, detail="批量生成任务正在运行中")
+
+    today = date.today()
+    stocks: List[dict] = []
+    seen: set = set()
+    skipped = 0
+    for c in body.candidates:
+        try:
+            market, symbol = _normalize_candidate_or_400(c.market, c.symbol)
+        except HTTPException:
+            skipped += 1
+            continue
+        if (market, symbol) in seen:
+            continue
+        seen.add((market, symbol))
+        existing = await db.execute(
+            select(XBotPrediction).where(
+                XBotPrediction.prediction_date == today,
+                XBotPrediction.market == market,
+                XBotPrediction.symbol == symbol,
+            )
+        )
+        if existing.scalar_one_or_none():
+            skipped += 1
+            continue
+        name = (c.name or "").strip() or await _lookup_symbol_name(db, market, symbol) or symbol
+        stocks.append({"symbol": symbol, "market": market, "name": name, "hot_rank": c.hot_rank})
+
+    if not stocks:
+        return {"ok": True, "total": 0, "skipped": skipped, "message": "没有需要生成的新标的"}
+
+    _batch_gen_state.update({
+        "running": True,
+        "total": len(stocks),
+        "done": 0,
+        "failed": 0,
+        "errors": [],
+        "started_at": datetime.now().isoformat(),
+        "finished_at": None,
+    })
+    task = asyncio.create_task(_run_batch_generation(stocks))
+    task.add_done_callback(lambda t: t.exception() and logger.error(f"[XBot] batch generate task error: {t.exception()}"))
+    return {"ok": True, "total": len(stocks), "skipped": skipped}
+
+
+@router.get("/actions/generate-batch/status")
+async def action_generate_batch_status(_=_Admin):
+    """Return progress of the running/last batch generation task."""
+    return dict(_batch_gen_state)
 
 
 @router.post("/actions/reload-scheduler")

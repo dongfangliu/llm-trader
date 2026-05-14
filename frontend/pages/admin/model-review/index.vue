@@ -5,10 +5,12 @@ import {
   PhArrowsClockwise,
   PhCards,
   PhChartLineUp,
+  PhCheck,
   PhCheckCircle,
   PhClockCounterClockwise,
   PhGauge,
   PhGlobeHemisphereEast,
+  PhLightning,
   PhListChecks,
   PhMagnifyingGlass,
   PhPlay,
@@ -56,10 +58,29 @@ const showGenerationTools = ref(false)
 const candidateMarket = ref<'all' | 'a' | 'hk'>('all')
 const candidateSearch = ref('')
 const settleProgress = ref<{ fetched: number; total: number; failed: number } | null>(null)
+const workflowStage = ref<'idle' | 'scan' | 'generate' | 'approve' | 'settle' | 'done'>('idle')
+const generatingBatch = ref<{ total: number; done: number; failed: number } | null>(null)
+const fullWorkflowRunning = ref(false)
 let toastTimer: number | null = null
 
 const markets = ['a', 'hk']
 const router = useRouter()
+
+const workflowSteps = [
+  { key: 'scan', idx: 1, label: '扫描候选' },
+  { key: 'generate', idx: 2, label: '生成分析' },
+  { key: 'approve', idx: 3, label: '批量通过' },
+  { key: 'settle', idx: 4, label: '结算到期' },
+] as const
+const stageOrder = ['idle', 'scan', 'generate', 'approve', 'settle', 'done']
+
+function stepClass(key: string) {
+  const cur = stageOrder.indexOf(workflowStage.value)
+  const idx = stageOrder.indexOf(key)
+  if (workflowStage.value === 'done' || cur > idx) return 'is-done'
+  if (cur === idx) return 'is-active'
+  return 'is-pending'
+}
 
 const manual = reactive({
   market: 'a',
@@ -351,12 +372,12 @@ function hasCompleteSettlement(p: Prediction) {
   return p.actual_close != null && p.actual_change_pct != null && p.is_correct != null
 }
 
-async function settlePredictionsBatch(records: Prediction[], confirmText: string, emptyText: string, donePrefix: string) {
+async function settlePredictionsBatch(records: Prediction[], confirmText: string, emptyText: string, donePrefix: string, skipConfirm = false) {
   if (!records.length) {
-    showMsg(emptyText)
+    if (!skipConfirm) showMsg(emptyText)
     return
   }
-  if (!confirm(confirmText)) return
+  if (!skipConfirm && !confirm(confirmText)) return
   loading.value = 'settle'
   settleProgress.value = null
   try {
@@ -395,7 +416,7 @@ async function settlePredictionsBatch(records: Prediction[], confirmText: string
       }
     }
 
-    const workers = Array.from({ length: Math.min(concurrency, pendingForToday.length) }, () => worker())
+    const workers = Array.from({ length: Math.min(concurrency, records.length) }, () => worker())
     await Promise.all(workers)
 
     if (!settlements.length) {
@@ -519,6 +540,101 @@ async function approveAllPending() {
   }
 }
 
+async function pollBatchStatus() {
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    const st = await api.get('/api/admin/xbot/actions/generate-batch/status', { headers: getAdminHeaders() })
+    const s = st.data || {}
+    generatingBatch.value = { total: s.total ?? 0, done: s.done ?? 0, failed: s.failed ?? 0 }
+    if (!s.running) break
+  }
+  await Promise.all([loadTodayPreds(), loadDashboard()])
+  const g = generatingBatch.value
+  generatingBatch.value = null
+  if (g && g.total) {
+    if (g.failed) {
+      showMsg(`批量生成完成：成功 ${g.done - g.failed} 条，失败 ${g.failed} 条`, g.failed >= g.total ? 'err' : 'ok')
+    } else {
+      showMsg(`批量生成完成：${g.done} 条`)
+    }
+  }
+}
+
+async function generateBatch(cands: Candidate[]) {
+  if (!cands.length) {
+    showMsg('没有需要生成的候选标的')
+    return
+  }
+  const payload = cands.map(c => ({
+    symbol: c.symbol,
+    market: c.market,
+    name: c.name,
+    hot_rank: c.hot_rank ?? 0,
+  }))
+  try {
+    const res = await api.post('/api/admin/xbot/actions/generate-batch', { candidates: payload }, { headers: getAdminHeaders() })
+    const total = res.data?.total ?? 0
+    if (!total) {
+      showMsg(res.data?.message || '没有需要生成的新标的')
+      await Promise.all([loadTodayPreds(), loadDashboard()])
+      return
+    }
+    generatingBatch.value = { total, done: 0, failed: 0 }
+  } catch (e: any) {
+    if (e?.response?.status === 409) {
+      // 后端已有批量任务在跑，直接接管轮询
+      generatingBatch.value = { total: 0, done: 0, failed: 0 }
+    } else {
+      throw e
+    }
+  }
+  await pollBatchStatus()
+}
+
+async function scanAndGenerateAll() {
+  if (fullWorkflowRunning.value) return
+  fullWorkflowRunning.value = true
+  try {
+    workflowStage.value = 'scan'
+    await scanCandidates()
+    workflowStage.value = 'generate'
+    await generateBatch(candidates.value.filter(c => !c.already_generated))
+    workflowStage.value = 'done'
+  } catch (e: any) {
+    showMsg(apiErrorMessage(e, '扫描并生成中断'), 'err')
+  } finally {
+    fullWorkflowRunning.value = false
+  }
+}
+
+async function runFullWorkflow() {
+  if (fullWorkflowRunning.value) return
+  if (!confirm('一键跑全流程将依次执行：扫描候选 → 生成全部分析 → 批量通过待审核 → 结算到期记录。确认继续？')) return
+  fullWorkflowRunning.value = true
+  try {
+    workflowStage.value = 'scan'
+    await scanCandidates()
+
+    workflowStage.value = 'generate'
+    await generateBatch(candidates.value.filter(c => !c.already_generated))
+
+    workflowStage.value = 'approve'
+    await approveAllPending()
+
+    workflowStage.value = 'settle'
+    if (dueSettlePreds.value.length) {
+      await settlePredictionsBatch(dueSettlePreds.value, '', '', '结算', true)
+    }
+
+    workflowStage.value = 'done'
+    showMsg('一键跑全流程已完成')
+  } catch (e: any) {
+    showMsg(apiErrorMessage(e, '一键流程中断'), 'err')
+  } finally {
+    fullWorkflowRunning.value = false
+  }
+}
+
 async function saveSettings() {
   loading.value = 'save-settings'
   try {
@@ -580,7 +696,20 @@ function handleNextAction() {
   }
 }
 
-onMounted(refreshAll)
+onMounted(async () => {
+  await refreshAll()
+  // 页面刷新后，如有批量生成任务仍在后台运行则恢复进度轮询
+  try {
+    const st = await api.get('/api/admin/xbot/actions/generate-batch/status', { headers: getAdminHeaders() })
+    if (st.data?.running) {
+      generatingBatch.value = { total: st.data.total ?? 0, done: st.data.done ?? 0, failed: st.data.failed ?? 0 }
+      workflowStage.value = 'generate'
+      pollBatchStatus().catch((e: any) => showMsg(apiErrorMessage(e, '批量生成进度轮询失败'), 'err'))
+    }
+  } catch {
+    // 状态接口不可用时静默忽略
+  }
+})
 </script>
 
 <template>
@@ -671,6 +800,42 @@ onMounted(refreshAll)
           <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
         </MrMetric>
       </div>
+
+      <section class="mr-runbar">
+        <div class="mr-runbar-head">
+          <div>
+            <h2 class="mr-runbar-title">一键跑全流程</h2>
+            <p class="mr-runbar-sub">扫描候选 → 生成全部分析 → 批量通过待审核 → 结算到期记录，一次跑完。</p>
+          </div>
+          <div class="mr-runbar-actions">
+            <MrButton variant="ghost" size="sm" :disabled="fullWorkflowRunning || candidatesLoading" @click="scanAndGenerateAll">
+              <template #icon><PhMagnifyingGlass :size="15" weight="bold" /></template>
+              扫描并全部生成
+            </MrButton>
+            <MrButton variant="primary" :disabled="fullWorkflowRunning" @click="runFullWorkflow">
+              <template #icon><PhLightning :size="16" weight="bold" /></template>
+              {{ fullWorkflowRunning ? '运行中…' : '一键跑全流程' }}
+            </MrButton>
+          </div>
+        </div>
+        <ol v-if="workflowStage !== 'idle'" class="mr-stepper">
+          <li
+            v-for="s in workflowSteps"
+            :key="s.key"
+            class="mr-step"
+            :class="stepClass(s.key)"
+          >
+            <span class="mr-step-dot">
+              <PhCheck v-if="stepClass(s.key) === 'is-done'" :size="12" weight="bold" />
+              <span v-else>{{ s.idx }}</span>
+            </span>
+            <span class="mr-step-label">{{ s.label }}</span>
+            <span v-if="s.key === 'generate' && generatingBatch" class="mr-step-progress">
+              {{ generatingBatch.done }}/{{ generatingBatch.total }}<template v-if="generatingBatch.failed"> · 失败 {{ generatingBatch.failed }}</template>
+            </span>
+          </li>
+        </ol>
+      </section>
 
       <MrState
         v-if="initialLoading"
@@ -1203,6 +1368,111 @@ onMounted(refreshAll)
   vertical-align: middle;
 }
 
+.mr-runbar {
+  margin: 14px 0 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--mr-line);
+  border-radius: var(--mr-radius-md);
+  background: linear-gradient(180deg, rgba(47, 111, 104, .055), rgba(47, 111, 104, .015));
+  box-shadow: var(--mr-elev-1);
+}
+
+.mr-runbar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.mr-runbar-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--mr-text);
+}
+
+.mr-runbar-sub {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--mr-muted);
+}
+
+.mr-runbar-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mr-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mr-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--mr-line);
+  border-radius: var(--mr-radius-sm);
+  background: #fff;
+  font-size: 12.5px;
+  transition: border-color .18s ease, background .18s ease;
+}
+
+.mr-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(120, 120, 128, .14);
+  color: var(--mr-muted);
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.mr-step-label {
+  font-weight: 700;
+  color: var(--mr-muted);
+  white-space: nowrap;
+}
+
+.mr-step-progress {
+  margin-left: auto;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mr-accent-strong);
+}
+
+.mr-step.is-active {
+  border-color: var(--mr-accent);
+  background: rgba(47, 111, 104, .06);
+}
+
+.mr-step.is-active .mr-step-dot {
+  background: var(--mr-accent);
+  color: #fff;
+}
+
+.mr-step.is-active .mr-step-label,
+.mr-step.is-done .mr-step-label {
+  color: var(--mr-text);
+}
+
+.mr-step.is-done .mr-step-dot {
+  background: rgba(47, 111, 104, .16);
+  color: var(--mr-accent-strong);
+}
+
 @media (max-width: 760px) {
   .mr-next-action {
     width: 100%;
@@ -1226,6 +1496,18 @@ onMounted(refreshAll)
   .mr-toolbar-mini {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .mr-stepper {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mr-runbar-actions {
+    width: 100%;
+  }
+
+  .mr-runbar-actions .mr-btn {
+    flex: 1;
   }
 }
 </style>
