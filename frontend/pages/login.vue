@@ -104,252 +104,129 @@ function toggleRemember() {
 </script>
 
 <template>
-  <div :style="{
-    minHeight: '100dvh',
-    background: '#f2f2f7',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '40px 0',
-  }">
-    <!-- Hero block -->
-    <div :style="{
-      width: '100%',
-      maxWidth: '480px',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      padding: '32px 16px 28px',
-      textAlign: 'center',
-    }">
-      <div :style="{
-        width: '80px',
-        height: '80px',
-        background: 'linear-gradient(145deg, #007aff, #5856d6)',
-        borderRadius: '20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '40px',
-        boxShadow: '0 8px 24px rgba(0,122,255,0.3)',
-        marginBottom: '16px',
-      }">📈</div>
-      <h1 :style="{ fontSize: '28px', fontWeight: 700, letterSpacing: '-0.5px', color: '#000', margin: '0 0 6px' }">
-        {{ appName }}
-      </h1>
-      <p :style="{ fontSize: '15px', color: '#8e8e93', margin: 0 }">
-        AI 驱动的专业技术分析平台
-      </p>
-    </div>
-
-    <!-- Form card -->
-    <div :style="{ width: '100%', maxWidth: '480px', padding: '0 16px' }">
-      <div :style="{ background: 'white', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }">
-        <!-- Email row -->
-        <div :style="{
-          display: 'flex',
-          alignItems: 'center',
-          minHeight: '44px',
-          padding: '0 16px',
-          borderBottom: '0.5px solid rgba(60,60,67,0.12)',
-        }">
-          <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, width: '72px', flexShrink: 0 }">邮箱</label>
-          <input
-            v-model="email"
-            type="email"
-            placeholder="your@email.com"
-            autocomplete="email"
-            :style="{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              fontSize: '15px',
-              color: '#000',
-              padding: '10px 0',
-            }"
-          />
+  <div class="min-h-[100dvh] bg-ios-bg flex flex-col items-center justify-center px-4 py-10">
+    <div class="w-full max-w-[420px]">
+      <!-- Hero -->
+      <div class="flex flex-col items-center text-center mb-8">
+        <div class="w-16 h-16 rounded-ios-lg bg-ios-blue flex items-center justify-center shadow-ios-lg mb-4">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19V5M4 19h16" />
+            <path d="M8 15l3.5-4 3 2.5L20 7" />
+          </svg>
         </div>
-        <!-- Password row -->
-        <div :style="{
-          display: 'flex',
-          alignItems: 'center',
-          minHeight: '44px',
-          padding: '0 16px',
-        }">
-          <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, width: '72px', flexShrink: 0 }">密码</label>
-          <input
-            v-model="password"
-            :type="showPassword ? 'text' : 'password'"
-            placeholder="请输入密码"
-            autocomplete="current-password"
-            @keyup.enter="handleLogin"
-            :style="{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              background: 'transparent',
-              fontSize: '15px',
-              color: '#000',
-              padding: '10px 0',
-            }"
-          />
+        <h1 class="text-2xl font-bold text-ios-label tracking-ios-tight">{{ appName }}</h1>
+        <p class="mt-1.5 text-[15px] text-ios-secondary">AI 驱动的专业技术分析平台</p>
+      </div>
+
+      <!-- Form -->
+      <form class="flex flex-col gap-4" @submit.prevent="handleLogin">
+        <IosInput
+          v-model="email"
+          label="邮箱"
+          type="email"
+          placeholder="your@email.com"
+          autocomplete="email"
+        />
+        <IosInput
+          v-model="password"
+          label="密码"
+          :type="showPassword ? 'text' : 'password'"
+          placeholder="请输入密码"
+          autocomplete="current-password"
+          @keyup="(e) => e.key === 'Enter' && handleLogin()"
+        >
+          <template #suffix>
+            <button
+              type="button"
+              class="w-9 h-9 flex items-center justify-center text-ios-secondary rounded-ios-sm active:scale-90 transition-transform"
+              :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              @click="showPassword = !showPassword"
+            >
+              <svg v-if="showPassword" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            </button>
+          </template>
+        </IosInput>
+
+        <!-- Inline error -->
+        <div
+          v-if="error && !showVerifyError"
+          class="flex items-center gap-2.5 rounded-ios bg-ios-red/8 px-4 py-3 text-sm text-ios-red"
+        >
+          <svg class="flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 8v5M12 16h.01" />
+          </svg>
+          {{ error }}
+        </div>
+
+        <!-- Unverified email -->
+        <IosCard v-if="showVerifyError" elevation="flat" padding="md" class="border-l-[3px] !border-l-ios-orange">
+          <div class="flex items-start gap-2.5">
+            <svg class="flex-shrink-0 mt-0.5 text-ios-orange" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="3" />
+              <path d="M2 7l10 6 10-6" />
+            </svg>
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-ios-label">邮箱尚未验证</p>
+              <p class="mt-1 text-[13px] text-ios-secondary leading-relaxed">
+                验证邮件已发送至 <strong class="text-ios-label">{{ verifyEmail }}</strong>，请检查收件箱并点击链接完成验证。
+              </p>
+            </div>
+          </div>
+          <div class="mt-3">
+            <IosButton
+              size="sm"
+              :disabled="resendCooldown > 0"
+              :variant="resendCooldown > 0 ? 'secondary' : 'primary'"
+              @click="handleResend"
+            >
+              {{ resendCooldown > 0 ? `重新发送 (${resendCooldown}s)` : '重新发送验证邮件' }}
+            </IosButton>
+            <p v-if="resendStatus" class="mt-2 text-[13px] text-ios-secondary">{{ resendStatus }}</p>
+          </div>
+        </IosCard>
+
+        <!-- Remember credentials -->
+        <div class="flex items-center gap-2.5 px-1">
           <button
             type="button"
-            @click="showPassword = !showPassword"
-            :style="{
-              background: 'none',
-              border: 'none',
-              padding: '0 4px 0 12px',
-              margin: '0 -4px 0 0',
-              minWidth: '44px',
-              minHeight: '44px',
-              cursor: 'pointer',
-              color: '#8e8e93',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              WebkitTapHighlightColor: 'transparent',
-            }"
+            role="switch"
+            :aria-checked="rememberCredentials"
+            class="relative w-[44px] h-[26px] rounded-full transition-colors duration-200 flex-shrink-0"
+            :class="rememberCredentials ? 'bg-ios-green' : 'bg-ios-bg2'"
+            @click="toggleRemember"
           >
-            <svg v-if="showPassword" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-              <line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
+            <span
+              class="absolute left-0 top-0.5 w-[22px] h-[22px] rounded-full bg-white shadow-ios-sm transition-transform duration-200"
+              :class="rememberCredentials ? 'translate-x-[20px]' : 'translate-x-0.5'"
+            />
           </button>
+          <span class="text-sm text-ios-label2 select-none cursor-pointer" @click="toggleRemember">记住账号和密码</span>
         </div>
-      </div>
 
-      <!-- Error state -->
-      <div v-if="error && !showVerifyError" :style="{
-        background: 'white',
-        borderRadius: '12px',
-        padding: '12px 16px',
-        marginBottom: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-      }">
-        <span :style="{ fontSize: '20px' }">⚠️</span>
-        <p :style="{ fontSize: '14px', color: '#ff3b30', margin: 0 }">{{ error }}</p>
-      </div>
+        <IosButton type="submit" size="lg" :loading="loading" :full-width="true">
+          {{ loading ? '登录中…' : '登录' }}
+        </IosButton>
+      </form>
 
-      <!-- Unverified email -->
-      <div v-if="showVerifyError" :style="{
-        background: 'white',
-        borderRadius: '12px',
-        padding: '16px',
-        marginBottom: '16px',
-        borderLeft: '3px solid #ff9500',
-      }">
-        <div :style="{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }">
-          <span :style="{ fontSize: '22px', lineHeight: 1 }">📧</span>
-          <div>
-            <p :style="{ fontSize: '14px', fontWeight: 600, color: '#000', margin: '0 0 4px' }">邮箱尚未验证</p>
-            <p :style="{ fontSize: '13px', color: '#8e8e93', margin: 0, lineHeight: 1.5 }">
-              验证邮件已发送至 <strong :style="{ color: '#000' }">{{ verifyEmail }}</strong>，请检查收件箱并点击链接完成验证。
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          @click="handleResend"
-          :disabled="resendCooldown > 0"
-          :style="{
-            background: resendCooldown > 0 ? '#f2f2f7' : '#007aff',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '8px 14px',
-            color: resendCooldown > 0 ? '#8e8e93' : 'white',
-            fontSize: '14px',
-            fontWeight: 500,
-            cursor: resendCooldown > 0 ? 'default' : 'pointer',
-            WebkitTapHighlightColor: 'transparent',
-            transition: 'background 0.15s',
-          }"
-        >{{ resendCooldown > 0 ? `重新发送 (${resendCooldown}s)` : '重新发送验证邮件' }}</button>
-        <p v-if="resendStatus" :style="{ fontSize: '13px', color: '#8e8e93', marginTop: '8px', marginBottom: 0 }">{{ resendStatus }}</p>
-      </div>
-
-      <!-- Remember credentials toggle -->
-      <div :style="{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        padding: '0 4px',
-        marginBottom: '16px',
-      }">
-        <div
-          @click="toggleRemember"
-          :style="{
-            width: '44px',
-            height: '26px',
-            borderRadius: '13px',
-            background: rememberCredentials ? '#34c759' : '#d1d1d6',
-            position: 'relative',
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-            flexShrink: 0,
-          }"
-        >
-          <div :style="{
-            position: 'absolute',
-            top: '2px',
-            left: rememberCredentials ? '20px' : '2px',
-            width: '22px',
-            height: '22px',
-            borderRadius: '50%',
-            background: 'white',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
-            transition: 'left 0.2s',
-          }" />
-        </div>
-        <label
-          @click="toggleRemember"
-          :style="{ fontSize: '14px', color: '#3c3c43', cursor: 'pointer', userSelect: 'none' }"
-        >记住账号和密码</label>
-      </div>
-
-      <!-- Login button -->
-      <button
-        type="button"
-        @click="handleLogin"
-        :disabled="loading"
-        :style="{
-          width: '100%',
-          height: '50px',
-          background: loading ? '#c7c7cc' : '#007aff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '12px',
-          fontSize: '17px',
-          fontWeight: 600,
-          cursor: loading ? 'default' : 'pointer',
-          transition: 'background 0.15s',
-          WebkitTapHighlightColor: 'transparent',
-          marginBottom: '12px',
-        }"
-      >{{ loading ? '登录中…' : '登录' }}</button>
-
-      <!-- Register link -->
-      <p :style="{ textAlign: 'center', fontSize: '14px', color: '#8e8e93', margin: '0 0 24px' }">
+      <p class="text-center text-sm text-ios-secondary mt-5">
         还没有账号？
-        <NuxtLink to="/register" :style="{ color: '#007aff', textDecoration: 'none', fontWeight: 600 }">立即注册</NuxtLink>
+        <NuxtLink to="/register" class="text-ios-blue font-semibold">立即注册</NuxtLink>
       </p>
 
-      <!-- Terms -->
-      <p :style="{ textAlign: 'center', fontSize: '12px', color: '#aeaeb2', marginTop: '24px', lineHeight: 1.6 }">
+      <p class="text-center text-xs text-ios-tertiary mt-6 leading-relaxed">
         登录即表示同意
-        <NuxtLink to="/terms" :style="{ color: '#8e8e93', textDecoration: 'none' }">服务条款</NuxtLink>
+        <NuxtLink to="/terms" class="text-ios-secondary">服务条款</NuxtLink>
         与
-        <NuxtLink to="/privacy" :style="{ color: '#8e8e93', textDecoration: 'none' }">隐私政策</NuxtLink>
+        <NuxtLink to="/privacy" class="text-ios-secondary">隐私政策</NuxtLink>
       </p>
     </div>
   </div>

@@ -24,10 +24,10 @@ const requireInviteCode = ref(false)
 let cooldownTimer: ReturnType<typeof setInterval> | null = null
 
 const BENEFITS = [
-  { icon: '📊', bg: 'linear-gradient(135deg, #007aff, #3b9eff)', title: '免费分析', desc: '每天 3 次免费深度研判' },
-  { icon: '☁', bg: 'linear-gradient(135deg, #34c759, #30d158)', title: '跨设备同步', desc: '任意设备登录，数据不丢失' },
-  { icon: '★', bg: 'linear-gradient(135deg, #ff9500, #ffcc02)', title: '邀请奖励', desc: '使用邀请码注册，双方各得 +10 次额度' },
-  { icon: '↑', bg: 'linear-gradient(135deg, #5856d6, #7c3aed)', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
+  { key: 'chart', title: '免费分析', desc: '每天 3 次免费深度研判' },
+  { key: 'sync', title: '跨设备同步', desc: '任意设备登录，数据不丢失' },
+  { key: 'gift', title: '邀请奖励', desc: '使用邀请码注册，双方各得 +10 次额度' },
+  { key: 'upgrade', title: '解锁升级通道', desc: '订阅标准版或专业版，无限分析' },
 ]
 
 onMounted(async () => {
@@ -96,303 +96,206 @@ async function handleResend() {
   }
 }
 
-function handleInviteCodeInput(e: Event) {
-  inviteCode.value = (e.target as HTMLInputElement).value.toUpperCase()
+function handleInviteCodeInput(val: string) {
+  inviteCode.value = val.toUpperCase()
 }
 </script>
 
 <template>
-  <div :style="{
-    minHeight: '100dvh',
-    background: '#f2f2f7',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '40px 0',
-  }">
+  <div class="min-h-[100dvh] bg-ios-bg flex flex-col items-center justify-center px-4 py-10">
 
     <!-- Verification success screen -->
     <template v-if="success">
-      <div :style="{
-        width: '88px', height: '88px',
-        background: 'linear-gradient(145deg, #34c759, #30d158)',
-        borderRadius: '22px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '44px',
-        boxShadow: '0 8px 24px rgba(52,199,89,0.35)',
-        marginBottom: '24px',
-      }">📧</div>
-      <h2 :style="{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.4px', color: '#000', margin: '0 0 10px', textAlign: 'center' }">
-        请验证您的邮箱
-      </h2>
-      <p :style="{ fontSize: '15px', color: '#8e8e93', textAlign: 'center', lineHeight: 1.7, margin: '0 0 32px', maxWidth: '320px', padding: '0 16px' }">
-        验证邮件已发送至<br />
-        <strong :style="{ color: '#000' }">{{ email }}</strong><br />
-        请点击邮件中的链接完成激活。
-      </p>
+      <div class="w-full max-w-[420px] flex flex-col items-center text-center">
+        <div class="w-20 h-20 rounded-ios-xl bg-ios-green flex items-center justify-center shadow-ios-lg mb-6">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="3" />
+            <path d="M2 7l10 6 10-6" />
+            <path d="M16 19l2 2 4-4" />
+          </svg>
+        </div>
+        <h2 class="text-[26px] font-bold text-ios-label tracking-ios-tight">请验证您的邮箱</h2>
+        <p class="mt-2.5 text-[15px] text-ios-secondary leading-relaxed max-w-[320px]">
+          验证邮件已发送至<br />
+          <strong class="text-ios-label">{{ email }}</strong><br />
+          请点击邮件中的链接完成激活。
+        </p>
 
-      <div :style="{ width: '100%', maxWidth: '480px', padding: '0 16px' }">
-        <button
-          type="button"
-          @click="handleResend"
-          :disabled="resendCooldown > 0"
-          :style="{
-            width: '100%', height: '50px',
-            background: 'white', border: 'none',
-            borderRadius: '12px', fontSize: '17px', fontWeight: 500,
-            color: resendCooldown > 0 ? '#c7c7cc' : '#007aff',
-            cursor: resendCooldown > 0 ? 'default' : 'pointer',
-            marginBottom: '12px',
-            WebkitTapHighlightColor: 'transparent',
-          }"
-        >{{ resendCooldown > 0 ? `重新发送 (${resendCooldown}s)` : '重新发送验证邮件' }}</button>
-        <p v-if="resendStatus" :style="{ textAlign: 'center', fontSize: '13px', color: '#8e8e93', marginBottom: '12px' }">{{ resendStatus }}</p>
-        <button
-          type="button"
-          @click="success = false"
-          :style="{
-            width: '100%', height: '50px',
-            background: 'none', border: 'none',
-            fontSize: '15px', color: '#8e8e93',
-            cursor: 'pointer',
-            WebkitTapHighlightColor: 'transparent',
-          }"
-        >返回注册页</button>
+        <div class="w-full mt-8 flex flex-col gap-2">
+          <IosButton
+            :variant="resendCooldown > 0 ? 'secondary' : 'secondary'"
+            :disabled="resendCooldown > 0"
+            :full-width="true"
+            size="lg"
+            @click="handleResend"
+          >
+            {{ resendCooldown > 0 ? `重新发送 (${resendCooldown}s)` : '重新发送验证邮件' }}
+          </IosButton>
+          <p v-if="resendStatus" class="text-[13px] text-ios-secondary">{{ resendStatus }}</p>
+          <IosButton variant="ghost" :full-width="true" @click="success = false">返回注册页</IosButton>
+        </div>
+
+        <p class="mt-6 text-[13px] text-ios-tertiary leading-relaxed max-w-[280px]">
+          没有收到邮件？请检查垃圾邮件文件夹，或点击上方重新发送。
+        </p>
       </div>
-
-      <p :style="{ fontSize: '13px', color: '#aeaeb2', marginTop: '24px', textAlign: 'center', maxWidth: '280px', lineHeight: 1.6, padding: '0 16px' }">
-        没有收到邮件？请检查垃圾邮件文件夹，或点击上方重新发送。
-      </p>
     </template>
 
     <!-- Registration form -->
     <template v-else>
-      <!-- Hero -->
-      <div :style="{
-        width: '100%', maxWidth: '480px',
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        padding: '24px 16px 24px', textAlign: 'center',
-      }">
-        <div :style="{
-          width: '72px', height: '72px',
-          background: 'linear-gradient(145deg, #007aff, #5856d6)',
-          borderRadius: '18px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '36px',
-          boxShadow: '0 6px 20px rgba(0,122,255,0.28)',
-          marginBottom: '14px',
-        }">📈</div>
-        <h1 :style="{ fontSize: '26px', fontWeight: 700, letterSpacing: '-0.4px', color: '#000', margin: '0 0 5px' }">
-          {{ appName }}
-        </h1>
-        <p :style="{ fontSize: '14px', color: '#8e8e93', margin: 0 }">
-          注册即解锁完整分析功能
-        </p>
-      </div>
-
-      <div :style="{ width: '100%', maxWidth: '480px', padding: '0 16px' }">
-        <!-- Form card -->
-        <div :style="{ background: 'white', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }">
-          <!-- Email row -->
-          <div :style="{
-            display: 'flex', alignItems: 'center', minHeight: '44px',
-            padding: '0 16px',
-            borderBottom: '0.5px solid rgba(60,60,67,0.12)',
-          }">
-            <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, width: '80px', flexShrink: 0 }">邮箱</label>
-            <input
-              v-model="email"
-              type="email"
-              placeholder="your@email.com"
-              autocomplete="email"
-              :style="{
-                flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                fontSize: '15px', color: '#000', padding: '10px 0',
-              }"
-            />
+      <div class="w-full max-w-[420px]">
+        <!-- Hero -->
+        <div class="flex flex-col items-center text-center mb-7">
+          <div class="w-16 h-16 rounded-ios-lg bg-ios-blue flex items-center justify-center shadow-ios-lg mb-3.5">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19V5M4 19h16" />
+              <path d="M8 15l3.5-4 3 2.5L20 7" />
+            </svg>
           </div>
-
-          <!-- Password row -->
-          <div :style="{
-            display: 'flex', alignItems: 'center', minHeight: '44px',
-            padding: '0 16px',
-            borderBottom: '0.5px solid rgba(60,60,67,0.12)',
-          }">
-            <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, width: '80px', flexShrink: 0 }">密码</label>
-            <input
-              v-model="password"
-              :type="showPwd ? 'text' : 'password'"
-              placeholder="至少 6 位"
-              autocomplete="new-password"
-              :style="{
-                flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                fontSize: '15px', color: '#000', padding: '10px 0',
-              }"
-            />
-            <button
-              type="button"
-              @click="showPwd = !showPwd"
-              :style="{
-                background: 'none', border: 'none',
-                padding: '0 4px 0 12px', margin: '0 -4px 0 0',
-                minWidth: '44px', minHeight: '44px',
-                cursor: 'pointer', color: '#8e8e93', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                WebkitTapHighlightColor: 'transparent',
-              }"
-            >
-              <svg v-if="showPwd" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            </button>
-          </div>
-
-          <!-- Confirm password row -->
-          <div :style="{
-            display: 'flex', alignItems: 'center', minHeight: '44px',
-            padding: '0 16px',
-            borderBottom: '0.5px solid rgba(60,60,67,0.12)',
-          }">
-            <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, width: '80px', flexShrink: 0 }">确认密码</label>
-            <input
-              v-model="confirmPassword"
-              :type="showConfirmPwd ? 'text' : 'password'"
-              placeholder="再次输入"
-              autocomplete="new-password"
-              @keyup.enter="handleRegister"
-              :style="{
-                flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                fontSize: '15px', color: '#000', padding: '10px 0',
-              }"
-            />
-            <button
-              type="button"
-              @click="showConfirmPwd = !showConfirmPwd"
-              :style="{
-                background: 'none', border: 'none',
-                padding: '0 4px 0 12px', margin: '0 -4px 0 0',
-                minWidth: '44px', minHeight: '44px',
-                cursor: 'pointer', color: '#8e8e93', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                WebkitTapHighlightColor: 'transparent',
-              }"
-            >
-              <svg v-if="showConfirmPwd" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            </button>
-          </div>
-
-          <!-- Invite code row -->
-          <div :style="{
-            display: 'flex', alignItems: 'center', minHeight: '44px',
-            padding: '0 16px',
-          }">
-            <label :style="{ fontSize: '15px', color: '#000', fontWeight: 400, minWidth: '80px', flexShrink: 0 }">
-              邀请码<span v-if="requireInviteCode" :style="{ fontSize: '11px', color: '#ff3b30', marginLeft: '2px' }">*</span>
-              <span v-else :style="{ fontSize: '11px', color: '#aeaeb2', marginLeft: '2px' }">（可选）</span>
-            </label>
-            <input
-              :value="inviteCode"
-              @input="handleInviteCodeInput"
-              type="text"
-              :placeholder="requireInviteCode ? '邀请码（必填）' : '邀请码（可选）'"
-              autocomplete="off"
-              :style="{
-                flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                fontSize: '15px', color: '#000', padding: '10px 0',
-                letterSpacing: '0.5px',
-              }"
-            />
-          </div>
+          <h1 class="text-2xl font-bold text-ios-label tracking-ios-tight">{{ appName }}</h1>
+          <p class="mt-1 text-sm text-ios-secondary">注册即解锁完整分析功能</p>
         </div>
 
-        <div v-if="inviteCode" :style="{
-          background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px',
-          padding: '10px 14px', margin: '-8px 0 16px',
-          fontSize: '13px', color: '#15803d', fontWeight: 600,
-        }">
-          已带入邀请码 {{ inviteCode }}，注册成功后双方各得 +10 次分析额度。
-        </div>
-
-        <!-- Error -->
-        <div v-if="localError" :style="{
-          background: 'white', borderRadius: '12px', padding: '12px 16px',
-          marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px',
-        }">
-          <span :style="{ fontSize: '20px' }">⚠️</span>
-          <p :style="{ fontSize: '14px', color: '#ff3b30', margin: 0 }">{{ localError }}</p>
-        </div>
-
-        <!-- Register button -->
-        <button
-          type="button"
-          @click="handleRegister"
-          :disabled="loading"
-          :style="{
-            width: '100%', height: '50px',
-            background: loading ? '#c7c7cc' : '#007aff',
-            color: 'white', border: 'none', borderRadius: '12px',
-            fontSize: '17px', fontWeight: 600,
-            cursor: loading ? 'default' : 'pointer',
-            marginBottom: '12px',
-            WebkitTapHighlightColor: 'transparent',
-          }"
-        >{{ loading ? '注册中…' : '立即注册' }}</button>
-
-        <!-- Login link -->
-        <p :style="{ textAlign: 'center', fontSize: '14px', color: '#8e8e93', margin: '0 0 28px' }">
-          已有账号？
-          <NuxtLink to="/login" :style="{ color: '#007aff', textDecoration: 'none', fontWeight: 600 }">直接登录</NuxtLink>
-        </p>
-
-        <!-- Benefits section -->
-        <p :style="{ fontSize: '12px', fontWeight: 600, color: '#8e8e93', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 4px', marginBottom: '8px' }">
-          注册的好处
-        </p>
-        <div :style="{ background: 'white', borderRadius: '12px', overflow: 'hidden', marginBottom: '24px' }">
-          <div
-            v-for="(b, i) in BENEFITS"
-            :key="i"
-            :style="{
-              display: 'flex', alignItems: 'center', gap: '12px',
-              padding: '10px 16px',
-              borderBottom: i < BENEFITS.length - 1 ? '0.5px solid rgba(60,60,67,0.1)' : 'none',
-            }"
+        <!-- Form -->
+        <form class="flex flex-col gap-4" @submit.prevent="handleRegister">
+          <IosInput
+            v-model="email"
+            label="邮箱"
+            type="email"
+            placeholder="your@email.com"
+            autocomplete="email"
+          />
+          <IosInput
+            v-model="password"
+            label="密码"
+            :type="showPwd ? 'text' : 'password'"
+            placeholder="至少 6 位"
+            autocomplete="new-password"
           >
-            <div :style="{
-              width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-              background: b.bg,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '17px', color: 'white', fontWeight: 700,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            }">{{ b.icon }}</div>
-            <div>
-              <p :style="{ fontSize: '14px', fontWeight: 500, color: '#000', margin: '0 0 1px' }">{{ b.title }}</p>
-              <p :style="{ fontSize: '12px', color: '#8e8e93', margin: 0 }">{{ b.desc }}</p>
-            </div>
-          </div>
-        </div>
+            <template #suffix>
+              <button
+                type="button"
+                class="w-9 h-9 flex items-center justify-center text-ios-secondary rounded-ios-sm active:scale-90 transition-transform"
+                :aria-label="showPwd ? '隐藏密码' : '显示密码'"
+                @click="showPwd = !showPwd"
+              >
+                <svg v-if="showPwd" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </button>
+            </template>
+          </IosInput>
+          <IosInput
+            v-model="confirmPassword"
+            label="确认密码"
+            :type="showConfirmPwd ? 'text' : 'password'"
+            placeholder="再次输入"
+            autocomplete="new-password"
+            :error="confirmPassword && password !== confirmPassword ? '两次密码不一致' : ''"
+            @keyup="(e) => e.key === 'Enter' && handleRegister()"
+          >
+            <template #suffix>
+              <button
+                type="button"
+                class="w-9 h-9 flex items-center justify-center text-ios-secondary rounded-ios-sm active:scale-90 transition-transform"
+                :aria-label="showConfirmPwd ? '隐藏密码' : '显示密码'"
+                @click="showConfirmPwd = !showConfirmPwd"
+              >
+                <svg v-if="showConfirmPwd" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </button>
+            </template>
+          </IosInput>
+          <IosInput
+            :model-value="inviteCode"
+            label="邀请码"
+            :placeholder="requireInviteCode ? '邀请码（必填）' : '邀请码（可选）'"
+            :required="requireInviteCode"
+            :hint="requireInviteCode ? '' : '可选 — 填写后双方各得 +10 次额度'"
+            autocomplete="off"
+            @update:model-value="handleInviteCodeInput"
+          />
 
-        <!-- Terms -->
-        <p :style="{ textAlign: 'center', fontSize: '12px', color: '#aeaeb2', lineHeight: 1.6, marginBottom: '40px' }">
+          <div
+            v-if="inviteCode"
+            class="rounded-ios bg-ios-green/8 px-3.5 py-2.5 text-[13px] font-semibold text-ios-green"
+          >
+            已带入邀请码 {{ inviteCode }}，注册成功后双方各得 +10 次分析额度。
+          </div>
+
+          <!-- Inline error -->
+          <div
+            v-if="localError"
+            class="flex items-center gap-2.5 rounded-ios bg-ios-red/8 px-4 py-3 text-sm text-ios-red"
+          >
+            <svg class="flex-shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v5M12 16h.01" />
+            </svg>
+            {{ localError }}
+          </div>
+
+          <IosButton type="submit" size="lg" :loading="loading" :full-width="true">
+            {{ loading ? '注册中…' : '立即注册' }}
+          </IosButton>
+        </form>
+
+        <p class="text-center text-sm text-ios-secondary mt-5 mb-7">
+          已有账号？
+          <NuxtLink to="/login" class="text-ios-blue font-semibold">直接登录</NuxtLink>
+        </p>
+
+        <!-- Benefits -->
+        <IosCard section-label="注册的好处" elevation="raised" padding="none">
+          <div class="divide-y divide-ios-separator">
+            <IosListRow
+              v-for="b in BENEFITS"
+              :key="b.key"
+              :title="b.title"
+              :subtitle="b.desc"
+              :chevron="false"
+              :interactive="false"
+            >
+              <template #icon>
+                <span class="w-9 h-9 rounded-ios-sm bg-ios-blue/10 text-ios-blue flex items-center justify-center">
+                  <svg v-if="b.key === 'chart'" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 19V5M4 19h16" /><path d="M8 15l3.5-4 3 2.5L20 7" />
+                  </svg>
+                  <svg v-else-if="b.key === 'sync'" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4" />
+                    <path d="M21 4v4h-4M3 20v-4h4" />
+                  </svg>
+                  <svg v-else-if="b.key === 'gift'" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="8" width="18" height="13" rx="2" /><path d="M3 12h18M12 8v13" />
+                    <path d="M12 8S9 3 6.5 4.5 9 8 12 8zM12 8s3-5 5.5-3.5S15 8 12 8z" />
+                  </svg>
+                  <svg v-else width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </span>
+              </template>
+            </IosListRow>
+          </div>
+        </IosCard>
+
+        <p class="text-center text-xs text-ios-tertiary leading-relaxed mt-6 mb-10">
           注册即表示同意
-          <NuxtLink to="/terms" :style="{ color: '#8e8e93', textDecoration: 'none' }">服务条款</NuxtLink>
+          <NuxtLink to="/terms" class="text-ios-secondary">服务条款</NuxtLink>
           与
-          <NuxtLink to="/privacy" :style="{ color: '#8e8e93', textDecoration: 'none' }">隐私政策</NuxtLink>
+          <NuxtLink to="/privacy" class="text-ios-secondary">隐私政策</NuxtLink>
         </p>
       </div>
     </template>

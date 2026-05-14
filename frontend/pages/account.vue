@@ -46,7 +46,7 @@ async function handleUseInvite() {
   inviteMsg.value = null
   try {
     const res = await api.post('/api/auth/invite/use', { invite_code: inviteInput.value.trim() })
-    inviteMsg.value = { type: 'ok', text: res.data.message || '成功！双方各获得 +10 次分析额度 🎉' }
+    inviteMsg.value = { type: 'ok', text: res.data.message || '成功！双方各获得 +10 次分析额度' }
     inviteInput.value = ''
     await auth.fetchMe()
   } catch (e: any) {
@@ -71,6 +71,9 @@ function handleLogout() {
 
 const tier = computed(() => auth.user?.tier ?? 'free')
 const tierLabel = computed(() => TIER_LABELS[tier.value] ?? tier.value)
+const tierBadgeVariant = computed<'orange' | 'blue' | 'gray'>(() =>
+  tier.value === 'premium' ? 'orange' : tier.value === 'basic' ? 'blue' : 'gray',
+)
 const inviteLink = computed(() => {
   if (typeof window === 'undefined' || !auth.user?.invite_code) return ''
   const url = new URL('/', window.location.origin)
@@ -90,178 +93,196 @@ function copyInviteLink() {
 </script>
 
 <template>
-  <div style="min-height: 100vh; background: #f2f2f7;">
-    <!-- Nav Bar -->
-    <div style="position: sticky; top: 0; z-index: 100; background: rgba(249,249,249,0.94); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 0.5px solid rgba(0,0,0,0.12); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 44px;">
-      <NuxtLink to="/" style="font-size: 17px; color: #007aff; text-decoration: none; display: flex; align-items: center; gap: 2px;">‹ 返回</NuxtLink>
-      <span style="font-size: 17px; font-weight: 600; color: #000;">账户</span>
-      <span style="width: 40px; display: inline-block;" />
-    </div>
+  <div class="min-h-[100dvh] bg-ios-bg">
+    <IosNavBar title="账户" back="/" />
 
-    <!-- Not logged in state -->
-    <div v-if="!auth.isLoggedIn" style="display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 44px);">
-      <div style="background: white; border-radius: 20px; padding: 40px 32px; text-align: center; max-width: 320px; width: calc(100% - 48px); box-shadow: 0 2px 16px rgba(0,0,0,0.08);">
-        <div style="font-size: 48px; margin-bottom: 12px;">🔐</div>
-        <p style="font-size: 17px; font-weight: 600; color: #000; margin: 0 0 8px;">请先登录</p>
-        <p style="font-size: 14px; color: #8e8e93; margin: 0 0 24px;">登录后查看账号信息和历史分析</p>
-        <NuxtLink to="/login" style="display: block; width: 100%; height: 50px; background: #007aff; color: white; border-radius: 12px; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; margin-bottom: 12px; box-sizing: border-box;">前往登录</NuxtLink>
-        <NuxtLink to="/" style="display: block; width: 100%; height: 50px; background: #f2f2f7; color: #007aff; border-radius: 12px; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; box-sizing: border-box;">返回首页</NuxtLink>
-      </div>
-    </div>
-
-    <!-- Logged in state -->
-    <template v-else>
-      <div style="padding: 20px 16px; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
-
-        <!-- Profile card -->
-        <div style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
-          <div style="display: flex; align-items: center; gap: 16px;">
-            <!-- Avatar -->
-            <div style="width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 22px; flex-shrink: 0;">
-              {{ (auth.user?.email || 'U')[0].toUpperCase() }}
+    <!-- Not logged in -->
+    <div v-if="!auth.isLoggedIn" class="flex items-center justify-center px-6" style="min-height: calc(100dvh - 48px)">
+      <IosCard elevation="raised" padding="lg" class="w-full max-w-[340px]">
+        <IosEmptyState title="请先登录" description="登录后查看账号信息和历史分析" size="sm">
+          <template #icon>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="11" width="16" height="10" rx="2.5" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          </template>
+          <template #action>
+            <div class="flex flex-col gap-2.5 w-full">
+              <NuxtLink to="/login"><IosButton size="lg" :full-width="true">前往登录</IosButton></NuxtLink>
+              <NuxtLink to="/"><IosButton variant="secondary" size="lg" :full-width="true">返回首页</IosButton></NuxtLink>
             </div>
-            <div style="flex: 1; min-width: 0;">
-              <p style="font-size: 16px; font-weight: 600; color: #000; margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ auth.user?.email }}</p>
-              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <!-- Tier badge -->
-                <span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 9999px;"
-                  :style="tier === 'premium' ? { background: '#f3e8ff', color: '#7c3aed' } : tier === 'basic' ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f2f2f7', color: '#8e8e93' }">
-                  {{ tierLabel }}
-                </span>
-                <!-- Verification badge -->
-                <span v-if="!auth.user?.is_verified" style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; background: #fff7ed; color: #c2410c;">未验证</span>
-                <!-- Quota -->
-                <span v-if="limits" style="font-size: 12px; color: #8e8e93;">
-                  今日剩余 {{ limits.remaining }}/{{ limits.daily_limit }} 次
-                </span>
-              </div>
+          </template>
+        </IosEmptyState>
+      </IosCard>
+    </div>
+
+    <!-- Logged in -->
+    <div v-else class="max-w-[680px] mx-auto px-4 py-5 flex flex-col gap-4">
+
+      <!-- Profile -->
+      <IosCard elevation="raised" padding="lg">
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-full bg-ios-blue flex items-center justify-center text-white font-bold text-[22px] flex-shrink-0">
+            {{ (auth.user?.email || 'U')[0].toUpperCase() }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-base font-semibold text-ios-label truncate">{{ auth.user?.email }}</p>
+            <div class="flex items-center gap-2 flex-wrap mt-1.5">
+              <IosBadge :variant="tierBadgeVariant">{{ tierLabel }}</IosBadge>
+              <IosBadge v-if="!auth.user?.is_verified" variant="orange">未验证</IosBadge>
+              <span v-if="limits" class="text-xs text-ios-secondary">
+                今日剩余 {{ limits.remaining }}/{{ limits.daily_limit }} 次
+              </span>
             </div>
           </div>
         </div>
+      </IosCard>
 
-        <!-- Subscription card -->
-        <div style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
-          <div style="padding: 16px 20px 0; font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em;">订阅状态</div>
-          <div style="padding: 12px 20px 20px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 0.5px solid rgba(60,60,67,0.1);">
-              <span style="font-size: 15px; color: #000;">当前套餐</span>
-              <span style="font-size: 15px; font-weight: 600; color: #000;">{{ tierLabel }}</span>
-            </div>
-            <!-- Premium status -->
-            <div v-if="tier === 'premium'" style="margin-top: 16px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #c4b5fd;">
-              <div style="font-size: 24px; margin-bottom: 6px;">🏆</div>
-              <p style="font-size: 15px; font-weight: 700; color: #5b21b6; margin: 0 0 4px;">您已是专业会员</p>
-              <p style="font-size: 13px; color: #6d28d9; margin: 0;">每日 {{ 15 }} 次分析 · 全市场 · 优先通道</p>
-            </div>
-            <!-- Upgrade button for non-premium -->
-            <div v-else style="margin-top: 16px; display: flex; flex-direction: column; gap: 10px;">
-              <NuxtLink v-if="tier === 'free'" :to="'/upgrade?tier=basic'" style="display: block; width: 100%; height: 50px; border-radius: 12px; background: #007aff; color: white; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; box-sizing: border-box;">升级标准版 →</NuxtLink>
-              <NuxtLink :to="'/upgrade?tier=premium'" style="display: block; width: 100%; height: 50px; border-radius: 12px; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; box-sizing: border-box;">升级专业版 →</NuxtLink>
-            </div>
+      <!-- Subscription -->
+      <IosCard section-label="订阅状态" elevation="raised" padding="lg">
+        <div class="flex items-center justify-between py-2 border-b border-ios-separator">
+          <span class="text-[15px] text-ios-label">当前套餐</span>
+          <span class="text-[15px] font-semibold text-ios-label">{{ tierLabel }}</span>
+        </div>
+
+        <div v-if="tier === 'premium'" class="mt-4 rounded-ios bg-ios-blue/6 px-4 py-4 text-center">
+          <div class="flex justify-center mb-2 text-ios-blue">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7l4 4 5-7 5 7 4-4-2 13H5L3 7z" />
+            </svg>
+          </div>
+          <p class="text-[15px] font-bold text-ios-label">您已是专业会员</p>
+          <p class="mt-1 text-[13px] text-ios-secondary">每日 15 次分析 · 全市场 · 优先通道</p>
+        </div>
+
+        <div v-else class="mt-4 flex flex-col gap-2.5">
+          <NuxtLink v-if="tier === 'free'" to="/upgrade?tier=basic">
+            <IosButton variant="secondary" size="lg" :full-width="true">升级标准版</IosButton>
+          </NuxtLink>
+          <NuxtLink to="/upgrade?tier=premium">
+            <IosButton size="lg" :full-width="true">升级专业版</IosButton>
+          </NuxtLink>
+        </div>
+      </IosCard>
+
+      <!-- Invite -->
+      <IosCard v-if="auth.user?.invite_code" elevation="raised" padding="lg">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="text-ios-blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="8" width="18" height="13" rx="2" /><path d="M3 12h18M12 8v13" />
+              <path d="M12 8S9 3 6.5 4.5 9 8 12 8zM12 8s3-5 5.5-3.5S15 8 12 8z" />
+            </svg>
+          </span>
+          <h2 class="text-base font-bold text-ios-label">邀请好友 · 共享额度</h2>
+        </div>
+        <p class="text-[13px] text-ios-secondary leading-relaxed mb-4">
+          每成功邀请一位新用户注册，双方各获得 <strong class="text-ios-label">+10 次</strong> 分析额度（永久累加）
+          <span v-if="(auth.user?.bonus_quota ?? 0) > 0" class="ml-1.5 text-ios-blue font-semibold">当前奖励余额：{{ auth.user?.bonus_quota }} 次</span>
+        </p>
+
+        <!-- My invite code -->
+        <div class="mb-4">
+          <p class="text-xs text-ios-secondary mb-1.5">我的邀请码</p>
+          <div class="flex items-center gap-2.5">
+            <code class="flex-1 text-center bg-ios-bg border border-ios-separator rounded-ios-sm py-2 font-bold text-lg tracking-[0.15em] text-ios-label font-mono">{{ auth.user?.invite_code }}</code>
+            <IosButton variant="secondary" size="sm" @click="copyInviteCode">{{ copiedInvite ? '已复制' : '复制' }}</IosButton>
           </div>
         </div>
 
-        <!-- Invite code card -->
-        <div v-if="auth.user?.invite_code" style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-            <span style="font-size: 18px;">🎁</span>
-            <h2 style="font-size: 16px; font-weight: 700; color: #000; margin: 0;">邀请好友·共享额度</h2>
+        <!-- Invite link -->
+        <div class="mb-4">
+          <p class="text-xs text-ios-secondary mb-1.5">默认邀请链接</p>
+          <div class="flex items-center gap-2.5">
+            <div class="flex-1 min-w-0 bg-ios-bg border border-ios-separator rounded-ios-sm px-2.5 py-2 text-xs text-ios-secondary truncate">{{ inviteLink }}</div>
+            <IosButton size="sm" @click="copyInviteLink">{{ copiedInviteLink ? '已复制' : '复制链接' }}</IosButton>
           </div>
-          <p style="font-size: 13px; color: #8e8e93; margin: 0 0 16px; line-height: 1.5;">
-            每成功邀请一位新用户注册，双方各获得 <strong style="color: #000;">+10 次</strong>分析额度（永久累加）
-            <span v-if="(auth.user?.bonus_quota ?? 0) > 0" style="margin-left: 8px; color: #7c3aed; font-weight: 600;">当前奖励余额：{{ auth.user?.bonus_quota }} 次</span>
-          </p>
+          <p class="text-xs text-ios-secondary mt-1.5">分享分析结果时会自动换成对应股票链接，并携带你的邀请码。</p>
+        </div>
 
-          <!-- My invite code -->
-          <div style="margin-bottom: 16px;">
-            <p style="font-size: 12px; color: #8e8e93; margin: 0 0 6px;">我的邀请码</p>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <code style="background: #f2f2f7; padding: 8px 14px; border-radius: 10px; font-weight: 700; font-size: 18px; letter-spacing: 0.15em; color: #000; border: 1px solid #e5e5ea; flex: 1; text-align: center; font-family: monospace;">{{ auth.user?.invite_code }}</code>
-              <button @click="copyInviteCode" style="height: 40px; padding: 0 16px; background: #f2f2f7; color: #007aff; border: 1px solid #e5e5ea; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-                {{ copiedInvite ? '已复制 ✓' : '复制' }}
-              </button>
-            </div>
+        <!-- Use friend's code -->
+        <div>
+          <p class="text-xs text-ios-secondary mb-1.5">输入好友邀请码</p>
+          <div
+            v-if="auth.user?.used_invite_code"
+            class="text-[13px] text-ios-green font-semibold px-3.5 py-2.5 bg-ios-green/8 rounded-ios-sm"
+          >
+            已兑换邀请码 <code class="bg-ios-card px-2 py-0.5 rounded tracking-[0.1em]">{{ auth.user?.used_invite_code }}</code>（每账号限兑换一次）
           </div>
-
-          <div style="margin-bottom: 16px;">
-            <p style="font-size: 12px; color: #8e8e93; margin: 0 0 6px;">默认邀请链接</p>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <div style="flex: 1; min-width: 0; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 10px; font-size: 12px; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ inviteLink }}</div>
-              <button @click="copyInviteLink" style="height: 40px; padding: 0 16px; background: #007aff; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
-                {{ copiedInviteLink ? '已复制 ✓' : '复制链接' }}
-              </button>
+          <template v-else>
+            <div class="flex gap-2.5">
+              <input
+                v-model="inviteInput"
+                maxlength="8"
+                placeholder="8位邀请码"
+                class="flex-1 h-11 px-3.5 rounded-ios-sm border border-ios-separator bg-ios-bg text-ios-label text-base font-mono tracking-[0.1em] uppercase outline-none focus:border-ios-blue focus:ring-2 focus:ring-ios-blue/15 transition-all"
+                @input="inviteInput = (inviteInput as string).toUpperCase()"
+                @keydown.enter="handleUseInvite"
+              />
+              <IosButton
+                size="md"
+                :loading="inviteLoading"
+                :disabled="inviteLoading || !inviteInput.trim()"
+                @click="handleUseInvite"
+              >兑换</IosButton>
             </div>
-            <p style="font-size: 12px; color: #8e8e93; margin: 6px 0 0;">分享分析结果时会自动换成对应股票链接，并携带你的邀请码。</p>
-          </div>
+            <p
+              v-if="inviteMsg"
+              class="text-[13px] mt-2"
+              :class="inviteMsg.type === 'ok' ? 'text-ios-green' : 'text-ios-red'"
+            >{{ inviteMsg.text }}</p>
+          </template>
+        </div>
+      </IosCard>
 
-          <!-- Use friend's invite code -->
-          <div>
-            <p style="font-size: 12px; color: #8e8e93; margin: 0 0 6px;">输入好友邀请码</p>
-            <div v-if="auth.user?.used_invite_code" style="font-size: 13px; color: #16a34a; font-weight: 600; padding: 10px 14px; background: #f0fdf4; border-radius: 10px;">
-              ✓ 已兑换邀请码 <code style="background: white; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.1em;">{{ auth.user?.used_invite_code }}</code>（每账号限兑换一次）
-            </div>
-            <template v-else>
-              <div style="display: flex; gap: 10px;">
-                <input
-                  v-model="inviteInput"
-                  @input="inviteInput = (inviteInput as string).toUpperCase()"
-                  @keydown.enter="handleUseInvite"
-                  placeholder="8位邀请码"
-                  maxlength="8"
-                  style="flex: 1; height: 44px; padding: 0 14px; border: 1px solid rgba(60,60,67,0.18); border-radius: 10px; font-size: 16px; font-family: monospace; letter-spacing: 0.1em; text-transform: uppercase; background: #f2f2f7; color: #000; outline: none; box-sizing: border-box;"
-                />
-                <button
-                  @click="handleUseInvite"
-                  :disabled="inviteLoading || !inviteInput.trim()"
-                  style="height: 44px; padding: 0 20px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; white-space: nowrap;"
-                  :style="inviteLoading || !inviteInput.trim() ? { background: '#c7c7cc', color: 'white', cursor: 'default' } : { background: '#007aff', color: 'white' }"
-                >
-                  {{ inviteLoading ? '...' : '兑换' }}
-                </button>
-              </div>
-              <p v-if="inviteMsg" style="font-size: 13px; margin-top: 8px;" :style="inviteMsg.type === 'ok' ? { color: '#16a34a' } : { color: '#dc2626' }">
-                {{ inviteMsg.text }}
-              </p>
+      <!-- Standalone bonus quota -->
+      <IosCard
+        v-if="!auth.user?.invite_code && (auth.user?.bonus_quota ?? 0) > 0"
+        elevation="raised"
+        padding="md"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-[15px] text-ios-label">永久额度</span>
+          <span class="text-xl font-bold text-ios-green">+{{ auth.user?.bonus_quota }}</span>
+        </div>
+      </IosCard>
+
+      <!-- Quick links -->
+      <IosCard elevation="raised" padding="none">
+        <div class="divide-y divide-ios-separator">
+          <IosListRow v-if="auth.isAdmin" to="/admin" title="管理后台">
+            <template #icon>
+              <span class="w-8 h-8 rounded-ios-sm bg-ios-orange/12 text-ios-orange flex items-center justify-center">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </span>
             </template>
-          </div>
-        </div>
-
-        <!-- Bonus quota card (standalone if no invite_code section) -->
-        <div v-if="!auth.user?.invite_code && (auth.user?.bonus_quota ?? 0) > 0" style="background: white; border-radius: 20px; padding: 16px 20px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-size: 15px; color: #000;">永久额度</span>
-          <span style="font-size: 20px; font-weight: 700; color: #34c759;">+{{ auth.user?.bonus_quota }}</span>
-        </div>
-
-        <!-- Quick links card -->
-        <div style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
-          <NuxtLink v-if="auth.isAdmin" to="/admin" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; text-decoration: none; border-bottom: 0.5px solid rgba(60,60,67,0.1);">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #ff9500, #ffcc02); display: flex; align-items: center; justify-content: center; font-size: 16px;">⚙️</div>
-              <span style="font-size: 15px; color: #000;">管理后台</span>
-            </div>
-            <span style="font-size: 18px; color: #c7c7cc;">›</span>
-          </NuxtLink>
-          <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; text-decoration: none;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #7c3aed, #4f46e5); display: flex; align-items: center; justify-content: center; font-size: 16px;">👑</div>
-              <span style="font-size: 15px; color: #000;">订阅管理 / 激活</span>
-            </div>
-            <span style="font-size: 18px; color: #c7c7cc;">›</span>
-          </NuxtLink>
+          </IosListRow>
+          <IosListRow to="/upgrade" title="订阅管理 / 激活">
+            <template #icon>
+              <span class="w-8 h-8 rounded-ios-sm bg-ios-blue/10 text-ios-blue flex items-center justify-center">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7l4 4 5-7 5 7 4-4-2 13H5L3 7z" />
+                </svg>
+              </span>
+            </template>
+          </IosListRow>
           <PwaInstallButton :appName="appName" variant="row" />
         </div>
+      </IosCard>
 
-        <!-- Logout button -->
-        <button
-          @click="handleLogout"
-          style="width: 100%; height: 50px; border-radius: 12px; border: none; background: #fff2f2; color: #ff3b30; font-size: 17px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.06);"
-        >
-          退出登录
-        </button>
+      <!-- Logout -->
+      <button
+        type="button"
+        class="w-full min-h-[52px] rounded-ios bg-ios-red/8 text-ios-red text-[17px] font-semibold transition-all duration-150 active:scale-[0.98] active:bg-ios-red/12"
+        @click="handleLogout"
+      >
+        退出登录
+      </button>
 
-      </div>
-    </template>
-
-    <div style="height: 48px;" />
+      <div class="h-6" />
+    </div>
   </div>
 </template>

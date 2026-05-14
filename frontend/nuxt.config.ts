@@ -2,7 +2,7 @@
 export default defineNuxtConfig({
   devtools: { enabled: false },
   modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt'],
-  css: ['~/assets/css/main.css', '~/assets/css/model-review.css'],
+  css: ['~/assets/css/tokens.css', '~/assets/css/main.css', '~/assets/css/model-review.css'],
   // API proxy is handled by server/middleware/proxy.ts (runtime, reads BACKEND_URL env var)
   app: {
     head: {

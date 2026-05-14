@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { PhArchive, PhCaretDown, PhChartLineUp, PhGlobeHemisphereEast, PhMagnifyingGlass, PhTarget } from '@phosphor-icons/vue'
+import { PhArchive, PhCaretRight, PhChartLineUp, PhGlobeHemisphereEast, PhTarget } from '@phosphor-icons/vue'
 import { SITE_NAME } from '~/constants/seo'
-import MrMetric from '~/components/model-review/MrMetric.vue'
-import MrState from '~/components/model-review/MrState.vue'
-import MrStatusBadge from '~/components/model-review/MrStatusBadge.vue'
 
 type Prediction = Record<string, any>
 
@@ -41,11 +38,11 @@ function statusLabel(p: Prediction) {
   return '已结算'
 }
 
-function statusClass(p: Prediction) {
-  if (isAwaitingResult(p)) return 'pending'
-  if (p?.is_correct === true) return 'hit'
-  if (p?.is_correct === false) return 'miss'
-  return 'settled'
+function statusVariant(p: Prediction): 'orange' | 'green' | 'red' | 'gray' {
+  if (isAwaitingResult(p)) return 'orange'
+  if (p?.is_correct === true) return 'green'
+  if (p?.is_correct === false) return 'red'
+  return 'gray'
 }
 
 function changeText(p: Prediction) {
@@ -180,180 +177,181 @@ useJsonLd('research-index-jsonld', () => [
 function marketLabel(m: string) {
   return m === 'a' ? 'A股' : m === 'hk' ? '港股' : m === 'us' ? '美股' : m
 }
+
+const marketChips = [
+  { key: 'all', label: '全部' },
+  { key: 'a', label: 'A股' },
+  { key: 'hk', label: '港股' },
+] as const
+
+const statusChips = [
+  { key: 'all', label: '全部状态' },
+  { key: 'pending', label: '待验证' },
+  { key: 'hit', label: '命中' },
+  { key: 'miss', label: '未中' },
+] as const
+
+const metrics = computed(() => [
+  { label: '公开记录', value: baseRecords.value.length, sub: '按最新预测日排序', icon: PhGlobeHemisphereEast },
+  { label: '待验证', value: awaitingCount.value, sub: '目标日后自动复盘', icon: PhTarget },
+  { label: '已结算', value: settledCount.value, sub: `命中 ${hitCount.value} · 未中 ${missCount.value}`, icon: PhChartLineUp },
+  { label: '命中率', value: accuracyLabel.value, sub: '公开样本', icon: PhArchive },
+])
 </script>
 
 <template>
-  <main class="mr-page">
-    <div class="mr-public-shell">
-      <nav class="mr-breadcrumb" aria-label="面包屑">
-        <NuxtLink to="/">首页</NuxtLink>
-        <span class="sep" aria-hidden="true">/</span>
-        <span aria-current="page">公开复盘档案</span>
-      </nav>
+  <main class="min-h-[100dvh] bg-ios-bg">
+    <IosNavBar title="复盘档案" back="/" />
 
-      <section class="mr-hero">
-        <div class="mr-hero-main">
-          <NuxtLink to="/" class="mr-btn mr-btn-ghost mr-btn-small">
-            <PhMagnifyingGlass :size="16" weight="bold" />
-            返回分析工具
-          </NuxtLink>
-          <div class="mr-kicker" style="margin-top: 18px">
-            <PhArchive :size="16" weight="bold" />
-            公开技术面档案
-          </div>
-          <h1 class="mr-title">模型复盘档案</h1>
-          <p class="mr-lead">已通过预测会先进入待验证状态，结算后同一路径自动变成复盘记录，保留原始方向、关键价格和实际结果。</p>
-          <div class="mr-toolbar" style="margin: 18px 0 0">
-            <NuxtLink class="mr-btn mr-btn-primary" to="/">打开 AI 分析工具</NuxtLink>
-            <NuxtLink class="mr-btn mr-btn-secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
-          </div>
+    <div class="max-w-[680px] mx-auto px-4 pb-12">
+      <!-- Hero -->
+      <header class="pt-6 pb-1">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ios-secondary mb-2">公开技术面档案</p>
+        <h1 class="text-[28px] font-extrabold text-ios-label tracking-ios-tight leading-tight">模型复盘档案</h1>
+        <p class="mt-2 text-sm text-ios-label2 leading-relaxed">
+          已通过预测会先进入待验证状态，结算后同一路径自动变成复盘记录，保留原始方向、关键价格和实际结果。
+        </p>
+        <div class="flex flex-wrap gap-2.5 mt-4">
+          <NuxtLink to="/"><IosButton size="md">打开 AI 分析工具</IosButton></NuxtLink>
+          <NuxtLink to="/upgrade?tier=premium"><IosButton variant="secondary" size="md">升级专业版</IosButton></NuxtLink>
         </div>
-        <aside class="mr-hero-side">
-          <div>
-            <div class="mr-kicker">结算准确率</div>
-            <strong>{{ accuracyLabel }}</strong>
-            <small v-if="data?.accuracy?.total">已结算 {{ data.accuracy.correct }}/{{ data.accuracy.total }} 条。</small>
-            <small v-else>记录结算后自动统计。</small>
-          </div>
-          <MrStatusBadge status="info" :label="`${baseRecords.length} 条公开记录`" />
-        </aside>
-      </section>
+      </header>
 
-      <div class="mr-metrics">
-        <MrMetric label="公开记录" :value="baseRecords.length" sub="按最新预测日排序">
-          <template #icon><PhGlobeHemisphereEast :size="18" weight="bold" /></template>
-        </MrMetric>
-        <MrMetric label="待验证" :value="awaitingCount" sub="目标日后自动复盘">
-          <template #icon><PhTarget :size="18" weight="bold" /></template>
-        </MrMetric>
-        <MrMetric label="已结算" :value="settledCount" :sub="`命中 ${hitCount} · 未中 ${missCount}`">
-          <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
-        </MrMetric>
-        <MrMetric label="命中率" :value="accuracyLabel" sub="公开样本">
-          <template #icon><PhArchive :size="18" weight="bold" /></template>
-        </MrMetric>
+      <!-- Metrics grid -->
+      <div class="grid grid-cols-2 gap-3 mt-6">
+        <IosCard
+          v-for="m in metrics"
+          :key="m.label"
+          elevation="flat"
+          rounded="ios"
+          padding="md"
+        >
+          <div class="flex items-start justify-between">
+            <span class="text-xs text-ios-secondary">{{ m.label }}</span>
+            <component :is="m.icon" :size="17" weight="bold" class="text-ios-tertiary" />
+          </div>
+          <div class="text-[26px] font-extrabold text-ios-label tracking-ios-tight leading-none mt-1.5 tabular-nums">
+            {{ m.value }}
+          </div>
+          <div class="text-[11px] text-ios-secondary mt-1.5">{{ m.sub }}</div>
+        </IosCard>
       </div>
 
-      <div class="mr-filter-bar" role="search" aria-label="筛选公开记录">
-        <div class="mr-chip-row" role="group" aria-label="市场筛选">
+      <!-- Filters -->
+      <div class="mt-6 flex flex-col gap-3" role="search" aria-label="筛选公开记录">
+        <div class="flex flex-wrap items-center gap-2">
           <button
+            v-for="c in marketChips"
+            :key="c.key"
             type="button"
-            class="mr-chip"
-            :class="{ 'is-active': marketFilter === 'all' }"
-            :aria-pressed="marketFilter === 'all'"
-            @click="marketFilter = 'all'"
-          >全部 <span class="mr-chip-count">{{ marketCounts.all }}</span></button>
+            class="research-chip"
+            :class="{ 'is-active': marketFilter === c.key }"
+            :aria-pressed="marketFilter === c.key"
+            @click="marketFilter = c.key"
+          >
+            {{ c.label }}
+            <span class="research-chip-count">{{ marketCounts[c.key] }}</span>
+          </button>
+          <span class="w-px h-4 bg-ios-separator mx-1" aria-hidden="true" />
           <button
+            v-for="c in statusChips"
+            :key="c.key"
             type="button"
-            class="mr-chip"
-            :class="{ 'is-active': marketFilter === 'a' }"
-            :aria-pressed="marketFilter === 'a'"
-            @click="marketFilter = 'a'"
-          >A股 <span class="mr-chip-count">{{ marketCounts.a }}</span></button>
-          <button
-            type="button"
-            class="mr-chip"
-            :class="{ 'is-active': marketFilter === 'hk' }"
-            :aria-pressed="marketFilter === 'hk'"
-            @click="marketFilter = 'hk'"
-          >港股 <span class="mr-chip-count">{{ marketCounts.hk }}</span></button>
-          <span class="mr-filter-sep" aria-hidden="true" />
-          <button
-            type="button"
-            class="mr-chip"
-            :class="{ 'is-active': statusFilter === 'all' }"
-            :aria-pressed="statusFilter === 'all'"
-            @click="statusFilter = 'all'"
-          >全部状态</button>
-          <button
-            type="button"
-            class="mr-chip"
-            :class="{ 'is-active': statusFilter === 'pending' }"
-            :aria-pressed="statusFilter === 'pending'"
-            @click="statusFilter = 'pending'"
-          >待验证</button>
-          <button
-            type="button"
-            class="mr-chip"
-            :class="{ 'is-active': statusFilter === 'hit' }"
-            :aria-pressed="statusFilter === 'hit'"
-            @click="statusFilter = 'hit'"
-          >命中</button>
-          <button
-            type="button"
-            class="mr-chip"
-            :class="{ 'is-active': statusFilter === 'miss' }"
-            :aria-pressed="statusFilter === 'miss'"
-            @click="statusFilter = 'miss'"
-          >未中</button>
+            class="research-chip"
+            :class="{ 'is-active': statusFilter === c.key }"
+            :aria-pressed="statusFilter === c.key"
+            @click="statusFilter = c.key"
+          >
+            {{ c.label }}
+          </button>
         </div>
         <input
           v-model.trim="search"
-          class="mr-input"
           type="search"
           placeholder="按代码或名称搜索"
           aria-label="搜索记录"
-        >
+          class="w-full h-11 px-4 rounded-ios bg-ios-card border border-ios-separator text-ios-label text-base placeholder:text-ios-tertiary outline-none focus:border-ios-blue focus:ring-2 focus:ring-ios-blue/15 transition-all"
+        />
       </div>
 
-      <section class="mr-public-list" aria-label="公开复盘记录（按股票分组）">
-        <div
+      <!-- Grouped list -->
+      <section class="mt-4 flex flex-col gap-2.5" aria-label="公开复盘记录（按股票分组）">
+        <IosCard
           v-for="g in visibleGroups"
           :key="g.key"
-          class="mr-group"
-          :class="{ 'is-open': isExpanded(g.key) }"
+          elevation="flat"
+          rounded="ios"
+          padding="none"
         >
           <button
             type="button"
-            class="mr-group-head"
+            class="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-ios-fill"
             :aria-expanded="isExpanded(g.key)"
             @click="toggleGroup(g.key)"
           >
-            <div class="mr-group-main">
-              <div class="mr-group-title">
-                <strong>{{ g.symbol_name }}</strong>
-                <span class="mr-public-row-tag">{{ marketLabel(g.market) }} · {{ g.symbol }}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <strong class="text-[15px] font-bold text-ios-label truncate">{{ g.symbol_name }}</strong>
+                <span class="text-[11px] font-semibold text-ios-tertiary font-mono tracking-wide flex-shrink-0">
+                  {{ marketLabel(g.market) }} · {{ g.symbol }}
+                </span>
               </div>
-              <div class="mr-public-row-meta">
+              <div class="text-xs text-ios-secondary mt-0.5">
                 {{ g.records.length }} 条复盘 · 最近 {{ g.latestDate }}
               </div>
             </div>
-            <div class="mr-group-stats">
-              <span v-if="g.awaitingCount" class="mr-group-stat is-pending">待验证 {{ g.awaitingCount }}</span>
-              <span v-if="g.hitCount" class="mr-group-stat is-hit">命中 {{ g.hitCount }}</span>
-              <span v-if="g.missCount" class="mr-group-stat is-miss">未中 {{ g.missCount }}</span>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <IosBadge v-if="g.awaitingCount" variant="orange">待验证 {{ g.awaitingCount }}</IosBadge>
+              <IosBadge v-if="g.hitCount" variant="green">命中 {{ g.hitCount }}</IosBadge>
+              <IosBadge v-if="g.missCount" variant="red">未中 {{ g.missCount }}</IosBadge>
             </div>
-            <PhCaretDown :size="16" weight="bold" class="mr-group-chevron" />
+            <PhCaretRight
+              :size="15"
+              weight="bold"
+              class="text-ios-tertiary flex-shrink-0 transition-transform duration-200"
+              :class="{ 'rotate-90': isExpanded(g.key) }"
+            />
           </button>
 
-          <div v-if="isExpanded(g.key)" class="mr-group-body">
-            <NuxtLink
-              v-for="p in g.records"
-              :key="p.id"
-              class="mr-public-row"
-              :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
-            >
-              <div class="mr-public-row-main">
-                <div class="mr-public-row-title">
-                  <strong>预测 {{ p.prediction_date }}</strong>
-                </div>
-                <div class="mr-public-row-meta">
-                  目标 {{ p.target_date || '-' }} · 置信 {{ confidenceLabel(p.confidence) }}
-                </div>
+          <Transition name="research-accordion">
+            <div v-if="isExpanded(g.key)" class="border-t border-ios-separator">
+              <div class="divide-y divide-ios-separator">
+                <NuxtLink
+                  v-for="p in g.records"
+                  :key="p.id"
+                  :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
+                  class="flex items-center gap-3 px-4 py-3 transition-colors active:bg-ios-fill"
+                >
+                  <div class="flex-1 min-w-0">
+                    <strong class="text-sm font-semibold text-ios-label">预测 {{ p.prediction_date }}</strong>
+                    <div class="text-xs text-ios-secondary mt-0.5">
+                      目标 {{ p.target_date || '-' }} · 置信 {{ confidenceLabel(p.confidence) }}
+                    </div>
+                  </div>
+                  <div class="flex flex-col items-end flex-shrink-0">
+                    <strong
+                      class="text-[13px] font-bold"
+                      :class="p.predicted_direction === 'up' ? 'text-ios-red' : p.predicted_direction === 'down' ? 'text-ios-green' : 'text-ios-label'"
+                    >{{ directionLabel(p.predicted_direction) }}</strong>
+                    <span class="text-[11px] text-ios-secondary tabular-nums">{{ changeText(p) }}</span>
+                  </div>
+                  <IosBadge :variant="statusVariant(p)">{{ statusLabel(p) }}</IosBadge>
+                </NuxtLink>
               </div>
-              <div class="mr-public-row-direction" :data-dir="p.predicted_direction">
-                <strong>{{ directionLabel(p.predicted_direction) }}</strong>
-                <span>{{ changeText(p) }}</span>
-              </div>
-              <MrStatusBadge :status="statusClass(p)" :label="statusLabel(p)" />
-            </NuxtLink>
-          </div>
-        </div>
+            </div>
+          </Transition>
+        </IosCard>
 
-        <MrState v-if="!groups.length" title="无符合条件的记录" text="清空筛选或换一个市场试试。" />
+        <IosEmptyState
+          v-if="!groups.length"
+          title="无符合条件的记录"
+          description="清空筛选或换一个市场试试。"
+        />
 
-        <div v-if="hasMore" class="mr-public-loadmore">
-          <button type="button" class="mr-btn mr-btn-secondary" @click="loadMore">加载更多（剩余 {{ groups.length - visibleCount }} 只股票）</button>
+        <div v-if="hasMore" class="flex justify-center mt-3">
+          <IosButton variant="secondary" size="md" @click="loadMore">
+            加载更多（剩余 {{ groups.length - visibleCount }} 只股票）
+          </IosButton>
         </div>
       </section>
     </div>
@@ -361,256 +359,41 @@ function marketLabel(m: string) {
 </template>
 
 <style scoped>
-.mr-filter-sep {
-  display: inline-block;
-  width: 1px;
-  height: 18px;
-  margin: 0 6px;
-  background: var(--mr-line);
-}
-
-.mr-public-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.mr-public-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(110px, .5fr) auto;
-  gap: 14px;
-  align-items: center;
-  padding: 14px 16px;
-  border: 1px solid var(--mr-line);
-  border-radius: var(--mr-radius-sm);
-  background: #fff;
-  color: inherit;
-  text-decoration: none;
-  transition: background .18s ease, border-color .18s ease, transform .18s ease;
-  box-shadow: var(--mr-elev-1);
-}
-
-.mr-public-row:hover {
-  background: #fafbf8;
-  border-color: var(--mr-line-strong);
-  transform: translateY(-1px);
-}
-
-.mr-public-row-main {
-  min-width: 0;
-}
-
-.mr-public-row-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.mr-public-row-title strong {
-  color: var(--mr-text);
-  font-size: 16px;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mr-public-row-tag {
-  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
-  color: var(--mr-faint);
-  font-weight: 700;
-  letter-spacing: .04em;
-}
-
-.mr-public-row-meta {
-  color: var(--mr-muted);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.mr-public-row-direction {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-.mr-public-row-direction strong {
-  color: var(--mr-text);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.mr-public-row-direction[data-dir="up"] strong {
-  color: #b03333;
-}
-
-.mr-public-row-direction[data-dir="down"] strong {
-  color: #1a7a4a;
-}
-
-.mr-public-row-direction span {
-  color: var(--mr-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.mr-public-loadmore {
-  display: flex;
-  justify-content: center;
-  margin-top: 16px;
-}
-
-.mr-group {
-  border: 1px solid var(--mr-line);
-  border-radius: var(--mr-radius-sm);
-  background: #fff;
-  box-shadow: var(--mr-elev-1);
-  overflow: hidden;
-  transition: border-color .18s ease;
-}
-
-.mr-group.is-open {
-  border-color: var(--mr-line-strong);
-}
-
-.mr-group-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto auto;
-  gap: 14px;
-  align-items: center;
-  width: 100%;
-  padding: 14px 16px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-  transition: background .18s ease;
-}
-
-.mr-group-head:hover {
-  background: #fafbf8;
-}
-
-.mr-group-head:active {
-  transform: translateY(1px);
-}
-
-.mr-group-main {
-  min-width: 0;
-}
-
-.mr-group-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.mr-group-title strong {
-  color: var(--mr-text);
-  font-size: 16px;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mr-group-stats {
+.research-chip {
   display: inline-flex;
+  align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  padding: 6px 12px;
+  min-height: 34px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ios-label2);
+  background: var(--ios-card);
+  border: 1px solid var(--ios-separator);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
-
-.mr-group-stat {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
+.research-chip:active {
+  transform: scale(0.96);
+}
+.research-chip.is-active {
+  background: var(--ios-blue);
+  border-color: var(--ios-blue);
+  color: #fff;
+}
+.research-chip-count {
   font-size: 11px;
   font-weight: 700;
+  opacity: 0.75;
   font-variant-numeric: tabular-nums;
 }
-
-.mr-group-stat.is-pending {
-  color: #8a6d1f;
-  background: rgba(255, 196, 0, .16);
+.research-accordion-enter-active,
+.research-accordion-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
-
-.mr-group-stat.is-hit {
-  color: #1f7a45;
-  background: rgba(52, 199, 89, .16);
-}
-
-.mr-group-stat.is-miss {
-  color: #c0392b;
-  background: rgba(255, 59, 48, .14);
-}
-
-.mr-group-chevron {
-  color: var(--mr-faint);
-  transition: transform .2s ease;
-  flex-shrink: 0;
-}
-
-.mr-group.is-open .mr-group-chevron {
-  transform: rotate(180deg);
-}
-
-.mr-group-body {
-  display: grid;
-  gap: 8px;
-  padding: 12px 16px 14px;
-  border-top: 1px solid var(--mr-line);
-}
-
-.mr-group-body .mr-public-row {
-  box-shadow: none;
-  background: #fafbf8;
-}
-
-@media (max-width: 760px) {
-  .mr-public-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    row-gap: 8px;
-  }
-
-  .mr-public-row-direction {
-    grid-row: 2;
-    grid-column: 1 / span 2;
-    flex-direction: row;
-    align-items: baseline;
-    justify-content: space-between;
-    border-top: 1px dashed var(--mr-line);
-    padding-top: 8px;
-  }
-
-  .mr-public-row-direction strong {
-    font-size: 13px;
-  }
-
-  .mr-group-head {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    row-gap: 8px;
-    column-gap: 10px;
-  }
-
-  .mr-group-chevron {
-    grid-row: 1;
-    grid-column: 2;
-    align-self: center;
-  }
-
-  .mr-group-stats {
-    grid-row: 2;
-    grid-column: 1 / span 2;
-    justify-content: flex-start;
-  }
+.research-accordion-enter-from,
+.research-accordion-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>

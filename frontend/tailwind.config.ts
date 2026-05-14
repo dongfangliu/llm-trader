@@ -20,7 +20,7 @@ export default {
         'ios-bg': '#f2f2f7',
         'ios-bg2': '#e5e5ea',
         'ios-card': '#ffffff',
-        'ios-label': '#000000',
+        'ios-label': '#1c1c1e',
         'ios-label2': '#3c3c43',
         'ios-secondary': '#8e8e93',
         'ios-tertiary': '#aeaeb2',
@@ -34,11 +34,22 @@ export default {
         'ios-xl': '28px',
       },
       boxShadow: {
-        'ios': '0 2px 16px rgba(0,0,0,0.08)',
-        'ios-lg': '0 8px 32px rgba(0,0,0,0.12)',
+        'ios-sm': '0 1px 2px rgba(60,60,67,0.05)',
+        'ios': '0 1px 2px rgba(60,60,67,0.04), 0 4px 16px rgba(60,60,67,0.06)',
+        'ios-lg': '0 2px 8px rgba(60,60,67,0.06), 0 12px 32px rgba(60,60,67,0.1)',
       },
       fontFamily: {
         'ios': ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', 'Arial', 'sans-serif'],
+      },
+      letterSpacing: {
+        'ios-tight': '-0.02em',
+      },
+      opacity: {
+        '6': '0.06',
+        '8': '0.08',
+        '12': '0.12',
+        '15': '0.15',
+        '55': '0.55',
       },
       minHeight: {
         'touch': '44px',

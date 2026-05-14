@@ -643,7 +643,7 @@ function handleLogout() {
           </div>
           <div style="display: flex; align-items: center; gap: 10px; margin: 0 0 24px;">
             <h1 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0; letter-spacing: -0.3px;">{{ landingPrefilled ? '立即分析该标的' : '分析一支股票' }}</h1>
-            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #7c3aed; background: #ede9fe; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px;">专业版体验中</span>
+            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #007aff; background: #e7f1ff; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px;">专业版体验中</span>
           </div>
           <div v-if="landingPrefilled || inviteRewardText" style="margin: -12px 0 16px; padding: 12px 14px; border-radius: 12px; background: #f0f9ff; border: 1px solid #bae6fd;">
             <div style="font-size: 14px; font-weight: 700; color: #075985;">已填入 {{ MARKET_LABELS[market] || market }} {{ symbol }}</div>
@@ -683,7 +683,7 @@ function handleLogout() {
           <!-- Hot stocks -->
           <div style="display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; padding-bottom: 2px;">
             <button v-for="s in (hotStocks.length ? hotStocks : [{ code: '600519', name: '贵州茅台', market: 'a' }, { code: '000858', name: '五粮液', market: 'a' }, { code: '300750', name: '宁德时代', market: 'a' }, { code: '600036', name: '招商银行', market: 'a' }])" :key="s.code" @click="selectHotStock(s)" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 14px; min-height: 44px; min-width: 80px; background: white; border: none; border-radius: 10px; cursor: pointer; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">
-              <span style="font-size: 15px; font-weight: 600; color: #000; line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
+              <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
               <span style="font-size: 12px; color: #8e8e93; margin-top: 1px;">{{ s.code }}</span>
             </button>
             <button @click="loadHotStocks" style="flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #8e8e93; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">↻</button>
@@ -724,7 +724,7 @@ function handleLogout() {
             <div style="padding: 12px 0 14px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                 <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">持仓参数</p>
-                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #ede9fe; color: #7c3aed; letter-spacing: 0.2px;">专属功能</span>
+                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #e7f1ff; color: #007aff; letter-spacing: 0.2px;">专属功能</span>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
@@ -756,9 +756,9 @@ function handleLogout() {
               <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
                 <button v-for="p in PERIOD_OPTIONS" :key="p.value" class="period-chip" :class="{ active: period === p.value }" @click="period = p.value">{{ p.label }}</button>
               </div>
-              <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius: 12px; text-decoration: none;">
-                <div><div style="font-size: 14px; font-weight: 700; color: #5b21b6;">持仓智能分析</div><div style="font-size: 12px; color: #7c3aed; margin-top: 2px;">专业版专属 · 个性化建议</div></div>
-                <span style="font-size: 13px; font-weight: 600; color: #7c3aed;">升级 →</span>
+              <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #f0f6ff, #e7f1ff); border-radius: 12px; text-decoration: none;">
+                <div><div style="font-size: 14px; font-weight: 700; color: #0a4da3;">持仓智能分析</div><div style="font-size: 12px; color: #007aff; margin-top: 2px;">专业版专属 · 个性化建议</div></div>
+                <span style="font-size: 13px; font-weight: 600; color: #007aff;">升级 →</span>
               </NuxtLink>
             </div>
           </template>
@@ -931,10 +931,10 @@ function handleLogout() {
             <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759"/><line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
             <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626"/><line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/><line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: #000;">{{ appName }}</span>
+          <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: #1c1c1e;">{{ appName }}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span :style="{ fontSize: '12px', fontWeight: 500, color: tier === 'premium' ? '#7c3aed' : tier === 'basic' ? '#007aff' : '#8e8e93' }">
+          <span :style="{ fontSize: '12px', fontWeight: 500, color: tier === 'premium' ? '#007aff' : tier === 'basic' ? '#007aff' : '#8e8e93' }">
             {{ tierLabel }} · {{ totalAvailable ?? '-' }}次
             <template v-if="tier === 'basic' && deepRemaining !== null">
               · 深度 {{ deepRemaining }}/{{ deepDailyLimit }}
@@ -955,35 +955,35 @@ function handleLogout() {
     <template v-if="activePanel === 'analyze'">
 
       <!-- ── QUOTA EXHAUSTED: Premium tier ── -->
-      <div v-if="showUpgradeBanner && tier === 'premium'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; display: flex; flex-direction: column; height: calc(100dvh - 52px - 56px); background: #0d0d1a; align-items: center; justify-content: center; padding: 40px 24px; text-align: center;">
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%); pointer-events: none;"/>
-        <div style="width: 72px; height: 72px; border-radius: 22px; background: linear-gradient(135deg, #7c3aed, #4f46e5); display: flex; align-items: center; justify-content: center; font-size: 36px; box-shadow: 0 8px 32px rgba(124,58,237,0.4); margin-bottom: 24px;">👑</div>
-        <div style="font-size: 11px; font-weight: 700; color: #7c3aed; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">专业版会员</div>
+      <div v-if="showUpgradeBanner && tier === 'premium'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; display: flex; flex-direction: column; height: calc(100dvh - 52px - 56px); background: #1c1c1e; align-items: center; justify-content: center; padding: 40px 24px; text-align: center;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(0,122,255,0.15) 0%, transparent 70%); pointer-events: none;"/>
+        <div style="width: 72px; height: 72px; border-radius: 22px; background: linear-gradient(135deg, #007aff, #0a84ff); display: flex; align-items: center; justify-content: center; font-size: 36px; box-shadow: 0 8px 32px rgba(0,122,255,0.4); margin-bottom: 24px;">👑</div>
+        <div style="font-size: 11px; font-weight: 700; color: #007aff; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">专业版会员</div>
         <h2 style="font-size: 28px; font-weight: 800; color: #fff; margin: 0 0 10px; letter-spacing: -0.5px; line-height: 1.2;">今日研判已完成</h2>
         <p style="font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.7; max-width: 260px; margin: 0 0 36px;">
           今天的 {{ pricing?.premium?.daily_limit ?? 15 }} 次研判额度已用完<br/>明天凌晨将自动重置
         </p>
-        <div style="background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.3); border-radius: 14px; padding: 14px 24px;">
-          <div style="font-size: 12px; color: rgba(196,181,253,0.7); margin-bottom: 4px;">下次重置时间</div>
-          <div style="font-size: 18px; font-weight: 700; color: #c4b5fd;">明天 00:00</div>
+        <div style="background: rgba(0,122,255,0.15); border: 1px solid rgba(0,122,255,0.3); border-radius: 14px; padding: 14px 24px;">
+          <div style="font-size: 12px; color: rgba(158,200,255,0.7); margin-bottom: 4px;">下次重置时间</div>
+          <div style="font-size: 18px; font-weight: 700; color: #9ec8ff;">明天 00:00</div>
         </div>
       </div>
 
       <!-- ── QUOTA EXHAUSTED: Basic tier ── -->
-      <div v-else-if="showUpgradeBanner && tier === 'basic'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; background: #0d0d1a; display: flex; flex-direction: column;">
+      <div v-else-if="showUpgradeBanner && tier === 'basic'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; background: #1c1c1e; display: flex; flex-direction: column;">
         <div style="padding: 32px 20px 24px; position: relative; overflow: hidden; flex-shrink: 0;">
-          <div style="position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(124,58,237,0.22) 0%, transparent 70%); pointer-events: none;"/>
-          <div style="font-size: 11px; font-weight: 700; color: #7c3aed; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">今日 {{ pricing?.basic?.daily_limit ?? 5 }} 次已用完</div>
+          <div style="position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(0,122,255,0.22) 0%, transparent 70%); pointer-events: none;"/>
+          <div style="font-size: 11px; font-weight: 700; color: #007aff; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">今日 {{ pricing?.basic?.daily_limit ?? 5 }} 次已用完</div>
           <h2 style="font-size: 32px; font-weight: 800; color: #fff; margin: 0 0 8px; letter-spacing: -0.5px; line-height: 1.15;">
-            只差一步<br/><span style="color: #c4b5fd;">解锁专业版</span>
+            只差一步<br/><span style="color: #9ec8ff;">解锁专业版</span>
           </h2>
           <p style="font-size: 13px; color: rgba(255,255,255,0.4); margin: 0; line-height: 1.6;">明天自动重置 · 或每天 {{ pricing?.premium?.daily_limit ?? 15 }} 次无限制研判</p>
         </div>
         <div style="flex: 1; padding: 0 16px 16px; overflow-y: auto;">
-          <NuxtLink to="/upgrade" style="display: flex; flex-direction: column; width: 100%; border-radius: 20px; border: 1.5px solid rgba(124,58,237,0.5); background: linear-gradient(160deg, #1a0a3e 0%, #2d1b69 60%, #1e1b4b 100%); text-decoration: none; overflow: hidden; box-shadow: 0 8px 40px rgba(124,58,237,0.3);">
+          <NuxtLink to="/upgrade" style="display: flex; flex-direction: column; width: 100%; border-radius: 20px; border: 1.5px solid rgba(0,122,255,0.5); background: linear-gradient(160deg, #1c1c1e 0%, #2a2a32 60%, #20202a 100%); text-decoration: none; overflow: hidden; box-shadow: 0 8px 40px rgba(0,122,255,0.3);">
             <div style="padding: 20px 20px 16px; display: flex; align-items: flex-end; justify-content: space-between;">
               <div>
-                <div style="font-size: 12px; font-weight: 700; color: #a78bfa; margin-bottom: 6px;">👑 专业版</div>
+                <div style="font-size: 12px; font-weight: 700; color: #7fb4ff; margin-bottom: 6px;">👑 专业版</div>
                 <div style="display: flex; align-items: baseline; gap: 1px;">
                   <span style="font-size: 14px; color: rgba(255,255,255,0.4);">¥</span>
                   <span style="font-size: 46px; font-weight: 900; color: #fff; letter-spacing: -2px; line-height: 1;">{{ pricing?.premium?.price ?? '49' }}</span>
@@ -991,15 +991,15 @@ function handleLogout() {
                 </div>
               </div>
               <div style="text-align: right; padding-bottom: 4px;">
-                <div style="font-size: 56px; font-weight: 900; color: #c4b5fd; letter-spacing: -3px; line-height: 1;">{{ pricing?.premium?.daily_limit ?? 15 }}</div>
-                <div style="font-size: 12px; color: rgba(196,181,253,0.6); margin-top: -2px;">次/天</div>
+                <div style="font-size: 56px; font-weight: 900; color: #9ec8ff; letter-spacing: -3px; line-height: 1;">{{ pricing?.premium?.daily_limit ?? 15 }}</div>
+                <div style="font-size: 12px; color: rgba(158,200,255,0.6); margin-top: -2px;">次/天</div>
               </div>
             </div>
-            <div style="height: 0.5px; background: rgba(124,58,237,0.3); margin: 0 20px;"/>
+            <div style="height: 0.5px; background: rgba(0,122,255,0.3); margin: 0 20px;"/>
             <div style="padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 10px;">
               <div style="font-size: 10px; font-weight: 700; color: rgba(167,139,250,0.6); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px;">专业版独享</div>
               <div v-for="(item, i) in [{ icon: '⚡', text: '每天 15 次完整深度研判' }, { icon: '📍', text: '持仓参数个性化智能分析' }, { icon: '🔄', text: '连续多标的无缝查询' }]" :key="i" style="display: flex; align-items: center; gap: 10px;">
-                <span style="width: 28px; height: 28px; border-radius: 8px; background: rgba(124,58,237,0.25); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">{{ item.icon }}</span>
+                <span style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">{{ item.icon }}</span>
                 <span style="font-size: 14px; color: rgba(255,255,255,0.8); font-weight: 500;">{{ item.text }}</span>
               </div>
             </div>
@@ -1034,16 +1034,16 @@ function handleLogout() {
             </div>
           </NuxtLink>
           <!-- Premium card -->
-          <NuxtLink to="/upgrade" style="flex: 1; border-radius: 20px; overflow: hidden; text-decoration: none; display: flex; flex-direction: column; position: relative; box-shadow: 0 6px 24px rgba(124,58,237,0.28);">
-            <div style="position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #f59e0b, #fbbf24); color: #000; font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 0 0 9px 9px; white-space: nowrap; z-index: 2;">最高权益</div>
-            <div style="background: linear-gradient(160deg, #1e0a3c 0%, #3b1d8a 50%, #4f46e5 100%); padding: 22px 16px 14px;">
-              <div style="font-size: 10px; font-weight: 700; color: #a78bfa; letter-spacing: 0.5px; margin-bottom: 6px;">👑 专业版</div>
+          <NuxtLink to="/upgrade" style="flex: 1; border-radius: 20px; overflow: hidden; text-decoration: none; display: flex; flex-direction: column; position: relative; box-shadow: 0 6px 24px rgba(0,122,255,0.28);">
+            <div style="position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: #1c1c1e; color: #fff; font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 0 0 9px 9px; white-space: nowrap; z-index: 2;">最高权益</div>
+            <div style="background: linear-gradient(160deg, #1c1c1e 0%, #2a2a32 50%, #0a84ff 100%); padding: 22px 16px 14px;">
+              <div style="font-size: 10px; font-weight: 700; color: #7fb4ff; letter-spacing: 0.5px; margin-bottom: 6px;">👑 专业版</div>
               <div style="font-size: 38px; font-weight: 900; color: #fff; letter-spacing: -2px; line-height: 1; margin-bottom: 2px;">{{ pricing?.premium?.daily_limit ?? 15 }}<span style="font-size: 12px; font-weight: 400; color: rgba(255,255,255,0.6); margin-left: 3px;">次/天</span></div>
-              <div style="font-size: 18px; font-weight: 800; color: #c4b5fd;">¥{{ pricing?.premium?.price ?? '49' }}<span style="font-size: 11px; font-weight: 400; color: rgba(196,181,253,0.5); margin-left: 2px;">/{{ pricing?.premium?.period ?? '月' }}</span></div>
+              <div style="font-size: 18px; font-weight: 800; color: #9ec8ff;">¥{{ pricing?.premium?.price ?? '49' }}<span style="font-size: 11px; font-weight: 400; color: rgba(158,200,255,0.5); margin-left: 2px;">/{{ pricing?.premium?.period ?? '月' }}</span></div>
             </div>
-            <div style="background: #1a1040; padding: 12px 14px; flex: 1;">
-              <div v-for="(f, i) in ['完整深度研判', '持仓智能分析', '多标的查询']" :key="i" style="display: flex; align-items: center; gap: 7px; padding: 5px 0;" :style="i < 2 ? { borderBottom: '0.5px solid rgba(124,58,237,0.15)' } : {}">
-                <span style="width: 14px; height: 14px; border-radius: 50%; background: #7c3aed; display: flex; align-items: center; justify-content: center; font-size: 9px; color: white; font-weight: 700; flex-shrink: 0;">✓</span>
+            <div style="background: #1c1c22; padding: 12px 14px; flex: 1;">
+              <div v-for="(f, i) in ['完整深度研判', '持仓智能分析', '多标的查询']" :key="i" style="display: flex; align-items: center; gap: 7px; padding: 5px 0;" :style="i < 2 ? { borderBottom: '0.5px solid rgba(0,122,255,0.15)' } : {}">
+                <span style="width: 14px; height: 14px; border-radius: 50%; background: #007aff; display: flex; align-items: center; justify-content: center; font-size: 9px; color: white; font-weight: 700; flex-shrink: 0;">✓</span>
                 <span style="font-size: 12px; color: rgba(255,255,255,0.75);">{{ f }}</span>
               </div>
             </div>
@@ -1075,7 +1075,7 @@ function handleLogout() {
         <div style="padding: 22px 16px 16px;">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
             <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.8px; color: #1c1c1e; margin: 0; line-height: 1.1;">{{ landingPrefilled ? '立即分析该标的' : '今天分析哪只？' }}</h2>
-            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #7c3aed; background: #ede9fe; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px; line-height: 1.4;">专业版体验中</span>
+            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #007aff; background: #e7f1ff; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px; line-height: 1.4;">专业版体验中</span>
           </div>
           <div v-if="landingPrefilled || inviteRewardText" style="margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #f0f9ff; border: 1px solid #bae6fd;">
             <div style="font-size: 14px; font-weight: 700; color: #075985;">已填入 {{ MARKET_LABELS[market] || market }} {{ symbol }}</div>
@@ -1117,7 +1117,7 @@ function handleLogout() {
         <div style="padding: 12px 16px 16px;">
           <div style="display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px;">
             <button v-for="s in (hotStocks.length ? hotStocks : [{ code: '600519', name: '贵州茅台', market: 'a' }, { code: '000858', name: '五粮液', market: 'a' }, { code: '300750', name: '宁德时代', market: 'a' }, { code: '600036', name: '招商银行', market: 'a' }])" :key="s.code" @click="selectHotStock(s)" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 14px; min-height: 44px; min-width: 72px; background: white; border: none; border-radius: 10px; cursor: pointer; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">
-              <span style="font-size: 15px; font-weight: 600; color: #000; line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
+              <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
               <span style="font-size: 12px; color: #8e8e93; margin-top: 1px;">{{ s.code }}</span>
             </button>
             <button @click="loadHotStocks" style="flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #8e8e93; box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">↻</button>
@@ -1158,20 +1158,20 @@ function handleLogout() {
             <div style="padding: 12px 16px 14px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
                 <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">持仓参数</p>
-                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #ede9fe; color: #7c3aed; letter-spacing: 0.2px;">专属功能</span>
+                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #e7f1ff; color: #007aff; letter-spacing: 0.2px;">专属功能</span>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                   <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">持有数量(股)</label>
-                  <input v-model="holdingQuantity" inputmode="numeric" placeholder="如 1000" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #000; outline: none; box-sizing: border-box;"/>
+                  <input v-model="holdingQuantity" inputmode="numeric" placeholder="如 1000" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #1c1c1e; outline: none; box-sizing: border-box;"/>
                 </div>
                 <div>
                   <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">成本价</label>
-                  <input v-model="costPrice" inputmode="decimal" placeholder="如 15.50" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #000; outline: none; box-sizing: border-box;"/>
+                  <input v-model="costPrice" inputmode="decimal" placeholder="如 15.50" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #1c1c1e; outline: none; box-sizing: border-box;"/>
                 </div>
                 <div style="grid-column: 1/-1;">
                   <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">最大持仓(股) — 不超过此仓位</label>
-                  <input v-model="maxPosition" inputmode="numeric" placeholder="如 5000" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #000; outline: none; box-sizing: border-box;"/>
+                  <input v-model="maxPosition" inputmode="numeric" placeholder="如 5000" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #1c1c1e; outline: none; box-sizing: border-box;"/>
                 </div>
                 <p style="grid-column: 1/-1; font-size: 11px; color: #8e8e93; margin: 0;">不填=按空仓分析；若填写则 3 项需全部填写。</p>
               </div>
@@ -1190,9 +1190,9 @@ function handleLogout() {
               <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
                 <button v-for="p in PERIOD_OPTIONS" :key="p.value" class="period-chip" :class="{ active: period === p.value }" @click="period = p.value">{{ p.label }}</button>
               </div>
-              <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius: 12px; text-decoration: none; margin-top: 8px;">
-                <div><div style="font-size: 14px; font-weight: 700; color: #5b21b6;">持仓智能分析</div><div style="font-size: 12px; color: #7c3aed; margin-top: 2px;">专业版专属 · 个性化建议</div></div>
-                <span style="font-size: 13px; font-weight: 600; color: #7c3aed;">升级 →</span>
+              <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #f0f6ff, #e7f1ff); border-radius: 12px; text-decoration: none; margin-top: 8px;">
+                <div><div style="font-size: 14px; font-weight: 700; color: #0a4da3;">持仓智能分析</div><div style="font-size: 12px; color: #007aff; margin-top: 2px;">专业版专属 · 个性化建议</div></div>
+                <span style="font-size: 13px; font-weight: 600; color: #007aff;">升级 →</span>
               </NuxtLink>
             </div>
           </template>
@@ -1205,10 +1205,10 @@ function handleLogout() {
         <div v-if="error" style="font-size: 13px; color: #ff3b30; margin-bottom: 8px; text-align: center;">{{ error }}</div>
         <!-- Quota exhausted CTAs -->
         <template v-if="showUpgradeBanner">
-          <button v-if="tier === 'premium'" class="fab-btn" disabled style="background: rgba(124,58,237,0.25); color: rgba(196,181,253,0.6); cursor: default; opacity: 1;">
+          <button v-if="tier === 'premium'" class="fab-btn" disabled style="background: rgba(0,122,255,0.25); color: rgba(158,200,255,0.6); cursor: default; opacity: 1;">
             明天重置 · 敬请期待
           </button>
-          <button v-else class="fab-btn" @click="router.push('/upgrade')" :style="{ background: tier === 'basic' ? 'linear-gradient(135deg, #7c3aed, #a855f7)' : 'linear-gradient(135deg, #ff9500, #ff6b00)', opacity: 1 }">
+          <button v-else class="fab-btn" @click="router.push('/upgrade')" :style="{ background: tier === 'basic' ? 'linear-gradient(135deg, #007aff, #0a84ff)' : 'linear-gradient(135deg, #ff9500, #ff6b00)', opacity: 1 }">
             {{ tier === 'basic' ? '升级专业版 →' : '立即升级 →' }}
           </button>
         </template>
@@ -1300,7 +1300,7 @@ function handleLogout() {
         </div>
       </div>
       <div v-if="sheetResult && !resultSheetOpen" style="position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); left: 16px; right: 16px; z-index: 50;">
-        <button @click="resultSheetOpen = true" style="width: 100%; height: 52px; border-radius: 14px; background: linear-gradient(135deg, #2563eb, #4f46e5); color: white; border: none; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(37,99,235,0.45); display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <button @click="resultSheetOpen = true" style="width: 100%; height: 52px; border-radius: 14px; background: linear-gradient(135deg, #007aff, #0a84ff); color: white; border: none; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(0,122,255,0.45); display: flex; align-items: center; justify-content: center; gap: 8px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           查看 {{ sheetResult?.data?.name || sheetResult?.data?.symbol }} 的分析结果
         </button>
@@ -1369,7 +1369,7 @@ function handleLogout() {
             </div>
             <div>
               <div style="font-size: 16px; font-weight: 600; color: #1c1c1e;">{{ auth.user?.email }}</div>
-              <div style="font-size: 13px; margin-top: 2px;" :style="{ color: tier === 'premium' ? '#7c3aed' : tier === 'basic' ? '#007aff' : '#8e8e93' }">{{ tierLabel }}</div>
+              <div style="font-size: 13px; margin-top: 2px;" :style="{ color: tier === 'premium' ? '#007aff' : tier === 'basic' ? '#007aff' : '#8e8e93' }">{{ tierLabel }}</div>
             </div>
           </div>
           <!-- Menu items -->
@@ -1379,7 +1379,7 @@ function handleLogout() {
             <svg style="margin-left: auto;" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button v-if="tier !== 'premium'" @click="() => { userMenuOpen = false; router.push('/upgrade'); }" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
-            <div style="width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); display: flex; align-items: center; justify-content: center; font-size: 16px;">⬆️</div>
+            <div style="width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #f0f6ff, #e7f1ff); display: flex; align-items: center; justify-content: center; font-size: 16px;">⬆️</div>
             <span style="font-size: 16px; color: #1c1c1e; font-weight: 500;">升级套餐</span>
             <svg style="margin-left: auto;" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
