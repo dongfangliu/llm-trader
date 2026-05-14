@@ -287,32 +287,39 @@ const metrics = computed(() => [
         >
           <button
             type="button"
-            class="w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-ios-fill"
+            class="w-full px-4 py-3.5 text-left transition-colors active:bg-ios-fill"
             :aria-expanded="isExpanded(g.key)"
             @click="toggleGroup(g.key)"
           >
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <strong class="text-[15px] font-bold text-ios-label truncate">{{ g.symbol_name }}</strong>
-                <span class="text-[11px] font-semibold text-ios-tertiary font-mono tracking-wide flex-shrink-0">
-                  {{ marketLabel(g.market) }} · {{ g.symbol }}
-                </span>
+            <div class="flex items-start gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="research-stock-title">
+                  <strong class="research-stock-name">{{ g.symbol_name }}</strong>
+                  <span class="research-stock-code">
+                    {{ marketLabel(g.market) }} · {{ g.symbol }}
+                  </span>
+                </div>
+                <div class="text-xs text-ios-secondary mt-1">
+                  {{ g.records.length }} 条复盘 · 最近 {{ g.latestDate }}
+                </div>
               </div>
-              <div class="text-xs text-ios-secondary mt-0.5">
-                {{ g.records.length }} 条复盘 · 最近 {{ g.latestDate }}
+              <PhCaretRight
+                :size="15"
+                weight="bold"
+                class="text-ios-tertiary flex-shrink-0 transition-transform duration-200 mt-1"
+                :class="{ 'rotate-90': isExpanded(g.key) }"
+              />
+            </div>
+            <div
+              v-if="g.awaitingCount || g.hitCount || g.missCount"
+              class="research-result-row"
+            >
+              <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+                <IosBadge v-if="g.awaitingCount" variant="orange">待验证 {{ g.awaitingCount }}</IosBadge>
+                <IosBadge v-if="g.hitCount" variant="green">命中 {{ g.hitCount }}</IosBadge>
+                <IosBadge v-if="g.missCount" variant="red">未中 {{ g.missCount }}</IosBadge>
               </div>
             </div>
-            <div class="flex items-center gap-1.5 flex-shrink-0">
-              <IosBadge v-if="g.awaitingCount" variant="orange">待验证 {{ g.awaitingCount }}</IosBadge>
-              <IosBadge v-if="g.hitCount" variant="green">命中 {{ g.hitCount }}</IosBadge>
-              <IosBadge v-if="g.missCount" variant="red">未中 {{ g.missCount }}</IosBadge>
-            </div>
-            <PhCaretRight
-              :size="15"
-              weight="bold"
-              class="text-ios-tertiary flex-shrink-0 transition-transform duration-200"
-              :class="{ 'rotate-90': isExpanded(g.key) }"
-            />
           </button>
 
           <Transition name="research-accordion">
@@ -322,7 +329,7 @@ const metrics = computed(() => [
                   v-for="p in g.records"
                   :key="p.id"
                   :to="`/research/${p.market}/${p.symbol}/${p.prediction_date}`"
-                  class="flex items-center gap-3 px-4 py-3 transition-colors active:bg-ios-fill"
+                  class="research-record-link"
                 >
                   <div class="flex-1 min-w-0">
                     <strong class="text-sm font-semibold text-ios-label">预测 {{ p.prediction_date }}</strong>
@@ -389,6 +396,45 @@ const metrics = computed(() => [
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
 }
+.research-stock-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.research-stock-name {
+  min-width: 0;
+  color: var(--ios-label);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.research-stock-code {
+  flex-shrink: 0;
+  color: var(--ios-tertiary);
+  font-family: var(--mono-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.research-result-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ios-separator);
+}
+.research-record-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  transition: background-color 0.15s ease;
+}
+.research-record-link:active {
+  background: var(--ios-fill);
+}
 .research-accordion-enter-active,
 .research-accordion-leave-active {
   transition: opacity 0.2s ease, transform 0.2s ease;
@@ -397,5 +443,28 @@ const metrics = computed(() => [
 .research-accordion-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+@media (max-width: 520px) {
+  .research-stock-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .research-stock-name {
+    width: 100%;
+    font-size: 16px;
+  }
+  .research-result-row {
+    margin-top: 12px;
+  }
+  .research-record-link {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .research-record-link > :first-child {
+    flex-basis: 100%;
+  }
 }
 </style>
