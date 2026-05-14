@@ -24,6 +24,7 @@
     "@types/qrcode": "^1.5.6",
     "@vueuse/motion": "^3.0.3",
     "axios": "^1.7.9",
+    "gsap": "^3.15.0",
     "pinia": "^2.2.6",
     "qrcode": "^1.5.4",
     "satori": "^0.12.0",

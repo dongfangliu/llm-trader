@@ -166,9 +166,9 @@ onMounted(() => load())
 
 // ─── Tier helpers ───────────────────────────────────────────────────────────
 const tierStyles: Record<string, { background: string; color: string }> = {
-  premium: { background: '#f3e8ff', color: '#7c3aed' },
-  basic:   { background: '#fef3c7', color: '#92400e' },
-  free:    { background: '#f1f5f9', color: '#475569' },
+  premium: { background: 'rgba(47,111,104,0.12)', color: '#2f6f68' },
+  basic:   { background: 'rgba(154,106,30,0.12)', color: '#8a5616' },
+  free:    { background: 'rgba(100,112,103,0.12)', color: '#647067' },
 }
 const tierLabels: Record<string, string> = { free: '免费版', basic: '标准版', premium: '专业版' }
 function tierStyle(tier: string) {
@@ -185,7 +185,7 @@ async function updateUser(row: UnifiedRow, body: Record<string, any>) {
   saving.value = row.key
   try {
     await api.put(`/api/admin/users/${row.userId}`, body, { headers: getAdminHeaders() })
-    flash('已更新 ✓')
+    flash('已更新')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '操作失败', true)
@@ -212,7 +212,7 @@ async function resetUsage(row: UnifiedRow) {
   saving.value = row.key
   try {
     await api.patch(`/api/admin/users/${row.userId}/quota`, { daily_usage: 0 }, { headers: getAdminHeaders() })
-    flash('已重置用量 ✓')
+    flash('已重置用量')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '操作失败', true)
@@ -227,7 +227,7 @@ async function saveBonusQuota(row: UnifiedRow) {
   saving.value = row.key
   try {
     await api.patch(`/api/admin/users/${row.userId}/quota`, { bonus_quota: val }, { headers: getAdminHeaders() })
-    flash('已更新永久额度 ✓')
+    flash('已更新永久额度')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '操作失败', true)
@@ -241,7 +241,7 @@ async function deleteUser(row: UnifiedRow) {
   saving.value = row.key
   try {
     await api.delete(`/api/admin/users/${row.userId}`, { headers: getAdminHeaders() })
-    flash('已删除用户 ✓')
+    flash('已删除用户')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '删除失败', true)
@@ -261,7 +261,7 @@ async function toggleBanDevice(row: UnifiedRow) {
   saving.value = row.key
   try {
     await api.post(`/api/admin/devices/${deviceIdParam(row)}/${action}`, {}, { headers: getAdminHeaders() })
-    flash(`已${row.isBanned ? '解封' : '封禁'} ✓`)
+    flash(`已${row.isBanned ? '解封' : '封禁'}`)
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '操作失败', true)
@@ -275,7 +275,7 @@ async function resetTrial(row: UnifiedRow) {
   saving.value = row.key
   try {
     await api.post(`/api/admin/devices/${deviceIdParam(row)}/reset-trial`, {}, { headers: getAdminHeaders() })
-    flash('已重置体验 ✓')
+    flash('已重置体验')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '操作失败', true)
@@ -289,7 +289,7 @@ async function deleteDevice(row: UnifiedRow) {
   saving.value = row.key
   try {
     await api.delete(`/api/admin/devices/${deviceIdParam(row)}`, { headers: getAdminHeaders() })
-    flash('已删除设备 ✓')
+    flash('已删除设备')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '删除失败', true)
@@ -345,7 +345,7 @@ async function bulkAction(action: 'ban' | 'unban' | 'reset-trial' | 'delete') {
   if (!confirm(`确定对 ${ids.length} 个设备执行「${action}」操作？`)) return
   try {
     await api.post('/api/admin/devices/batch', { action, device_ids: ids }, { headers: getAdminHeaders() })
-    flash(`批量操作完成 ✓`)
+    flash('批量操作完成')
     selected.value = new Set()
     await load()
   } catch (e: any) {
@@ -358,7 +358,7 @@ async function resetAll() {
   if (!confirm('⚠️ 确定清空全部数据？此操作不可撤销！')) return
   try {
     await api.post('/api/admin/reset-all', {}, { headers: getAdminHeaders() })
-    flash('已清空全部数据 ✓')
+    flash('已清空全部数据')
     await load()
   } catch (e: any) {
     flash(e?.response?.data?.detail || '操作失败', true)
@@ -367,13 +367,13 @@ async function resetAll() {
 </script>
 
 <template>
-  <div style="min-height: 100vh; background: #f2f2f7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+  <div style="min-height: 100vh; background: var(--ios-bg); font-family: var(--app-font); color: var(--ios-label);">
 
     <!-- Flash message -->
     <div
       v-if="msg || error"
       style="position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"
-      :style="error ? { background: '#ff3b30', color: '#fff' } : { background: '#34c759', color: '#fff' }"
+      :style="error ? { background: 'var(--ios-red)', color: '#fff' } : { background: 'var(--ios-green)', color: '#fff' }"
     >
       {{ error || msg }}
     </div>
@@ -386,15 +386,15 @@ async function resetAll() {
       <span style="font-size: 14px; font-weight: 500;">已选 {{ selected.size }} 个设备</span>
       <button
         @click="bulkAction('ban')"
-        style="padding: 6px 14px; border-radius: 6px; border: none; background: #ff3b30; color: #fff; font-size: 13px; cursor: pointer;"
+        style="padding: 6px 14px; border-radius: 6px; border: none; background: var(--ios-red); color: #fff; font-size: 13px; cursor: pointer;"
       >封禁</button>
       <button
         @click="bulkAction('unban')"
-        style="padding: 6px 14px; border-radius: 6px; border: none; background: #34c759; color: #fff; font-size: 13px; cursor: pointer;"
+        style="padding: 6px 14px; border-radius: 6px; border: none; background: var(--ios-green); color: #fff; font-size: 13px; cursor: pointer;"
       >解封</button>
       <button
         @click="bulkAction('reset-trial')"
-        style="padding: 6px 14px; border-radius: 6px; border: none; background: #007aff; color: #fff; font-size: 13px; cursor: pointer;"
+        style="padding: 6px 14px; border-radius: 6px; border: none; background: var(--ios-blue); color: #fff; font-size: 13px; cursor: pointer;"
       >重置体验</button>
       <button
         @click="bulkAction('delete')"
@@ -411,10 +411,10 @@ async function resetAll() {
       <!-- Header -->
       <div style="margin-bottom: 20px;">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px;">
-          <NuxtLink to="/admin" style="color: #007aff; text-decoration: none; font-size: 14px;">← 返回</NuxtLink>
-          <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #1c1c1e;">用户 &amp; 设备管理</h1>
+          <NuxtLink to="/admin" style="color: var(--ios-blue); text-decoration: none; font-size: 14px; font-weight: 700;">返回</NuxtLink>
+          <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: var(--ios-label);">用户 &amp; 设备管理</h1>
         </div>
-        <p style="margin: 0; font-size: 13px; color: #8e8e93;">
+        <p style="margin: 0; font-size: 13px; color: var(--ios-secondary);">
           注册用户 {{ totalUsers }} 人 · 游客设备 {{ totalDevices }} 台
         </p>
       </div>
@@ -436,16 +436,16 @@ async function resetAll() {
         </select>
         <button
           @click="load()"
-          style="padding: 9px 18px; border-radius: 10px; border: none; background: #007aff; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer;"
+          style="padding: 9px 18px; border-radius: 10px; border: none; background: var(--ios-blue); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer;"
         >刷新</button>
         <button
           @click="resetAll()"
-          style="padding: 9px 18px; border-radius: 10px; border: none; background: #ff3b30; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer;"
+          style="padding: 9px 18px; border-radius: 10px; border: none; background: var(--ios-red); color: #fff; font-size: 14px; font-weight: 500; cursor: pointer;"
         >清空全部数据</button>
       </div>
 
       <!-- Loading -->
-      <div v-if="loading" style="text-align: center; padding: 48px; color: #8e8e93; font-size: 15px;">
+      <div v-if="loading" style="text-align: center; padding: 48px; color: var(--ios-secondary); font-size: 15px;">
         加载中…
       </div>
 
@@ -454,8 +454,8 @@ async function resetAll() {
         <div style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
-              <tr style="background: #f8f8fa; border-bottom: 1px solid #e5e5ea;">
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93; width: 36px;">
+              <tr style="background: #f8f8fa; border-bottom: 1px solid var(--ios-bg2);">
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary); width: 36px;">
                   <input
                     type="checkbox"
                     :checked="selected.size > 0 && selected.size === rows.filter(r => r.rowType === 'device').length"
@@ -464,14 +464,14 @@ async function resetAll() {
                     style="cursor: pointer;"
                   />
                 </th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">用户/设备</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">类型</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">订阅</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">今日额度</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">体验</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">状态</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">注册时间</th>
-                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: #8e8e93;">操作</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">用户/设备</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">类型</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">订阅</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">今日额度</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">体验</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">状态</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">注册时间</th>
+                <th style="padding: 10px 12px; text-align: left; font-weight: 600; color: var(--ios-secondary);">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -479,7 +479,7 @@ async function resetAll() {
                 <!-- User row -->
                 <tr
                   v-if="row.rowType === 'user'"
-                  :style="{ background: row.isBanned ? '#fff5f5' : '#fff', borderBottom: '1px solid #f2f2f7' }"
+                  :style="{ background: row.isBanned ? '#fff5f5' : '#fff', borderBottom: '1px solid var(--ios-bg)' }"
                 >
                   <!-- Checkbox (empty for users) -->
                   <td style="padding: 12px 12px;"></td>
@@ -487,19 +487,19 @@ async function resetAll() {
                   <!-- Identity -->
                   <td style="padding: 12px 12px; min-width: 180px;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span style="font-weight: 600; color: #1c1c1e;">{{ row.email }}</span>
+                      <span style="font-weight: 600; color: var(--ios-label);">{{ row.email }}</span>
                       <span
                         v-if="row.emailVerified === false"
                         style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #fff3cd; color: #856404;"
                       >未验证</span>
                     </div>
-                    <div v-if="row.username" style="font-size: 12px; color: #8e8e93; margin-top: 2px;">{{ row.username }}</div>
-                    <div v-if="row.deviceId" style="font-size: 11px; font-family: monospace; color: #aeaeb2; margin-top: 2px;">{{ row.deviceId }}</div>
+                    <div v-if="row.username" style="font-size: 12px; color: var(--ios-secondary); margin-top: 2px;">{{ row.username }}</div>
+                    <div v-if="row.deviceId" style="font-size: 11px; font-family: monospace; color: var(--ios-tertiary); margin-top: 2px;">{{ row.deviceId }}</div>
                   </td>
 
                   <!-- Type -->
                   <td style="padding: 12px 12px;">
-                    <span style="font-size: 12px; color: #007aff;">注册用户</span>
+                    <span style="font-size: 12px; color: var(--ios-blue);">注册用户</span>
                   </td>
 
                   <!-- Subscription -->
@@ -522,7 +522,7 @@ async function resetAll() {
                       日剩余 {{ row.dailyRemaining }}/{{ row.dailyLimit }}
                     </div>
                     <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px;">
-                      <span style="font-size: 11px; color: #8e8e93;">永久:</span>
+                      <span style="font-size: 11px; color: var(--ios-secondary);">永久:</span>
                       <input
                         type="number"
                         :value="bonusInputs[row.key] ?? 0"
@@ -536,7 +536,7 @@ async function resetAll() {
 
                   <!-- Trial -->
                   <td style="padding: 12px 12px;">
-                    <span :style="{ fontSize: '12px', color: row.hasHadProTrial ? '#ff9500' : '#34c759' }">
+                    <span :style="{ fontSize: '12px', color: row.hasHadProTrial ? '#ff9500' : 'var(--ios-green)' }">
                       {{ row.hasHadProTrial ? '已用' : '未用' }}
                     </span>
                   </td>
@@ -546,13 +546,13 @@ async function resetAll() {
                     <span
                       style="font-size: 12px; padding: 2px 8px; border-radius: 20px;"
                       :style="row.isBanned
-                        ? { background: '#ffe5e5', color: '#ff3b30' }
-                        : { background: '#e8f8ef', color: '#34c759' }"
+                        ? { background: '#ffe5e5', color: 'var(--ios-red)' }
+                        : { background: '#e8f8ef', color: 'var(--ios-green)' }"
                     >{{ row.isBanned ? '封禁' : '正常' }}</span>
                   </td>
 
                   <!-- Created -->
-                  <td style="padding: 12px 12px; font-size: 12px; color: #8e8e93; white-space: nowrap;">
+                  <td style="padding: 12px 12px; font-size: 12px; color: var(--ios-secondary); white-space: nowrap;">
                     {{ formatDate(row.createdAt) }}
                   </td>
 
@@ -564,8 +564,8 @@ async function resetAll() {
                         :disabled="saving === row.key"
                         style="padding: 4px 10px; border-radius: 6px; border: none; font-size: 12px; cursor: pointer;"
                         :style="row.isBanned
-                          ? { background: '#e8f8ef', color: '#34c759' }
-                          : { background: '#ffe5e5', color: '#ff3b30' }"
+                          ? { background: '#e8f8ef', color: 'var(--ios-green)' }
+                          : { background: '#ffe5e5', color: 'var(--ios-red)' }"
                       >{{ row.isBanned ? '解封' : '封禁' }}</button>
 
                       <button
@@ -584,7 +584,7 @@ async function resetAll() {
                       <button
                         @click="deleteUser(row)"
                         :disabled="saving === row.key"
-                        style="padding: 4px 10px; border-radius: 6px; border: none; background: #ff3b30; color: #fff; font-size: 12px; cursor: pointer;"
+                        style="padding: 4px 10px; border-radius: 6px; border: none; background: var(--ios-red); color: #fff; font-size: 12px; cursor: pointer;"
                       >删除</button>
                     </div>
                   </td>
@@ -593,7 +593,7 @@ async function resetAll() {
                 <!-- Device row -->
                 <tr
                   v-else
-                  :style="{ background: row.isBanned ? '#fff5f5' : '#fff', borderBottom: '1px solid #f2f2f7' }"
+                  :style="{ background: row.isBanned ? '#fff5f5' : '#fff', borderBottom: '1px solid var(--ios-bg)' }"
                 >
                   <!-- Checkbox -->
                   <td style="padding: 12px 12px;">
@@ -612,7 +612,7 @@ async function resetAll() {
 
                   <!-- Type -->
                   <td style="padding: 12px 12px;">
-                    <span style="font-size: 12px; color: #8e8e93;">游客设备</span>
+                    <span style="font-size: 12px; color: var(--ios-secondary);">游客设备</span>
                   </td>
 
                   <!-- Subscription (badge only) -->
@@ -632,7 +632,7 @@ async function resetAll() {
 
                   <!-- Trial -->
                   <td style="padding: 12px 12px;">
-                    <span :style="{ fontSize: '12px', color: row.hasHadProTrial ? '#ff9500' : '#34c759' }">
+                    <span :style="{ fontSize: '12px', color: row.hasHadProTrial ? '#ff9500' : 'var(--ios-green)' }">
                       {{ row.hasHadProTrial ? '已用' : '未用' }}
                     </span>
                   </td>
@@ -642,13 +642,13 @@ async function resetAll() {
                     <span
                       style="font-size: 12px; padding: 2px 8px; border-radius: 20px;"
                       :style="row.isBanned
-                        ? { background: '#ffe5e5', color: '#ff3b30' }
-                        : { background: '#e8f8ef', color: '#34c759' }"
+                        ? { background: '#ffe5e5', color: 'var(--ios-red)' }
+                        : { background: '#e8f8ef', color: 'var(--ios-green)' }"
                     >{{ row.isBanned ? '封禁' : '正常' }}</span>
                   </td>
 
                   <!-- Created -->
-                  <td style="padding: 12px 12px; font-size: 12px; color: #8e8e93; white-space: nowrap;">
+                  <td style="padding: 12px 12px; font-size: 12px; color: var(--ios-secondary); white-space: nowrap;">
                     {{ formatDate(row.createdAt) }}
                   </td>
 
@@ -660,15 +660,15 @@ async function resetAll() {
                         :disabled="saving === row.key"
                         style="padding: 4px 10px; border-radius: 6px; border: none; font-size: 12px; cursor: pointer;"
                         :style="row.isBanned
-                          ? { background: '#e8f8ef', color: '#34c759' }
-                          : { background: '#ffe5e5', color: '#ff3b30' }"
+                          ? { background: '#e8f8ef', color: 'var(--ios-green)' }
+                          : { background: '#ffe5e5', color: 'var(--ios-red)' }"
                       >{{ row.isBanned ? '解封' : '封禁' }}</button>
 
                       <button
                         v-if="row.hasHadProTrial"
                         @click="resetTrial(row)"
                         :disabled="saving === row.key"
-                        style="padding: 4px 10px; border-radius: 6px; border: none; background: #e8f0fe; color: #007aff; font-size: 12px; cursor: pointer;"
+                        style="padding: 4px 10px; border-radius: 6px; border: none; background: #e8f0fe; color: var(--ios-blue); font-size: 12px; cursor: pointer;"
                       >重置体验</button>
 
                       <button
@@ -679,7 +679,7 @@ async function resetAll() {
                       <button
                         @click="deleteDevice(row)"
                         :disabled="saving === row.key"
-                        style="padding: 4px 10px; border-radius: 6px; border: none; background: #ff3b30; color: #fff; font-size: 12px; cursor: pointer;"
+                        style="padding: 4px 10px; border-radius: 6px; border: none; background: var(--ios-red); color: #fff; font-size: 12px; cursor: pointer;"
                       >删除</button>
                     </div>
                   </td>
@@ -688,7 +688,7 @@ async function resetAll() {
 
               <!-- Empty state -->
               <tr v-if="rows.length === 0">
-                <td colspan="9" style="padding: 40px; text-align: center; color: #8e8e93; font-size: 14px;">
+                <td colspan="9" style="padding: 40px; text-align: center; color: var(--ios-secondary); font-size: 14px;">
                   暂无数据
                 </td>
               </tr>
@@ -728,42 +728,42 @@ async function resetAll() {
       >
         <div style="width: 100%; background: #fff; border-radius: 1rem 1rem 0 0; max-height: 70vh; display: flex; flex-direction: column;">
           <!-- Modal header -->
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e5e5ea;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--ios-bg2);">
             <div>
-              <div style="font-weight: 600; font-size: 16px; color: #1c1c1e;">设备历史</div>
-              <div v-if="historyTarget" style="font-family: monospace; font-size: 12px; color: #8e8e93; margin-top: 2px;">
+              <div style="font-weight: 600; font-size: 16px; color: var(--ios-label);">设备历史</div>
+              <div v-if="historyTarget" style="font-family: monospace; font-size: 12px; color: var(--ios-secondary); margin-top: 2px;">
                 {{ historyTarget.deviceId }}
               </div>
             </div>
             <button
               @click="closeHistory()"
-              style="width: 32px; height: 32px; border-radius: 50%; border: none; background: #f2f2f7; color: #3c3c43; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+              style="width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--ios-bg); color: #3c3c43; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
             >✕</button>
           </div>
 
           <!-- Modal body -->
           <div style="overflow-y: auto; flex: 1; padding: 8px 0;">
-            <div v-if="historyLoading" style="text-align: center; padding: 32px; color: #8e8e93;">加载中…</div>
-            <div v-else-if="historyItems.length === 0" style="text-align: center; padding: 32px; color: #8e8e93;">暂无历史记录</div>
+            <div v-if="historyLoading" style="text-align: center; padding: 32px; color: var(--ios-secondary);">加载中…</div>
+            <div v-else-if="historyItems.length === 0" style="text-align: center; padding: 32px; color: var(--ios-secondary);">暂无历史记录</div>
             <table v-else style="width: 100%; border-collapse: collapse; font-size: 13px;">
               <thead>
                 <tr style="background: #f8f8fa;">
-                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: #8e8e93;">代码</th>
-                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: #8e8e93;">市场</th>
-                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: #8e8e93;">周期</th>
-                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: #8e8e93;">分析时间</th>
+                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: var(--ios-secondary);">代码</th>
+                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: var(--ios-secondary);">市场</th>
+                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: var(--ios-secondary);">周期</th>
+                  <th style="padding: 8px 16px; text-align: left; font-weight: 600; color: var(--ios-secondary);">分析时间</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
                   v-for="(item, i) in historyItems"
                   :key="i"
-                  style="border-top: 1px solid #f2f2f7;"
+                  style="border-top: 1px solid var(--ios-bg);"
                 >
-                  <td style="padding: 10px 16px; font-weight: 500; color: #1c1c1e;">{{ item.symbol || item.code || '—' }}</td>
+                  <td style="padding: 10px 16px; font-weight: 500; color: var(--ios-label);">{{ item.symbol || item.code || '—' }}</td>
                   <td style="padding: 10px 16px; color: #3c3c43;">{{ item.market || '—' }}</td>
                   <td style="padding: 10px 16px; color: #3c3c43;">{{ item.period || item.interval || '—' }}</td>
-                  <td style="padding: 10px 16px; font-size: 12px; color: #8e8e93;">{{ item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '—' }}</td>
+                  <td style="padding: 10px 16px; font-size: 12px; color: var(--ios-secondary);">{{ item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '—' }}</td>
                 </tr>
               </tbody>
             </table>

@@ -45,7 +45,7 @@ async function loadStatus() {
     symbols.value = res.data.symbols || []
   } catch (e: any) {
     const detail = e.response?.data?.detail || '加载状态失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   } finally {
     statusLoading.value = false
   }
@@ -54,11 +54,11 @@ async function loadStatus() {
 async function triggerFullRefresh() {
   try {
     await api.post('/api/admin/market-data/refresh', {}, { headers: getAdminHeaders() })
-    showMsg('✅ 已触发全量采集', 'success')
+    showMsg('已触发全量采集', 'success')
     await loadStatus()
   } catch (e: any) {
     const detail = e.response?.data?.detail || '触发失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   }
 }
 
@@ -71,11 +71,11 @@ async function refreshSymbol(row: any) {
       market: row.market,
       period: row.period,
     }, { headers: getAdminHeaders() })
-    showMsg(`✅ ${row.symbol} 刷新已触发`, 'success')
+    showMsg(`${row.symbol} 刷新已触发`, 'success')
     await loadStatus()
   } catch (e: any) {
     const detail = e.response?.data?.detail || '刷新失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   } finally {
     refreshingKey.value = null
   }
@@ -191,7 +191,7 @@ async function loadSymbolNames() {
     marketTotals.value = res.data.market_totals || {}
   } catch (e: any) {
     const detail = e.response?.data?.detail || '加载名称失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   } finally {
     namesLoading.value = false
   }
@@ -206,12 +206,12 @@ async function refreshNames() {
     })
     const counts = res.data?.counts || {}
     const n = counts[namesMarketFilter.value] ?? '?'
-    showMsg(`✅ ${marketLabels[namesMarketFilter.value]} 刷新完成，共 ${n} 条`, 'success')
+    showMsg(`${marketLabels[namesMarketFilter.value]} 刷新完成，共 ${n} 条`, 'success')
     clearCache(namesMarketFilter.value)
     await loadSymbolNames()
   } catch (e: any) {
     const detail = e.response?.data?.detail || '刷新名称失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   } finally {
     refreshingNames.value = false
   }
@@ -223,12 +223,12 @@ async function refreshAllNames() {
     const res = await api.post(`/api/admin/refresh-names`, {}, { headers: getAdminHeaders() })
     const counts = res.data?.counts || {}
     const summary = Object.entries(counts).map(([m, n]) => `${marketLabels[m] ?? m}:${n}`).join(' ')
-    showMsg(`✅ 全部刷新完成 ${summary}`, 'success')
+    showMsg(`全部刷新完成 ${summary}`, 'success')
     clearCache()
     await loadSymbolNames()
   } catch (e: any) {
     const detail = e.response?.data?.detail || '刷新失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   } finally {
     refreshingAllNames.value = false
   }
@@ -268,14 +268,14 @@ watch([namesMarketFilter, namesSearch], () => {
 </script>
 
 <template>
-  <div style="position:fixed;inset:0;background:#f2f2f7;display:flex;flex-direction:column;overflow-y:auto;">
+  <div style="position:fixed;inset:0;background:var(--ios-bg);display:flex;flex-direction:column;overflow-y:auto;font-family:var(--app-font);">
 
     <!-- Flash message -->
     <Transition name="flash">
       <div
         v-if="msg"
         style="position:fixed;top:16px;right:16px;z-index:9999;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.18);"
-        :style="{ background: msgType === 'success' ? '#34c759' : '#ff3b30' }"
+        :style="{ background: msgType === 'success' ? 'var(--ios-green)' : 'var(--ios-red)' }"
       >
         {{ msg }}
       </div>
@@ -283,8 +283,8 @@ watch([namesMarketFilter, namesSearch], () => {
 
     <!-- Header -->
     <div style="display:flex;align-items:center;padding:48px 16px 16px;">
-      <NuxtLink to="/admin" style="color:#007aff;text-decoration:none;font-size:15px;">← 返回</NuxtLink>
-      <h1 style="flex:1;text-align:center;font-size:17px;font-weight:600;color:#1c1c1e;margin-right:40px;">行情数据管理</h1>
+      <NuxtLink to="/admin" style="color:var(--ios-blue);text-decoration:none;font-size:15px;font-weight:700;">返回</NuxtLink>
+      <h1 style="flex:1;text-align:center;font-size:17px;font-weight:600;color:var(--ios-label);margin-right:40px;">行情数据管理</h1>
     </div>
 
     <div style="padding:0 16px 40px;max-width:900px;margin:0 auto;width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:16px;">
@@ -295,16 +295,16 @@ watch([namesMarketFilter, namesSearch], () => {
           <!-- Collecting indicator -->
           <div style="display:flex;align-items:center;gap:10px;">
             <template v-if="statusLoading">
-              <div style="width:20px;height:20px;border:2px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;" />
+              <div style="width:20px;height:20px;border:2px solid var(--ios-blue);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;" />
               <span style="font-size:15px;color:#6e6e73;">加载中...</span>
             </template>
             <template v-else-if="isCollecting">
-              <div style="width:20px;height:20px;border:2px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;" />
-              <span style="font-size:15px;font-weight:600;color:#007aff;">采集中...</span>
+              <div style="width:20px;height:20px;border:2px solid var(--ios-blue);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;" />
+              <span style="font-size:15px;font-weight:600;color:var(--ios-blue);">采集中...</span>
             </template>
             <template v-else>
-              <div style="width:10px;height:10px;border-radius:50%;background:#34c759;flex-shrink:0;" />
-              <span style="font-size:15px;font-weight:600;color:#1c1c1e;">空闲</span>
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--ios-green);flex-shrink:0;" />
+              <span style="font-size:15px;font-weight:600;color:var(--ios-label);">空闲</span>
             </template>
           </div>
 
@@ -313,14 +313,14 @@ watch([namesMarketFilter, namesSearch], () => {
             <button
               @click="triggerFullRefresh"
               :disabled="isCollecting"
-              style="padding:9px 16px;background:#007aff;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.15s;"
+              style="padding:9px 16px;background:var(--ios-blue);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.15s;"
               :style="{ opacity: isCollecting ? 0.5 : 1 }"
             >
               触发全量采集
             </button>
             <button
               @click="loadStatus"
-              style="padding:9px 16px;background:#f2f2f7;color:#3c3c43;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;"
+              style="padding:9px 16px;background:var(--ios-bg);color:#3c3c43;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;"
             >
               刷新状态
             </button>
@@ -330,9 +330,9 @@ watch([namesMarketFilter, namesSearch], () => {
 
       <!-- ── Data coverage table ────────────────────────────────────────────────── -->
       <div style="background:#fff;border-radius:16px;padding:20px 24px;">
-        <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 16px;">数据覆盖情况</h2>
+        <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 16px;">数据覆盖情况</h2>
 
-        <div v-if="symbols.length === 0 && !statusLoading" style="text-align:center;padding:32px 0;color:#8e8e93;font-size:14px;">
+        <div v-if="symbols.length === 0 && !statusLoading" style="text-align:center;padding:32px 0;color:var(--ios-secondary);font-size:14px;">
           暂无数据
         </div>
 
@@ -340,13 +340,13 @@ watch([namesMarketFilter, namesSearch], () => {
           <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:580px;">
             <thead>
               <tr style="border-bottom:1px solid rgba(0,0,0,0.08);">
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">代码 / 名称</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">市场</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">周期</th>
-                <th style="text-align:right;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">K线数</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">最新日期</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">状态</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">操作</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">代码 / 名称</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">市场</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">周期</th>
+                <th style="text-align:right;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">K线数</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">最新日期</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">状态</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -356,8 +356,8 @@ watch([namesMarketFilter, namesSearch], () => {
                 style="border-bottom:1px solid rgba(0,0,0,0.04);"
               >
                 <td style="padding:10px 10px;white-space:nowrap;">
-                  <span style="font-weight:600;color:#1c1c1e;">{{ row.symbol }}</span>
-                  <span v-if="row.name" style="color:#8e8e93;margin-left:4px;">{{ row.name }}</span>
+                  <span style="font-weight:600;color:var(--ios-label);">{{ row.symbol }}</span>
+                  <span v-if="row.name" style="color:var(--ios-secondary);margin-left:4px;">{{ row.name }}</span>
                 </td>
                 <td style="padding:10px 10px;color:#3c3c43;white-space:nowrap;">
                   {{ marketLabels[row.market] || row.market }}
@@ -390,7 +390,7 @@ watch([namesMarketFilter, namesSearch], () => {
                   <button
                     @click="refreshSymbol(row)"
                     :disabled="refreshingKey === `${row.symbol}|${row.market}|${row.period}`"
-                    style="padding:5px 12px;background:#f2f2f7;color:#007aff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity 0.15s;"
+                    style="padding:5px 12px;background:var(--ios-bg);color:var(--ios-blue);border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:opacity 0.15s;"
                     :style="{ opacity: refreshingKey === `${row.symbol}|${row.market}|${row.period}` ? 0.5 : 1 }"
                   >
                     {{ refreshingKey === `${row.symbol}|${row.market}|${row.period}` ? '...' : '刷新' }}
@@ -404,7 +404,7 @@ watch([namesMarketFilter, namesSearch], () => {
 
       <!-- ── Symbol names management ────────────────────────────────────────────── -->
       <div style="background:#fff;border-radius:16px;padding:20px 24px;">
-        <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 16px;">Symbol 名称管理</h2>
+        <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 16px;">Symbol 名称管理</h2>
 
         <!-- Market filter tabs + global refresh -->
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
@@ -422,7 +422,7 @@ watch([namesMarketFilter, namesSearch], () => {
                 fontSize:'13px',
                 fontWeight:'600',
                 transition:'background 0.15s,color 0.15s',
-                background: namesMarketFilter === mkt ? '#007aff' : '#f2f2f7',
+                background: namesMarketFilter === mkt ? 'var(--ios-blue)' : 'var(--ios-bg)',
                 color: namesMarketFilter === mkt ? '#fff' : '#3c3c43',
               }"
             >
@@ -451,7 +451,7 @@ watch([namesMarketFilter, namesSearch], () => {
           <button
             @click="refreshNames"
             :disabled="refreshingNames || refreshingAllNames"
-            style="flex:none;padding:9px 16px;background:#34c759;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity 0.15s;"
+            style="flex:none;padding:9px 16px;background:var(--ios-green);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity 0.15s;"
             :style="{ opacity: refreshingNames ? 0.6 : 1 }"
           >
             {{ refreshingNames ? '刷新中...' : `刷新 ${marketLabels[namesMarketFilter]}` }}
@@ -460,10 +460,10 @@ watch([namesMarketFilter, namesSearch], () => {
 
         <!-- Names table -->
         <div v-if="namesLoading" style="display:flex;justify-content:center;padding:32px 0;">
-          <div style="width:24px;height:24px;border:2px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;" />
+          <div style="width:24px;height:24px;border:2px solid var(--ios-blue);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;" />
         </div>
 
-        <div v-else-if="symbolNames.length === 0" style="text-align:center;padding:32px 0;color:#8e8e93;font-size:14px;">
+        <div v-else-if="symbolNames.length === 0" style="text-align:center;padding:32px 0;color:var(--ios-secondary);font-size:14px;">
           暂无数据
         </div>
 
@@ -471,10 +471,10 @@ watch([namesMarketFilter, namesSearch], () => {
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
             <thead>
               <tr style="border-bottom:1px solid rgba(0,0,0,0.08);">
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">代码</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">市场</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">名称</th>
-                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:#8e8e93;white-space:nowrap;">更新时间</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">代码</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">市场</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">名称</th>
+                <th style="text-align:left;padding:8px 10px;font-size:12px;font-weight:600;color:var(--ios-secondary);white-space:nowrap;">更新时间</th>
               </tr>
             </thead>
             <tbody>
@@ -483,10 +483,10 @@ watch([namesMarketFilter, namesSearch], () => {
                 :key="`${item.symbol}|${item.market}`"
                 style="border-bottom:1px solid rgba(0,0,0,0.04);"
               >
-                <td style="padding:9px 10px;font-weight:600;color:#1c1c1e;white-space:nowrap;">{{ item.symbol }}</td>
+                <td style="padding:9px 10px;font-weight:600;color:var(--ios-label);white-space:nowrap;">{{ item.symbol }}</td>
                 <td style="padding:9px 10px;color:#3c3c43;white-space:nowrap;">{{ marketLabels[item.market] || item.market }}</td>
                 <td style="padding:9px 10px;color:#3c3c43;">{{ item.name || '—' }}</td>
-                <td style="padding:9px 10px;color:#8e8e93;font-size:12px;white-space:nowrap;">{{ formatDate(item.updated_at) }}</td>
+                <td style="padding:9px 10px;color:var(--ios-secondary);font-size:12px;white-space:nowrap;">{{ formatDate(item.updated_at) }}</td>
               </tr>
             </tbody>
           </table>
@@ -503,5 +503,5 @@ watch([namesMarketFilter, namesSearch], () => {
 }
 .flash-enter-active, .flash-leave-active { transition: opacity 0.3s, transform 0.3s; }
 .flash-enter-from, .flash-leave-to { opacity: 0; transform: translateY(-8px); }
-input:focus { border-color: #007aff !important; box-shadow: 0 0 0 3px rgba(0,122,255,0.15); }
+input:focus { border-color: var(--ios-blue) !important; box-shadow: 0 0 0 3px rgba(0,122,255,0.15); }
 </style>

@@ -30,7 +30,7 @@ const emit = defineEmits<{ (e: 'dismiss'): void }>()
   margin-bottom: 12px;
   background: rgba(175, 82, 222, 0.07);
   border: 1px solid rgba(175, 82, 222, 0.18);
-  border-left: 3px solid #AF52DE;
+  border-left: 3px solid var(--ios-blue);
   border-radius: 14px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
 }
@@ -43,7 +43,7 @@ const emit = defineEmits<{ (e: 'dismiss'): void }>()
 
 .banner-icon {
   font-size: 13px;
-  color: #AF52DE;
+  color: var(--ios-blue);
   margin-top: 1px;
   flex-shrink: 0;
 }
@@ -58,7 +58,7 @@ const emit = defineEmits<{ (e: 'dismiss'): void }>()
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #6c3faa;
+  color: var(--ios-blue);
   letter-spacing: -0.1px;
 }
 

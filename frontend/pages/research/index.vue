@@ -174,6 +174,8 @@ useJsonLd('research-index-jsonld', () => [
   itemListJsonLd.value,
 ])
 
+useGsapReveal()
+
 function marketLabel(m: string) {
   return m === 'a' ? 'A股' : m === 'hk' ? '港股' : m === 'us' ? '美股' : m
 }
@@ -205,7 +207,7 @@ const metrics = computed(() => [
 
     <div class="max-w-[680px] mx-auto px-4 pb-12">
       <!-- Hero -->
-      <header class="pt-6 pb-1">
+      <header class="pt-6 pb-1" data-reveal>
         <p class="text-xs font-semibold uppercase tracking-wide text-ios-secondary mb-2">公开技术面档案</p>
         <h1 class="text-[28px] font-extrabold text-ios-label tracking-ios-tight leading-tight">模型复盘档案</h1>
         <p class="mt-2 text-sm text-ios-label2 leading-relaxed">
@@ -218,7 +220,7 @@ const metrics = computed(() => [
       </header>
 
       <!-- Metrics grid -->
-      <div class="grid grid-cols-2 gap-3 mt-6">
+      <div class="grid grid-cols-2 gap-3 mt-6" data-reveal>
         <IosCard
           v-for="m in metrics"
           :key="m.label"
@@ -238,7 +240,7 @@ const metrics = computed(() => [
       </div>
 
       <!-- Filters -->
-      <div class="mt-6 flex flex-col gap-3" role="search" aria-label="筛选公开记录">
+      <div class="mt-6 flex flex-col gap-3" role="search" aria-label="筛选公开记录" data-reveal>
         <div class="flex flex-wrap items-center gap-2">
           <button
             v-for="c in marketChips"
@@ -275,7 +277,7 @@ const metrics = computed(() => [
       </div>
 
       <!-- Grouped list -->
-      <section class="mt-4 flex flex-col gap-2.5" aria-label="公开复盘记录（按股票分组）">
+      <section class="mt-4 flex flex-col gap-2.5" aria-label="公开复盘记录（按股票分组）" data-reveal>
         <IosCard
           v-for="g in visibleGroups"
           :key="g.key"

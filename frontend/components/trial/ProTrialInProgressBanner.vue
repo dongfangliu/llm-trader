@@ -37,14 +37,14 @@
 
 .capsule-star {
   font-size: 11px;
-  color: #AF52DE;
+  color: var(--ios-blue);
   opacity: 0.9;
 }
 
 .capsule-text {
   font-size: 14px;
   font-weight: 600;
-  color: #AF52DE;
+  color: var(--ios-blue);
   letter-spacing: -0.1px;
 }
 

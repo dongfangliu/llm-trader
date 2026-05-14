@@ -43,7 +43,7 @@ const guideText = computed(() => {
     <button
       v-if="variant === 'button'"
       type="button"
-      style="width: 100%; height: 50px; border-radius: 12px; border: none; background: #007aff; color: white; font-size: 16px; font-weight: 700; cursor: pointer;"
+      style="width: 100%; height: 50px; border-radius: 12px; border: none; background: var(--ios-blue); color: white; font-size: 16px; font-weight: 700; cursor: pointer;"
       @click="install"
     >
       添加到桌面
@@ -85,7 +85,7 @@ const guideText = computed(() => {
           <p style="font-size: 15px; color: #1c1c1e; margin: 0;">2. 选择“添加到主屏幕”</p>
           <p style="font-size: 15px; color: #1c1c1e; margin: 0;">3. 确认名称后点击“添加”</p>
         </div>
-        <button type="button" style="width: 100%; height: 50px; border: none; border-radius: 12px; background: #007aff; color: white; font-size: 17px; font-weight: 700;" @click="showIosGuide = false">知道了</button>
+        <button type="button" style="width: 100%; height: 50px; border: none; border-radius: 12px; background: var(--ios-blue); color: white; font-size: 17px; font-weight: 700;" @click="showIosGuide = false">知道了</button>
       </div>
     </div>
 
@@ -96,7 +96,7 @@ const guideText = computed(() => {
         <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px;">
           <p v-for="(step, idx) in guideText.steps" :key="step" style="font-size: 15px; color: #1c1c1e; margin: 0;">{{ idx + 1 }}. {{ step }}</p>
         </div>
-        <button type="button" style="width: 100%; height: 50px; border: none; border-radius: 12px; background: #007aff; color: white; font-size: 17px; font-weight: 700;" @click="showInstallGuide = false">知道了</button>
+        <button type="button" style="width: 100%; height: 50px; border: none; border-radius: 12px; background: var(--ios-blue); color: white; font-size: 17px; font-weight: 700;" @click="showInstallGuide = false">知道了</button>
       </div>
     </div>
   </Teleport>

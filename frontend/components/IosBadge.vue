@@ -12,12 +12,12 @@ withDefaults(defineProps<Props>(), {
 })
 
 const variantClasses = {
-  neutral: 'bg-ios-blue/10 text-ios-blue',
-  blue: 'bg-ios-blue/10 text-ios-blue',
-  green: 'bg-ios-green/12 text-ios-green',
-  red: 'bg-ios-red/10 text-ios-red',
-  orange: 'bg-ios-orange/12 text-ios-orange',
-  gray: 'bg-ios-fill text-ios-secondary',
+  neutral: 'bg-ios-fill text-ios-blue ring-1 ring-ios-blue/10',
+  blue: 'bg-ios-blue/10 text-ios-blue ring-1 ring-ios-blue/15',
+  green: 'bg-ios-green/12 text-ios-green ring-1 ring-ios-green/15',
+  red: 'bg-ios-red/10 text-ios-red ring-1 ring-ios-red/15',
+  orange: 'bg-ios-orange/12 text-ios-orange ring-1 ring-ios-orange/15',
+  gray: 'bg-ios-fill text-ios-secondary ring-1 ring-ios-separator',
 }
 
 const dotClasses = {
@@ -33,7 +33,7 @@ const dotClasses = {
 <template>
   <span
     :class="[
-      'inline-flex items-center gap-1.5 font-semibold rounded-full whitespace-nowrap',
+      'inline-flex items-center gap-1.5 font-semibold rounded-ios-sm whitespace-nowrap',
       size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-sm',
       variantClasses[variant],
     ]"

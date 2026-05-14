@@ -37,7 +37,9 @@ onMounted(async () => {
 
       <!-- Success -->
       <div v-else-if="status === 'success'" class="space-y-4">
-        <div class="text-6xl">✅</div>
+        <div class="text-ios-green">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
+        </div>
         <h2 class="text-2xl font-bold text-ios-label">邮箱验证成功！</h2>
         <p class="text-ios-secondary">您的账户已激活，现在可以登录使用</p>
         <IosButton variant="primary" size="lg" :fullWidth="true" @click="navigateTo('/login')">
@@ -47,7 +49,9 @@ onMounted(async () => {
 
       <!-- Error -->
       <div v-else class="space-y-4">
-        <div class="text-6xl">❌</div>
+        <div class="text-ios-red">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+        </div>
         <h2 class="text-xl font-semibold text-ios-label">验证失败</h2>
         <p class="text-ios-secondary">{{ errorMsg }}</p>
         <IosButton variant="secondary" size="md" :fullWidth="true" @click="navigateTo('/login')">

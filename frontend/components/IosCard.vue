@@ -47,12 +47,12 @@ const bordered = computed(() => props.bordered || props.elevation === 'flat')
     </p>
     <div
       :class="[
-        'bg-ios-card',
+        'bg-ios-card/95 backdrop-blur-xl',
         `rounded-${rounded}`,
         elevationClasses[elevation],
         bordered ? 'border border-ios-separator' : '',
         paddingClasses[padding],
-        interactive ? 'transition-transform duration-150 active:scale-[0.99] cursor-pointer' : '',
+        interactive ? 'fin-action hover:border-ios-blue/30 active:scale-[0.99] cursor-pointer' : '',
       ]"
     >
       <slot />

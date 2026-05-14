@@ -609,7 +609,7 @@ function handleLogout() {
   <!-- ═══════════════════════════════════════════════════
        DESKTOP LAYOUT (≥1024px)
        ═══════════════════════════════════════════════════ -->
-  <div v-if="isDesktop" style="display: flex; height: 100dvh; background: #f2f2f7; overflow: hidden;">
+  <div v-if="isDesktop" style="display: flex; height: 100dvh; background: var(--ios-bg); overflow: hidden;">
 
     <!-- Sidebar -->
     <LayoutDesktopSidebar
@@ -642,8 +642,8 @@ function handleLogout() {
             <PwaInstallButton :appName="appName" variant="card" />
           </div>
           <div style="display: flex; align-items: center; gap: 10px; margin: 0 0 24px;">
-            <h1 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0; letter-spacing: -0.3px;">{{ landingPrefilled ? '立即分析该标的' : '分析一支股票' }}</h1>
-            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #007aff; background: #e7f1ff; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px;">专业版体验中</span>
+            <h1 style="font-size: 22px; font-weight: 700; color: var(--ios-label); margin: 0; letter-spacing: -0.3px;">{{ landingPrefilled ? '立即分析该标的' : '分析一支股票' }}</h1>
+            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: var(--ios-blue); background: #e7f1ff; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px;">专业版体验中</span>
           </div>
           <div v-if="landingPrefilled || inviteRewardText" style="margin: -12px 0 16px; padding: 12px 14px; border-radius: 12px; background: #f0f9ff; border: 1px solid #bae6fd;">
             <div style="font-size: 14px; font-weight: 700; color: #075985;">已填入 {{ MARKET_LABELS[market] || market }} {{ symbol }}</div>
@@ -657,7 +657,7 @@ function handleLogout() {
 
           <!-- Symbol input -->
           <div style="position: relative; margin-bottom: 12px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aeaeb2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1;">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input
@@ -672,8 +672,8 @@ function handleLogout() {
             <div v-if="showSuggestions && suggestions.length > 0" style="position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;">
               <button v-for="s in suggestions" :key="s.symbol" @click="selectSuggestion(s)" style="display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; text-align: left;">
                 <div>
-                  <div style="font-size: 15px; font-weight: 600; color: #1c1c1e;">{{ s.symbol }}</div>
-                  <div style="font-size: 12px; color: #8e8e93;">{{ s.name }}</div>
+                  <div style="font-size: 15px; font-weight: 600; color: var(--ios-label);">{{ s.symbol }}</div>
+                  <div style="font-size: 12px; color: var(--ios-secondary);">{{ s.name }}</div>
                 </div>
                 <span style="font-size: 11px; color: #0071e3; background: rgba(0,122,255,0.1); padding: 2px 8px; border-radius: 9999px; font-weight: 600;">{{ MARKET_LABELS[s.market] || s.market }}</span>
               </button>
@@ -683,10 +683,12 @@ function handleLogout() {
           <!-- Hot stocks -->
           <div style="display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; padding-bottom: 2px;">
             <button v-for="s in (hotStocks.length ? hotStocks : [{ code: '600519', name: '贵州茅台', market: 'a' }, { code: '000858', name: '五粮液', market: 'a' }, { code: '300750', name: '宁德时代', market: 'a' }, { code: '600036', name: '招商银行', market: 'a' }])" :key="s.code" @click="selectHotStock(s)" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 14px; min-height: 44px; min-width: 80px; background: white; border: none; border-radius: 10px; cursor: pointer; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">
-              <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
-              <span style="font-size: 12px; color: #8e8e93; margin-top: 1px;">{{ s.code }}</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--ios-label); line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
+              <span style="font-size: 12px; color: var(--ios-secondary); margin-top: 1px;">{{ s.code }}</span>
             </button>
-            <button @click="loadHotStocks" style="flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #8e8e93; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">↻</button>
+            <button @click="loadHotStocks" aria-label="刷新热门标的" style="flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ios-secondary); box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.3 6.4"/><path d="M3 12A9 9 0 0 1 18.3 5.6"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg>
+            </button>
           </div>
 
           <div style="height: 0.5px; background: rgba(60,60,67,0.1); margin-bottom: 0;"/>
@@ -695,7 +697,7 @@ function handleLogout() {
           <template v-if="effectiveTier === 'premium'">
             <!-- K线周期 -->
             <div style="padding: 12px 0 10px;">
-              <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px;">K线周期</p>
+              <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px;">K线周期</p>
               <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                 <button v-for="p in PERIOD_OPTIONS" :key="p.value" class="period-chip" :class="{ active: period === p.value }" @click="period = p.value">{{ p.label }}</button>
               </div>
@@ -704,16 +706,16 @@ function handleLogout() {
             <!-- 多周期交叉分析 -->
             <div style="padding: 12px 0 10px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: multiPeriodEnabled ? 10 : 0;">
-                <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">多周期交叉分析</p>
+                <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">多周期交叉分析</p>
                 <label style="position: relative; display: inline-block; width: 44px; height: 26px; cursor: pointer;">
                   <input type="checkbox" v-model="multiPeriodEnabled" @change="!multiPeriodEnabled && toggleAuxPeriod('__clear__')" style="opacity: 0; width: 0; height: 0;"/>
-                  <span :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: multiPeriodEnabled ? '#34c759' : '#e5e5ea', borderRadius: '13px', transition: 'background 0.2s' }">
+                  <span :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: multiPeriodEnabled ? 'var(--ios-green)' : 'var(--ios-bg2)', borderRadius: '13px', transition: 'background 0.2s' }">
                     <span :style="{ position: 'absolute', top: '2px', left: multiPeriodEnabled ? '20px' : '2px', width: '22px', height: '22px', background: 'white', borderRadius: '50%', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }"/>
                   </span>
                 </label>
               </div>
               <div v-if="multiPeriodEnabled" style="margin-top: 10px;">
-                <p style="font-size: 12px; color: #8e8e93; margin: 0 0 8px;">选择辅助周期（最多3个）</p>
+                <p style="font-size: 12px; color: var(--ios-secondary); margin: 0 0 8px;">选择辅助周期（最多3个）</p>
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                   <button v-for="p in PERIOD_OPTIONS.filter(p => p.value !== period)" :key="p.value" class="period-chip" :class="{ active: auxiliaryPeriods.includes(p.value) }" :style="{ opacity: !auxiliaryPeriods.includes(p.value) && auxiliaryPeriods.length >= 3 ? 0.4 : 1 }" @click="toggleAuxPeriod(p.value)">{{ p.label }}</button>
                 </div>
@@ -723,23 +725,23 @@ function handleLogout() {
             <!-- 持仓参数 -->
             <div style="padding: 12px 0 14px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">持仓参数</p>
-                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #e7f1ff; color: #007aff; letter-spacing: 0.2px;">专属功能</span>
+                <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">持仓参数</p>
+                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #e7f1ff; color: var(--ios-blue); letter-spacing: 0.2px;">专属功能</span>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
-                  <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">持有数量(股)</label>
+                  <label style="font-size: 12px; color: var(--ios-secondary); display: block; margin-bottom: 4px;">持有数量(股)</label>
                   <input v-model="holdingQuantity" type="number" placeholder="如 1000" class="input" style="height: 40px; font-size: 14px;"/>
                 </div>
                 <div>
-                  <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">成本价</label>
+                  <label style="font-size: 12px; color: var(--ios-secondary); display: block; margin-bottom: 4px;">成本价</label>
                   <input v-model="costPrice" type="number" placeholder="如 15.50" class="input" style="height: 40px; font-size: 14px;"/>
                 </div>
                 <div style="grid-column: 1/-1;">
-                  <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">最大持仓(股) — 不超过此仓位</label>
+                  <label style="font-size: 12px; color: var(--ios-secondary); display: block; margin-bottom: 4px;">最大持仓(股) — 不超过此仓位</label>
                   <input v-model="maxPosition" type="number" placeholder="如 5000" class="input" style="height: 40px; font-size: 14px;"/>
                 </div>
-                <p style="grid-column: 1/-1; font-size: 11px; color: #8e8e93; margin: 0;">不填=按空仓分析；若填写则 3 项需全部填写。</p>
+                <p style="grid-column: 1/-1; font-size: 11px; color: var(--ios-secondary); margin: 0;">不填=按空仓分析；若填写则 3 项需全部填写。</p>
               </div>
             </div>
           </template>
@@ -747,23 +749,23 @@ function handleLogout() {
           <template v-else>
             <button class="adv-toggle" @click="advancedOpen = !advancedOpen">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 15px; color: #3c3c43;">⚙ 高级设置</span>
-                <span style="font-size: 12px; color: #8e8e93;">{{ PERIOD_OPTIONS.find(p => p.value === period)?.label }}</span>
+                <span style="font-size: 15px; color: #3c3c43;">高级设置</span>
+                <span style="font-size: 12px; color: var(--ios-secondary);">{{ PERIOD_OPTIONS.find(p => p.value === period)?.label }}</span>
               </div>
-              <svg class="adv-chevron" :class="{ open: advancedOpen }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aeaeb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="adv-chevron" :class="{ open: advancedOpen }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div v-if="advancedOpen" style="padding: 8px 0 16px;">
               <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
                 <button v-for="p in PERIOD_OPTIONS" :key="p.value" class="period-chip" :class="{ active: period === p.value }" @click="period = p.value">{{ p.label }}</button>
               </div>
               <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #f0f6ff, #e7f1ff); border-radius: 12px; text-decoration: none;">
-                <div><div style="font-size: 14px; font-weight: 700; color: #0a4da3;">持仓智能分析</div><div style="font-size: 12px; color: #007aff; margin-top: 2px;">专业版专属 · 个性化建议</div></div>
-                <span style="font-size: 13px; font-weight: 600; color: #007aff;">升级 →</span>
+                <div><div style="font-size: 14px; font-weight: 700; color: #0a4da3;">持仓智能分析</div><div style="font-size: 12px; color: var(--ios-blue); margin-top: 2px;">专业版专属 · 个性化建议</div></div>
+                <span style="font-size: 13px; font-weight: 600; color: var(--ios-blue);">升级 →</span>
               </NuxtLink>
             </div>
           </template>
 
-          <div v-if="error" style="color: #ff3b30; font-size: 13px; margin-bottom: 12px; line-height: 1.5;">{{ error }}</div>
+          <div v-if="error" style="color: var(--ios-red); font-size: 13px; margin-bottom: 12px; line-height: 1.5;">{{ error }}</div>
 
           <!-- Analyze button -->
           <button
@@ -771,7 +773,7 @@ function handleLogout() {
             :disabled="!symbol.trim() || isAnalyzing"
             style="margin-top: 16px; width: 100%; height: 50px; border-radius: 14px; font-size: 17px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; border: none;"
             :style="{
-              background: !symbol.trim() || isAnalyzing ? 'rgba(0,122,255,0.07)' : '#007aff',
+              background: !symbol.trim() || isAnalyzing ? 'rgba(0,122,255,0.07)' : 'var(--ios-blue)',
               color: !symbol.trim() || isAnalyzing ? 'rgba(0,122,255,0.38)' : 'white',
             }"
           >
@@ -784,17 +786,19 @@ function handleLogout() {
       <div v-else-if="activePanel === 'loading'" style="flex: 1; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
         <div style="position: absolute; width: 360px; height: 360px; background: radial-gradient(circle at center, rgba(0,122,255,0.07) 0%, transparent 70%); border-radius: 50%; animation: loading-breathe 3.5s ease-in-out infinite; pointer-events: none;"/>
         <div v-if="analyzeTimedOut" style="display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 300px; position: relative; z-index: 1; text-align: center;">
-          <div style="font-size: 48px;">⏰</div>
-          <h2 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0;">分析时间较长</h2>
-          <p style="font-size: 15px; color: #8e8e93; line-height: 1.75; margin: 0;">AI 服务响应超过 3 分钟<br/>可等待继续，或返回重试</p>
-          <button @click="activePanel = 'analyze'" style="padding: 12px 40px; border-radius: 14px; background: #f2f2f7; border: none; font-size: 15px; font-weight: 600; color: #1c1c1e; cursor: pointer;">返回重试</button>
+          <div style="width: 54px; height: 54px; border-radius: 16px; background: rgba(154,106,30,0.12); color: var(--ios-orange); display: flex; align-items: center; justify-content: center;">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v5l3 2"/><path d="M5 3 2 6"/><path d="m19 3 3 3"/></svg>
+          </div>
+          <h2 style="font-size: 22px; font-weight: 700; color: var(--ios-label); margin: 0;">分析时间较长</h2>
+          <p style="font-size: 15px; color: var(--ios-secondary); line-height: 1.75; margin: 0;">AI 服务响应超过 3 分钟<br/>可等待继续，或返回重试</p>
+          <button @click="activePanel = 'analyze'" style="padding: 12px 40px; border-radius: 14px; background: var(--ios-bg); border: none; font-size: 15px; font-weight: 600; color: var(--ios-label); cursor: pointer;">返回重试</button>
         </div>
         <div v-else style="position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center;">
-          <div style="font-size: 60px; font-weight: 900; letter-spacing: -3px; color: #1c1c1e; line-height: 1; margin-bottom: 10px; animation: loading-symbol-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;">{{ analyzingSymbol }}</div>
-          <div style="font-size: 12px; font-weight: 500; color: #aeaeb2; letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 48px; animation: loading-subtitle-in 0.6s 0.15s ease-out both;">深度研判中</div>
+          <div style="font-size: 60px; font-weight: 900; letter-spacing: -3px; color: var(--ios-label); line-height: 1; margin-bottom: 10px; animation: loading-symbol-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;">{{ analyzingSymbol }}</div>
+          <div style="font-size: 12px; font-weight: 500; color: var(--ios-tertiary); letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 48px; animation: loading-subtitle-in 0.6s 0.15s ease-out both;">深度研判中</div>
           <p :key="narrativeIdx" style="font-size: 14px; font-weight: 500; color: #3c3c43; margin: 0 0 28px; animation: narrative-fade 0.35s ease-out; min-height: 1.7em;">{{ NARRATIVE_TEXTS[narrativeIdx] }}</p>
           <div style="display: flex; gap: 8px;">
-            <div v-for="i in [0, 1, 2]" :key="i" :style="{ width: '7px', height: '7px', borderRadius: '50%', background: '#007aff', opacity: 0.4, animation: `loading-dot 1.4s ${i * 0.22}s ease-in-out infinite` }"/>
+            <div v-for="i in [0, 1, 2]" :key="i" :style="{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--ios-blue)', opacity: 0.4, animation: `loading-dot 1.4s ${i * 0.22}s ease-in-out infinite` }"/>
           </div>
         </div>
       </div>
@@ -802,14 +806,14 @@ function handleLogout() {
       <!-- ── Desktop: RESULT panel ── -->
       <div v-else-if="activePanel === 'result'" style="flex: 1; overflow-y: auto; padding: 32px 40px;">
         <!-- Empty state -->
-        <div v-if="!sheetResult" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; color: #8e8e93;">
+        <div v-if="!sheetResult" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 16px; color: var(--ios-secondary);">
           <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style="opacity: 0.2;">
-            <path d="M7 40L18 24L26 32L36 16L49 21" stroke="#1c1c1e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="49" cy="21" r="3.5" fill="#1c1c1e"/>
+            <path d="M7 40L18 24L26 32L36 16L49 21" stroke="var(--ios-label)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="49" cy="21" r="3.5" fill="var(--ios-label)"/>
           </svg>
-          <div style="font-size: 18px; font-weight: 700; color: #1c1c1e;">尚无分析结果</div>
+          <div style="font-size: 18px; font-weight: 700; color: var(--ios-label);">尚无分析结果</div>
           <div style="font-size: 14px; line-height: 1.6; text-align: center;">输入股票代码，AI 将生成买卖建议和深度研判</div>
-          <button @click="activePanel = 'analyze'" style="margin-top: 8px; padding: 12px 28px; background: #007aff; color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;">开始分析</button>
+          <button @click="activePanel = 'analyze'" style="margin-top: 8px; padding: 12px 28px; background: var(--ios-blue); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;">开始分析</button>
         </div>
 
         <!-- Result content -->
@@ -817,13 +821,13 @@ function handleLogout() {
           <!-- Title row -->
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
             <div>
-              <h2 style="font-size: 20px; font-weight: 700; letter-spacing: -0.4px; color: #1c1c1e; margin: 0 0 3px;">
+              <h2 style="font-size: 20px; font-weight: 700; letter-spacing: -0.4px; color: var(--ios-label); margin: 0 0 3px;">
                 {{ sheetResult.data?.name || sheetResult.data?.symbol }}
-                <span v-if="sheetResult.data?.name" style="font-size: 14px; font-weight: 400; color: #8e8e93;">({{ sheetResult.data?.symbol }})</span>
+                <span v-if="sheetResult.data?.name" style="font-size: 14px; font-weight: 400; color: var(--ios-secondary);">({{ sheetResult.data?.symbol }})</span>
               </h2>
-              <div style="font-size: 12px; color: #8e8e93;">{{ MARKET_LABELS[sheetResult.data?.market] || sheetResult.data?.market?.toUpperCase() }}</div>
+              <div style="font-size: 12px; color: var(--ios-secondary);">{{ MARKET_LABELS[sheetResult.data?.market] || sheetResult.data?.market?.toUpperCase() }}</div>
             </div>
-            <button @click="resultSheetOpen = true" style="height: 34px; padding: 0 16px; font-size: 13px; background: #007aff; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: 600;">
+            <button @click="resultSheetOpen = true" style="height: 34px; padding: 0 16px; font-size: 13px; background: var(--ios-blue); border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: 600;">
               查看完整分析
             </button>
           </div>
@@ -832,15 +836,15 @@ function handleLogout() {
           <div style="background: white; border-radius: 16px; padding: 24px; margin-bottom: 16px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
               <div>
-                <div style="font-size: 13px; color: #8e8e93; margin-bottom: 4px;">研判信号</div>
+                <div style="font-size: 13px; color: var(--ios-secondary); margin-bottom: 4px;">研判信号</div>
                 <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.5px;"
                   :style="{ color: getActionDisplay(sheetResult.result?.action).color }">
                   {{ getActionDisplay(sheetResult.result?.action).text }}
                 </div>
               </div>
               <div v-if="sheetResult.result?.confidence != null" style="text-align: right;">
-                <div style="font-size: 13px; color: #8e8e93; margin-bottom: 4px;">置信度</div>
-                <div style="font-size: 32px; font-weight: 900; color: #1c1c1e;">{{ sheetResult.result.confidence }}%</div>
+                <div style="font-size: 13px; color: var(--ios-secondary); margin-bottom: 4px;">置信度</div>
+                <div style="font-size: 32px; font-weight: 900; color: var(--ios-label);">{{ sheetResult.result.confidence }}%</div>
               </div>
             </div>
             <p v-if="sheetResult.result?.reason" style="font-size: 14px; color: #3c3c43; line-height: 1.75; margin: 0; padding-top: 16px; border-top: 0.5px solid rgba(0,0,0,0.08);">
@@ -851,17 +855,17 @@ function handleLogout() {
           <!-- Key levels -->
           <div v-if="sheetResult.result?.target_price || sheetResult.result?.stop_loss" style="display: flex; gap: 12px; margin-bottom: 16px;">
             <div v-if="sheetResult.result?.target_price" style="flex: 1; background: white; border-radius: 12px; padding: 16px;">
-              <div style="font-size: 12px; color: #8e8e93; margin-bottom: 4px;">目标价</div>
+              <div style="font-size: 12px; color: var(--ios-secondary); margin-bottom: 4px;">目标价</div>
               <div style="font-size: 20px; font-weight: 700; color: #ef4444;">{{ sheetResult.result.target_price }}</div>
             </div>
             <div v-if="sheetResult.result?.stop_loss" style="flex: 1; background: white; border-radius: 12px; padding: 16px;">
-              <div style="font-size: 12px; color: #8e8e93; margin-bottom: 4px;">止损价</div>
+              <div style="font-size: 12px; color: var(--ios-secondary); margin-bottom: 4px;">止损价</div>
               <div style="font-size: 20px; font-weight: 700; color: #22c55e;">{{ sheetResult.result.stop_loss }}</div>
             </div>
           </div>
 
           <!-- Full analysis button -->
-          <button @click="resultSheetOpen = true" style="width: 100%; height: 48px; background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; font-size: 15px; font-weight: 600; color: #007aff; cursor: pointer;">
+          <button @click="resultSheetOpen = true" style="width: 100%; height: 48px; background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; font-size: 15px; font-weight: 600; color: var(--ios-blue); cursor: pointer;">
             查看完整深度分析 →
           </button>
         </div>
@@ -871,15 +875,15 @@ function handleLogout() {
 
     <!-- Desktop user popover -->
     <div v-if="dtUserMenuOpen && auth.isLoggedIn" style="position: fixed; top: auto; bottom: 80px; left: 220px; background: white; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.14); z-index: 500; min-width: 180px; overflow: hidden; border: 0.5px solid rgba(0,0,0,0.1);">
-      <button @click="() => { router.push('/account'); dtUserMenuOpen = false; }" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.08); cursor: pointer; font-size: 14px; color: #1c1c1e; text-align: left;">
+      <button @click="() => { router.push('/account'); dtUserMenuOpen = false; }" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.08); cursor: pointer; font-size: 14px; color: var(--ios-label); text-align: left;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         账号设置
       </button>
-      <button v-if="tier !== 'premium'" @click="() => { router.push('/upgrade'); dtUserMenuOpen = false; }" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.08); cursor: pointer; font-size: 14px; color: #1c1c1e; text-align: left;">
+      <button v-if="tier !== 'premium'" @click="() => { router.push('/upgrade'); dtUserMenuOpen = false; }" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.08); cursor: pointer; font-size: 14px; color: var(--ios-label); text-align: left;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         升级套餐
       </button>
-      <button @click="handleLogout" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; cursor: pointer; font-size: 14px; color: #ff3b30; text-align: left;">
+      <button @click="handleLogout" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; cursor: pointer; font-size: 14px; color: var(--ios-red); text-align: left;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         退出登录
       </button>
@@ -910,16 +914,16 @@ function handleLogout() {
   <!-- ═══════════════════════════════════════════════════
        MOBILE LAYOUT (<1024px)
        ═══════════════════════════════════════════════════ -->
-  <div v-else style="min-height: 100dvh; background: #f2f2f7;">
+  <div v-else style="min-height: 100dvh; background: var(--ios-bg);">
 
     <!-- ═══ MOBILE HEADER ═══ -->
     <header style="display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 52px; position: sticky; top: 0; z-index: 100; background: rgba(249,249,249,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 0.5px solid rgba(0,0,0,0.12);">
       <template v-if="activePanel === 'result'">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: #1c1c1e;">研判记录</span>
-          <span v-if="history.length > 0" style="font-size: 11px; font-weight: 700; color: #fff; background: #aeaeb2; border-radius: 9999px; padding: 1px 7px; line-height: 1.6;">{{ history.length }}</span>
+          <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: var(--ios-label);">研判记录</span>
+          <span v-if="history.length > 0" style="font-size: 11px; font-weight: 700; color: #fff; background: var(--ios-tertiary); border-radius: 9999px; padding: 1px 7px; line-height: 1.6;">{{ history.length }}</span>
         </div>
-        <button @click="setActivePanel('analyze')" style="display: flex; align-items: center; gap: 3px; padding: 7px 15px 7px 11px; background: #007aff; color: white; border: none; border-radius: 20px; font-size: 15px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent;">
+        <button @click="setActivePanel('analyze')" style="display: flex; align-items: center; gap: 3px; padding: 7px 15px 7px 11px; background: var(--ios-blue); color: white; border: none; border-radius: 20px; font-size: 15px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent;">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>
           新分析
         </button>
@@ -928,13 +932,13 @@ function handleLogout() {
         <div style="display: flex; align-items: center; gap: 6px;">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
             <rect x="2" y="9" width="5" height="7" rx="1.5" fill="#dc2626"/><line x1="4.5" y1="6" x2="4.5" y2="9" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/><line x1="4.5" y1="16" x2="4.5" y2="19" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
-            <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759"/><line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="var(--ios-green)"/><line x1="11" y1="1.5" x2="11" y2="4" stroke="var(--ios-green)" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="15" x2="11" y2="17.5" stroke="var(--ios-green)" stroke-width="1.5" stroke-linecap="round"/>
             <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626"/><line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/><line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: #1c1c1e;">{{ appName }}</span>
+          <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: var(--ios-label);">{{ appName }}</span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <span :style="{ fontSize: '12px', fontWeight: 500, color: tier === 'premium' ? '#007aff' : tier === 'basic' ? '#007aff' : '#8e8e93' }">
+          <span :style="{ fontSize: '12px', fontWeight: 500, color: tier === 'premium' ? 'var(--ios-blue)' : tier === 'basic' ? 'var(--ios-blue)' : 'var(--ios-secondary)' }">
             {{ tierLabel }} · {{ totalAvailable ?? '-' }}次
             <template v-if="tier === 'basic' && deepRemaining !== null">
               · 深度 {{ deepRemaining }}/{{ deepDailyLimit }}
@@ -944,8 +948,8 @@ function handleLogout() {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </button>
           <template v-else>
-            <NuxtLink to="/login" style="font-size: 15px; font-weight: 400; color: #007aff; text-decoration: none; padding: 6px 4px;">登录</NuxtLink>
-            <NuxtLink :to="registerPath" style="font-size: 13px; font-weight: 600; color: white; background: #007aff; border-radius: 8px; padding: 6px 12px; text-decoration: none;">注册</NuxtLink>
+            <NuxtLink to="/login" style="font-size: 15px; font-weight: 400; color: var(--ios-blue); text-decoration: none; padding: 6px 4px;">登录</NuxtLink>
+            <NuxtLink :to="registerPath" style="font-size: 13px; font-weight: 600; color: white; background: var(--ios-blue); border-radius: 8px; padding: 6px 12px; text-decoration: none;">注册</NuxtLink>
           </template>
         </div>
       </template>
@@ -955,10 +959,12 @@ function handleLogout() {
     <template v-if="activePanel === 'analyze'">
 
       <!-- ── QUOTA EXHAUSTED: Premium tier ── -->
-      <div v-if="showUpgradeBanner && tier === 'premium'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; display: flex; flex-direction: column; height: calc(100dvh - 52px - 56px); background: #1c1c1e; align-items: center; justify-content: center; padding: 40px 24px; text-align: center;">
+      <div v-if="showUpgradeBanner && tier === 'premium'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; display: flex; flex-direction: column; height: calc(100dvh - 52px - 56px); background: var(--ios-label); align-items: center; justify-content: center; padding: 40px 24px; text-align: center;">
         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(0,122,255,0.15) 0%, transparent 70%); pointer-events: none;"/>
-        <div style="width: 72px; height: 72px; border-radius: 22px; background: linear-gradient(135deg, #007aff, #0a84ff); display: flex; align-items: center; justify-content: center; font-size: 36px; box-shadow: 0 8px 32px rgba(0,122,255,0.4); margin-bottom: 24px;">👑</div>
-        <div style="font-size: 11px; font-weight: 700; color: #007aff; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">专业版会员</div>
+        <div style="width: 72px; height: 72px; border-radius: 22px; background: linear-gradient(135deg, var(--ios-blue), #487f76); display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 8px 32px rgba(47,111,104,0.28); margin-bottom: 24px;">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 4 4 5-7 5 7 4-4-2 12H5L3 8Z"/></svg>
+        </div>
+        <div style="font-size: 11px; font-weight: 700; color: var(--ios-blue); letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">专业版会员</div>
         <h2 style="font-size: 28px; font-weight: 800; color: #fff; margin: 0 0 10px; letter-spacing: -0.5px; line-height: 1.2;">今日研判已完成</h2>
         <p style="font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.7; max-width: 260px; margin: 0 0 36px;">
           今天的 {{ pricing?.premium?.daily_limit ?? 15 }} 次研判额度已用完<br/>明天凌晨将自动重置
@@ -970,20 +976,20 @@ function handleLogout() {
       </div>
 
       <!-- ── QUOTA EXHAUSTED: Basic tier ── -->
-      <div v-else-if="showUpgradeBanner && tier === 'basic'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; background: #1c1c1e; display: flex; flex-direction: column;">
+      <div v-else-if="showUpgradeBanner && tier === 'basic'" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; background: var(--ios-label); display: flex; flex-direction: column;">
         <div style="padding: 32px 20px 24px; position: relative; overflow: hidden; flex-shrink: 0;">
           <div style="position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(0,122,255,0.22) 0%, transparent 70%); pointer-events: none;"/>
-          <div style="font-size: 11px; font-weight: 700; color: #007aff; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">今日 {{ pricing?.basic?.daily_limit ?? 5 }} 次已用完</div>
+          <div style="font-size: 11px; font-weight: 700; color: var(--ios-blue); letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 12px;">今日 {{ pricing?.basic?.daily_limit ?? 5 }} 次已用完</div>
           <h2 style="font-size: 32px; font-weight: 800; color: #fff; margin: 0 0 8px; letter-spacing: -0.5px; line-height: 1.15;">
             只差一步<br/><span style="color: #9ec8ff;">解锁专业版</span>
           </h2>
           <p style="font-size: 13px; color: rgba(255,255,255,0.4); margin: 0; line-height: 1.6;">明天自动重置 · 或每天 {{ pricing?.premium?.daily_limit ?? 15 }} 次无限制研判</p>
         </div>
         <div style="flex: 1; padding: 0 16px 16px; overflow-y: auto;">
-          <NuxtLink to="/upgrade" style="display: flex; flex-direction: column; width: 100%; border-radius: 20px; border: 1.5px solid rgba(0,122,255,0.5); background: linear-gradient(160deg, #1c1c1e 0%, #2a2a32 60%, #20202a 100%); text-decoration: none; overflow: hidden; box-shadow: 0 8px 40px rgba(0,122,255,0.3);">
+          <NuxtLink to="/upgrade" style="display: flex; flex-direction: column; width: 100%; border-radius: 20px; border: 1.5px solid rgba(0,122,255,0.5); background: linear-gradient(160deg, var(--ios-label) 0%, #2a2a32 60%, #20202a 100%); text-decoration: none; overflow: hidden; box-shadow: 0 8px 40px rgba(0,122,255,0.3);">
             <div style="padding: 20px 20px 16px; display: flex; align-items: flex-end; justify-content: space-between;">
               <div>
-                <div style="font-size: 12px; font-weight: 700; color: #7fb4ff; margin-bottom: 6px;">👑 专业版</div>
+                <div style="font-size: 12px; font-weight: 700; color: #a8c8c2; margin-bottom: 6px;">专业版</div>
                 <div style="display: flex; align-items: baseline; gap: 1px;">
                   <span style="font-size: 14px; color: rgba(255,255,255,0.4);">¥</span>
                   <span style="font-size: 46px; font-weight: 900; color: #fff; letter-spacing: -2px; line-height: 1;">{{ pricing?.premium?.price ?? '49' }}</span>
@@ -998,8 +1004,10 @@ function handleLogout() {
             <div style="height: 0.5px; background: rgba(0,122,255,0.3); margin: 0 20px;"/>
             <div style="padding: 14px 20px 18px; display: flex; flex-direction: column; gap: 10px;">
               <div style="font-size: 10px; font-weight: 700; color: rgba(167,139,250,0.6); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px;">专业版独享</div>
-              <div v-for="(item, i) in [{ icon: '⚡', text: '每天 15 次完整深度研判' }, { icon: '📍', text: '持仓参数个性化智能分析' }, { icon: '🔄', text: '连续多标的无缝查询' }]" :key="i" style="display: flex; align-items: center; gap: 10px;">
-                <span style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;">{{ item.icon }}</span>
+              <div v-for="(item, i) in [{ text: '每天 15 次完整深度研判' }, { text: '持仓参数个性化智能分析' }, { text: '连续多标的查询' }]" :key="i" style="display: flex; align-items: center; gap: 10px;">
+                <span style="width: 28px; height: 28px; border-radius: 8px; background: rgba(47,111,104,0.25); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #a8c8c2;">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
                 <span style="font-size: 14px; color: rgba(255,255,255,0.8); font-weight: 500;">{{ item.text }}</span>
               </div>
             </div>
@@ -1009,41 +1017,41 @@ function handleLogout() {
       </div>
 
       <!-- ── QUOTA EXHAUSTED: Free / guest tier ── -->
-      <div v-else-if="showUpgradeBanner" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; background: #f2f2f7; display: flex; flex-direction: column;">
+      <div v-else-if="showUpgradeBanner" style="position: fixed; top: 52px; left: 0; right: 0; bottom: 56px; overflow-y: auto; z-index: 10; background: var(--ios-bg); display: flex; flex-direction: column;">
         <div style="background: white; padding: 28px 20px 20px; flex-shrink: 0;">
           <div style="display: inline-flex; align-items: center; gap: 5px; background: #fff2f2; border-radius: 9999px; padding: 3px 10px; margin-bottom: 10px;">
-            <span style="font-size: 10px; font-weight: 700; color: #ff3b30; letter-spacing: 0.5px; text-transform: uppercase;">今日限额</span>
+            <span style="font-size: 10px; font-weight: 700; color: var(--ios-red); letter-spacing: 0.5px; text-transform: uppercase;">今日限额</span>
           </div>
-          <h2 style="font-size: 30px; font-weight: 800; color: #1c1c1e; margin: 0 0 6px; letter-spacing: -0.8px; line-height: 1.1;">免费次数用完了</h2>
-          <p style="font-size: 14px; color: #8e8e93; margin: 0; line-height: 1.5;">明天自动重置 · 或升级继续分析</p>
+          <h2 style="font-size: 30px; font-weight: 800; color: var(--ios-label); margin: 0 0 6px; letter-spacing: -0.8px; line-height: 1.1;">免费次数用完了</h2>
+          <p style="font-size: 14px; color: var(--ios-secondary); margin: 0; line-height: 1.5;">明天自动重置 · 或升级继续分析</p>
         </div>
         <div style="height: 12px; flex-shrink: 0;"/>
         <div style="padding: 0 14px; display: flex; gap: 10px; flex-shrink: 0;">
           <!-- Basic card -->
           <NuxtLink to="/upgrade" style="flex: 1; border-radius: 20px; overflow: hidden; text-decoration: none; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,122,255,0.2);">
-            <div style="background: linear-gradient(160deg, #007aff 0%, #0a84ff 40%, #34aadc 100%); padding: 18px 16px 14px;">
-              <div style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.5px; margin-bottom: 6px;">📊 标准版</div>
+            <div style="background: linear-gradient(160deg, var(--ios-blue) 0%, var(--ios-blue) 40%, #34aadc 100%); padding: 18px 16px 14px;">
+              <div style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.5px; margin-bottom: 6px;">标准版</div>
               <div style="font-size: 38px; font-weight: 900; color: #fff; letter-spacing: -2px; line-height: 1; margin-bottom: 2px;">{{ pricing?.basic?.daily_limit ?? 5 }}<span style="font-size: 12px; font-weight: 400; margin-left: 3px;">次/天</span></div>
               <div style="font-size: 18px; font-weight: 800; color: #fff;">¥{{ pricing?.basic?.price ?? '19.9' }}<span style="font-size: 11px; font-weight: 400; color: rgba(255,255,255,0.6); margin-left: 2px;">/{{ pricing?.basic?.period ?? '月' }}</span></div>
             </div>
             <div style="background: white; padding: 12px 14px; flex: 1;">
               <div v-for="(f, i) in ['完整深度研判', '目标价·止损', '全市场覆盖']" :key="i" style="display: flex; align-items: center; gap: 7px; padding: 5px 0;" :style="i < 2 ? { borderBottom: '0.5px solid rgba(0,0,0,0.06)' } : {}">
-                <span style="width: 14px; height: 14px; border-radius: 50%; background: #34c759; display: flex; align-items: center; justify-content: center; font-size: 9px; color: white; font-weight: 700; flex-shrink: 0;">✓</span>
-                <span style="font-size: 12px; color: #1c1c1e;">{{ f }}</span>
+                <span style="width: 14px; height: 14px; border-radius: 50%; background: var(--ios-green); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                <span style="font-size: 12px; color: var(--ios-label);">{{ f }}</span>
               </div>
             </div>
           </NuxtLink>
           <!-- Premium card -->
           <NuxtLink to="/upgrade" style="flex: 1; border-radius: 20px; overflow: hidden; text-decoration: none; display: flex; flex-direction: column; position: relative; box-shadow: 0 6px 24px rgba(0,122,255,0.28);">
-            <div style="position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: #1c1c1e; color: #fff; font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 0 0 9px 9px; white-space: nowrap; z-index: 2;">最高权益</div>
-            <div style="background: linear-gradient(160deg, #1c1c1e 0%, #2a2a32 50%, #0a84ff 100%); padding: 22px 16px 14px;">
-              <div style="font-size: 10px; font-weight: 700; color: #7fb4ff; letter-spacing: 0.5px; margin-bottom: 6px;">👑 专业版</div>
+            <div style="position: absolute; top: -1px; left: 50%; transform: translateX(-50%); background: var(--ios-label); color: #fff; font-size: 9px; font-weight: 800; padding: 3px 10px; border-radius: 0 0 9px 9px; white-space: nowrap; z-index: 2;">最高权益</div>
+            <div style="background: linear-gradient(160deg, var(--ios-label) 0%, #2a2a32 50%, var(--ios-blue) 100%); padding: 22px 16px 14px;">
+              <div style="font-size: 10px; font-weight: 700; color: #a8c8c2; letter-spacing: 0.5px; margin-bottom: 6px;">专业版</div>
               <div style="font-size: 38px; font-weight: 900; color: #fff; letter-spacing: -2px; line-height: 1; margin-bottom: 2px;">{{ pricing?.premium?.daily_limit ?? 15 }}<span style="font-size: 12px; font-weight: 400; color: rgba(255,255,255,0.6); margin-left: 3px;">次/天</span></div>
               <div style="font-size: 18px; font-weight: 800; color: #9ec8ff;">¥{{ pricing?.premium?.price ?? '49' }}<span style="font-size: 11px; font-weight: 400; color: rgba(158,200,255,0.5); margin-left: 2px;">/{{ pricing?.premium?.period ?? '月' }}</span></div>
             </div>
             <div style="background: #1c1c22; padding: 12px 14px; flex: 1;">
               <div v-for="(f, i) in ['完整深度研判', '持仓智能分析', '多标的查询']" :key="i" style="display: flex; align-items: center; gap: 7px; padding: 5px 0;" :style="i < 2 ? { borderBottom: '0.5px solid rgba(0,122,255,0.15)' } : {}">
-                <span style="width: 14px; height: 14px; border-radius: 50%; background: #007aff; display: flex; align-items: center; justify-content: center; font-size: 9px; color: white; font-weight: 700; flex-shrink: 0;">✓</span>
+                <span style="width: 14px; height: 14px; border-radius: 50%; background: var(--ios-blue); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
                 <span style="font-size: 12px; color: rgba(255,255,255,0.75);">{{ f }}</span>
               </div>
             </div>
@@ -1051,18 +1059,20 @@ function handleLogout() {
         </div>
         <div style="padding: 14px 14px 0; flex-shrink: 0;">
           <div style="background: white; border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
-            <div style="width: 32px; height: 32px; border-radius: 9px; background: #f2f2f7; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🆓</div>
-            <div style="flex: 1;">
-              <span style="font-size: 13px; color: #8e8e93;">免费版：每天 </span>
-              <span style="font-size: 13px; font-weight: 700; color: #1c1c1e;">{{ pricing?.free?.daily_limit ?? 1 }} 次</span>
-              <span style="font-size: 13px; color: #8e8e93;">，仅基础分析</span>
+            <div style="width: 32px; height: 32px; border-radius: 9px; background: var(--ios-bg); display: flex; align-items: center; justify-content: center; color: var(--ios-secondary); flex-shrink: 0;">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m8 15 3.5-4 3 2.5L20 7"/></svg>
             </div>
-            <span style="font-size: 11px; color: #aeaeb2;">当前</span>
+            <div style="flex: 1;">
+              <span style="font-size: 13px; color: var(--ios-secondary);">免费版：每天 </span>
+              <span style="font-size: 13px; font-weight: 700; color: var(--ios-label);">{{ pricing?.free?.daily_limit ?? 1 }} 次</span>
+              <span style="font-size: 13px; color: var(--ios-secondary);">，仅基础分析</span>
+            </div>
+            <span style="font-size: 11px; color: var(--ios-tertiary);">当前</span>
           </div>
         </div>
         <div style="flex: 1; min-height: 0;"/>
         <div style="padding: 0 14px 80px; text-align: center;">
-          <p style="font-size: 12px; color: #aeaeb2; margin: 0;">支付宝 · 微信支付 · 即时生效</p>
+          <p style="font-size: 12px; color: var(--ios-tertiary); margin: 0;">支付宝 · 微信支付 · 即时生效</p>
         </div>
       </div>
 
@@ -1074,8 +1084,8 @@ function handleLogout() {
         </div>
         <div style="padding: 22px 16px 16px;">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
-            <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.8px; color: #1c1c1e; margin: 0; line-height: 1.1;">{{ landingPrefilled ? '立即分析该标的' : '今天分析哪只？' }}</h2>
-            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: #007aff; background: #e7f1ff; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px; line-height: 1.4;">专业版体验中</span>
+            <h2 style="font-size: 28px; font-weight: 800; letter-spacing: -0.8px; color: var(--ios-label); margin: 0; line-height: 1.1;">{{ landingPrefilled ? '立即分析该标的' : '今天分析哪只？' }}</h2>
+            <span v-if="isGuestTrial || isRegisteredProTrial" style="font-size: 12px; font-weight: 700; color: var(--ios-blue); background: #e7f1ff; border-radius: 20px; padding: 3px 10px; letter-spacing: 0.2px; line-height: 1.4;">专业版体验中</span>
           </div>
           <div v-if="landingPrefilled || inviteRewardText" style="margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #f0f9ff; border: 1px solid #bae6fd;">
             <div style="font-size: 14px; font-weight: 700; color: #075985;">已填入 {{ MARKET_LABELS[market] || market }} {{ symbol }}</div>
@@ -1091,11 +1101,11 @@ function handleLogout() {
         <div style="height: 0.5px; background: rgba(60,60,67,0.1);"/>
         <div style="padding: 14px 16px 0; position: relative;">
           <div style="position: relative;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aeaeb2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ios-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1;">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input ref="symbolInput" class="symbol-input" :value="symbol" @input="onSymbolInput" @keydown="onSymbolKeydown" @compositionstart="onSymbolCompositionStart" @compositionend="onSymbolCompositionEnd" :placeholder="market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'" @keyup.enter="!showSuggestions || activeSuggIdx < 0 ? handleAnalyze() : undefined" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
-            <div v-if="selectedSymbolName && !showSuggestions" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #8e8e93; pointer-events: none; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis;">{{ selectedSymbolName }}</div>
+            <div v-if="selectedSymbolName && !showSuggestions" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--ios-secondary); pointer-events: none; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis;">{{ selectedSymbolName }}</div>
           </div>
           <div v-if="showSuggestions && suggestions.length > 0" style="position: absolute; left: 16px; right: 16px; top: calc(100% + 4px); background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;">
             <button
@@ -1109,7 +1119,7 @@ function handleLogout() {
                 cursor: 'pointer', WebkitTapHighlightColor: 'transparent', textAlign: 'left',
               }"
             >
-              <div><div style="font-size: 15px; font-weight: 600; color: #1c1c1e;">{{ s.symbol }}</div><div style="font-size: 12px; color: #8e8e93;">{{ s.name }}</div></div>
+              <div><div style="font-size: 15px; font-weight: 600; color: var(--ios-label);">{{ s.symbol }}</div><div style="font-size: 12px; color: var(--ios-secondary);">{{ s.name }}</div></div>
               <span style="font-size: 11px; color: #0071e3; background: rgba(0,122,255,0.1); padding: 2px 8px; border-radius: 9999px; font-weight: 600; flex-shrink: 0;">{{ MARKET_LABELS[s.market] || s.market }}</span>
             </button>
           </div>
@@ -1117,10 +1127,12 @@ function handleLogout() {
         <div style="padding: 12px 16px 16px;">
           <div style="display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px;">
             <button v-for="s in (hotStocks.length ? hotStocks : [{ code: '600519', name: '贵州茅台', market: 'a' }, { code: '000858', name: '五粮液', market: 'a' }, { code: '300750', name: '宁德时代', market: 'a' }, { code: '600036', name: '招商银行', market: 'a' }])" :key="s.code" @click="selectHotStock(s)" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 14px; min-height: 44px; min-width: 72px; background: white; border: none; border-radius: 10px; cursor: pointer; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">
-              <span style="font-size: 15px; font-weight: 600; color: #1c1c1e; line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
-              <span style="font-size: 12px; color: #8e8e93; margin-top: 1px;">{{ s.code }}</span>
+              <span style="font-size: 15px; font-weight: 600; color: var(--ios-label); line-height: 1.2; white-space: nowrap;">{{ s.name }}</span>
+              <span style="font-size: 12px; color: var(--ios-secondary); margin-top: 1px;">{{ s.code }}</span>
             </button>
-            <button @click="loadHotStocks" style="flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #8e8e93; box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">↻</button>
+            <button @click="loadHotStocks" aria-label="刷新热门标的" style="flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ios-secondary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); -webkit-tap-highlight-color: transparent;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.3 6.4"/><path d="M3 12A9 9 0 0 1 18.3 5.6"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg>
+            </button>
           </div>
         </div>
         <div style="height: 0.5px; background: rgba(60,60,67,0.1);"/>
@@ -1129,7 +1141,7 @@ function handleLogout() {
           <template v-if="effectiveTier === 'premium'">
             <!-- K线周期 -->
             <div style="padding: 12px 16px 10px;">
-              <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px;">K线周期</p>
+              <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px;">K线周期</p>
               <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                 <button v-for="p in PERIOD_OPTIONS" :key="p.value" class="period-chip" :class="{ active: period === p.value }" @click="period = p.value">{{ p.label }}</button>
               </div>
@@ -1138,16 +1150,16 @@ function handleLogout() {
             <!-- 多周期交叉分析 -->
             <div style="padding: 12px 16px 10px;">
               <div style="display: flex; align-items: center; justify-content: space-between;" :style="{ marginBottom: multiPeriodEnabled ? '10px' : 0 }">
-                <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">多周期交叉分析</p>
+                <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">多周期交叉分析</p>
                 <label style="position: relative; display: inline-block; width: 44px; height: 26px; cursor: pointer;">
                   <input type="checkbox" v-model="multiPeriodEnabled" @change="!multiPeriodEnabled && toggleAuxPeriod('__clear__')" style="opacity: 0; width: 0; height: 0;"/>
-                  <span :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: multiPeriodEnabled ? '#34c759' : '#e5e5ea', borderRadius: '13px', transition: 'background 0.2s' }">
+                  <span :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: multiPeriodEnabled ? 'var(--ios-green)' : 'var(--ios-bg2)', borderRadius: '13px', transition: 'background 0.2s' }">
                     <span :style="{ position: 'absolute', top: '2px', left: multiPeriodEnabled ? '20px' : '2px', width: '22px', height: '22px', background: 'white', borderRadius: '50%', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }"/>
                   </span>
                 </label>
               </div>
               <div v-if="multiPeriodEnabled">
-                <p style="font-size: 12px; color: #8e8e93; margin: 0 0 8px;">选择辅助周期（最多3个）</p>
+                <p style="font-size: 12px; color: var(--ios-secondary); margin: 0 0 8px;">选择辅助周期（最多3个）</p>
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                   <button v-for="p in PERIOD_OPTIONS.filter(p => p.value !== period)" :key="p.value" class="period-chip" :class="{ active: auxiliaryPeriods.includes(p.value) }" :style="{ opacity: !auxiliaryPeriods.includes(p.value) && auxiliaryPeriods.length >= 3 ? 0.4 : 1 }" @click="toggleAuxPeriod(p.value)">{{ p.label }}</button>
                 </div>
@@ -1157,23 +1169,23 @@ function handleLogout() {
             <!-- 持仓参数 -->
             <div style="padding: 12px 16px 14px;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">持仓参数</p>
-                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #e7f1ff; color: #007aff; letter-spacing: 0.2px;">专属功能</span>
+                <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">持仓参数</p>
+                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; background: #e7f1ff; color: var(--ios-blue); letter-spacing: 0.2px;">专属功能</span>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
-                  <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">持有数量(股)</label>
-                  <input v-model="holdingQuantity" inputmode="numeric" placeholder="如 1000" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #1c1c1e; outline: none; box-sizing: border-box;"/>
+                  <label style="font-size: 12px; color: var(--ios-secondary); display: block; margin-bottom: 4px;">持有数量(股)</label>
+                  <input v-model="holdingQuantity" inputmode="numeric" placeholder="如 1000" style="width: 100%; height: 44px; background: var(--ios-bg); border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: var(--ios-label); outline: none; box-sizing: border-box;"/>
                 </div>
                 <div>
-                  <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">成本价</label>
-                  <input v-model="costPrice" inputmode="decimal" placeholder="如 15.50" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #1c1c1e; outline: none; box-sizing: border-box;"/>
+                  <label style="font-size: 12px; color: var(--ios-secondary); display: block; margin-bottom: 4px;">成本价</label>
+                  <input v-model="costPrice" inputmode="decimal" placeholder="如 15.50" style="width: 100%; height: 44px; background: var(--ios-bg); border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: var(--ios-label); outline: none; box-sizing: border-box;"/>
                 </div>
                 <div style="grid-column: 1/-1;">
-                  <label style="font-size: 12px; color: #8e8e93; display: block; margin-bottom: 4px;">最大持仓(股) — 不超过此仓位</label>
-                  <input v-model="maxPosition" inputmode="numeric" placeholder="如 5000" style="width: 100%; height: 44px; background: #f2f2f7; border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: #1c1c1e; outline: none; box-sizing: border-box;"/>
+                  <label style="font-size: 12px; color: var(--ios-secondary); display: block; margin-bottom: 4px;">最大持仓(股) — 不超过此仓位</label>
+                  <input v-model="maxPosition" inputmode="numeric" placeholder="如 5000" style="width: 100%; height: 44px; background: var(--ios-bg); border: none; border-radius: 10px; padding: 0 14px; font-size: 15px; color: var(--ios-label); outline: none; box-sizing: border-box;"/>
                 </div>
-                <p style="grid-column: 1/-1; font-size: 11px; color: #8e8e93; margin: 0;">不填=按空仓分析；若填写则 3 项需全部填写。</p>
+                <p style="grid-column: 1/-1; font-size: 11px; color: var(--ios-secondary); margin: 0;">不填=按空仓分析；若填写则 3 项需全部填写。</p>
               </div>
             </div>
           </template>
@@ -1181,18 +1193,18 @@ function handleLogout() {
           <template v-else>
             <button class="adv-toggle" @click="advancedOpen = !advancedOpen">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 15px; color: #3c3c43;">⚙ 高级设置</span>
-                <span style="font-size: 12px; color: #8e8e93;">{{ PERIOD_OPTIONS.find(p => p.value === period)?.label }}</span>
+                <span style="font-size: 15px; color: #3c3c43;">高级设置</span>
+                <span style="font-size: 12px; color: var(--ios-secondary);">{{ PERIOD_OPTIONS.find(p => p.value === period)?.label }}</span>
               </div>
-              <svg class="adv-chevron" :class="{ open: advancedOpen }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aeaeb2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg class="adv-chevron" :class="{ open: advancedOpen }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div v-if="advancedOpen" style="padding: 0 16px 16px;">
               <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
                 <button v-for="p in PERIOD_OPTIONS" :key="p.value" class="period-chip" :class="{ active: period === p.value }" @click="period = p.value">{{ p.label }}</button>
               </div>
               <NuxtLink to="/upgrade" style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #f0f6ff, #e7f1ff); border-radius: 12px; text-decoration: none; margin-top: 8px;">
-                <div><div style="font-size: 14px; font-weight: 700; color: #0a4da3;">持仓智能分析</div><div style="font-size: 12px; color: #007aff; margin-top: 2px;">专业版专属 · 个性化建议</div></div>
-                <span style="font-size: 13px; font-weight: 600; color: #007aff;">升级 →</span>
+                <div><div style="font-size: 14px; font-weight: 700; color: #0a4da3;">持仓智能分析</div><div style="font-size: 12px; color: var(--ios-blue); margin-top: 2px;">专业版专属 · 个性化建议</div></div>
+                <span style="font-size: 13px; font-weight: 600; color: var(--ios-blue);">升级 →</span>
               </NuxtLink>
             </div>
           </template>
@@ -1202,13 +1214,13 @@ function handleLogout() {
 
       <!-- ── FAB (tier-differentiated) ── -->
       <div class="fab-container">
-        <div v-if="error" style="font-size: 13px; color: #ff3b30; margin-bottom: 8px; text-align: center;">{{ error }}</div>
+        <div v-if="error" style="font-size: 13px; color: var(--ios-red); margin-bottom: 8px; text-align: center;">{{ error }}</div>
         <!-- Quota exhausted CTAs -->
         <template v-if="showUpgradeBanner">
           <button v-if="tier === 'premium'" class="fab-btn" disabled style="background: rgba(0,122,255,0.25); color: rgba(158,200,255,0.6); cursor: default; opacity: 1;">
             明天重置 · 敬请期待
           </button>
-          <button v-else class="fab-btn" @click="router.push('/upgrade')" :style="{ background: tier === 'basic' ? 'linear-gradient(135deg, #007aff, #0a84ff)' : 'linear-gradient(135deg, #ff9500, #ff6b00)', opacity: 1 }">
+          <button v-else class="fab-btn" @click="router.push('/upgrade')" :style="{ background: tier === 'basic' ? 'linear-gradient(135deg, var(--ios-blue), var(--ios-blue))' : 'linear-gradient(135deg, #ff9500, #ff6b00)', opacity: 1 }">
             {{ tier === 'basic' ? '升级专业版 →' : '立即升级 →' }}
           </button>
         </template>
@@ -1224,17 +1236,19 @@ function handleLogout() {
       <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 300; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; text-align: center;">
         <div style="position: absolute; width: 360px; height: 360px; background: radial-gradient(circle at center, rgba(0,122,255,0.07) 0%, transparent 70%); border-radius: 50%; top: 50%; left: 50%; animation: loading-breathe 3.5s ease-in-out infinite; pointer-events: none;"/>
         <div v-if="analyzeTimedOut" style="display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 300px; padding: 0 40px; position: relative; z-index: 1;">
-          <div style="font-size: 48px; line-height: 1;">⏰</div>
-          <h2 style="font-size: 22px; font-weight: 700; color: #1c1c1e; margin: 0;">分析时间较长</h2>
-          <p style="font-size: 15px; color: #8e8e93; line-height: 1.75; margin: 0;">AI 服务响应超过 3 分钟<br/>可等待继续，或返回重试</p>
-          <button @click="activePanel = 'analyze'" style="margin-top: 8px; padding: 14px 40px; border-radius: 16px; background: #f2f2f7; border: none; font-size: 16px; font-weight: 600; color: #1c1c1e; cursor: pointer;">返回重试</button>
+          <div style="width: 54px; height: 54px; border-radius: 16px; background: rgba(154,106,30,0.12); color: var(--ios-orange); display: flex; align-items: center; justify-content: center;">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v5l3 2"/><path d="M5 3 2 6"/><path d="m19 3 3 3"/></svg>
+          </div>
+          <h2 style="font-size: 22px; font-weight: 700; color: var(--ios-label); margin: 0;">分析时间较长</h2>
+          <p style="font-size: 15px; color: var(--ios-secondary); line-height: 1.75; margin: 0;">AI 服务响应超过 3 分钟<br/>可等待继续，或返回重试</p>
+          <button @click="activePanel = 'analyze'" style="margin-top: 8px; padding: 14px 40px; border-radius: 16px; background: var(--ios-bg); border: none; font-size: 16px; font-weight: 600; color: var(--ios-label); cursor: pointer;">返回重试</button>
         </div>
         <div v-else style="position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; padding: 0 32px; width: 100%;">
-          <div style="font-size: 72px; font-weight: 900; letter-spacing: -3px; color: #1c1c1e; line-height: 1; margin-bottom: 10px; animation: loading-symbol-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;">{{ analyzingSymbol }}</div>
-          <div style="font-size: 13px; font-weight: 500; color: #aeaeb2; letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 64px; animation: loading-subtitle-in 0.6s 0.15s ease-out both;">深度研判中</div>
+          <div style="font-size: 72px; font-weight: 900; letter-spacing: -3px; color: var(--ios-label); line-height: 1; margin-bottom: 10px; animation: loading-symbol-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;">{{ analyzingSymbol }}</div>
+          <div style="font-size: 13px; font-weight: 500; color: var(--ios-tertiary); letter-spacing: 2.5px; text-transform: uppercase; margin-bottom: 64px; animation: loading-subtitle-in 0.6s 0.15s ease-out both;">深度研判中</div>
           <p :key="narrativeIdx" style="font-size: 15px; font-weight: 500; color: #3c3c43; line-height: 1.7; margin: 0 0 28px; animation: narrative-fade 0.35s ease-out; min-height: 1.7em;">{{ NARRATIVE_TEXTS[narrativeIdx] }}</p>
           <div style="display: flex; gap: 8px; align-items: center;">
-            <div v-for="i in [0, 1, 2]" :key="i" :style="{ width: '7px', height: '7px', borderRadius: '50%', background: '#007aff', opacity: 0.4, animation: `loading-dot 1.4s ${i * 0.22}s ease-in-out infinite` }"/>
+            <div v-for="i in [0, 1, 2]" :key="i" :style="{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--ios-blue)', opacity: 0.4, animation: `loading-dot 1.4s ${i * 0.22}s ease-in-out infinite` }"/>
           </div>
         </div>
         <div style="position: absolute; bottom: 40px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;">
@@ -1300,7 +1314,7 @@ function handleLogout() {
         </div>
       </div>
       <div v-if="sheetResult && !resultSheetOpen" style="position: fixed; bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); left: 16px; right: 16px; z-index: 50;">
-        <button @click="resultSheetOpen = true" style="width: 100%; height: 52px; border-radius: 14px; background: linear-gradient(135deg, #007aff, #0a84ff); color: white; border: none; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(0,122,255,0.45); display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <button @click="resultSheetOpen = true" style="width: 100%; height: 52px; border-radius: 14px; background: linear-gradient(135deg, var(--ios-blue), var(--ios-blue)); color: white; border: none; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(0,122,255,0.45); display: flex; align-items: center; justify-content: center; gap: 8px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           查看 {{ sheetResult?.data?.name || sheetResult?.data?.symbol }} 的分析结果
         </button>
@@ -1323,7 +1337,7 @@ function handleLogout() {
             <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
           <span v-if="unreadResults > 0 && activePanel !== 'result'" class="bottom-nav-badge bottom-nav-badge-pulse">{{ unreadResults > 9 ? '9+' : unreadResults }}</span>
-          <span v-else-if="isAnalyzing && activePanel !== 'result'" style="position: absolute; top: -3px; right: -5px; width: 8px; height: 8px; background: #007aff; border-radius: 50%; border: 1.5px solid rgba(249,249,249,0.94); animation: badge-breathe 1.8s ease-in-out infinite;"/>
+          <span v-else-if="isAnalyzing && activePanel !== 'result'" style="position: absolute; top: -3px; right: -5px; width: 8px; height: 8px; background: var(--ios-blue); border-radius: 50%; border: 1.5px solid rgba(249,249,249,0.94); animation: badge-breathe 1.8s ease-in-out infinite;"/>
         </span>
         <span>结果</span>
       </button>
@@ -1361,32 +1375,38 @@ function handleLogout() {
       <div v-if="userMenuOpen" @click.self="userMenuOpen = false" style="position: fixed; inset: 0; z-index: 600; background: rgba(0,0,0,0.4);">
         <div style="position: absolute; bottom: 0; left: 0; right: 0; background: white; border-radius: 20px 20px 0 0; padding: 8px 0 calc(env(safe-area-inset-bottom, 0px) + 8px); animation: sheet-in 0.3s cubic-bezier(0.32, 0.72, 0, 1);">
           <!-- Drag handle -->
-          <div style="width: 36px; height: 4px; background: #e5e5ea; border-radius: 2px; margin: 4px auto 16px;"/>
+          <div style="width: 36px; height: 4px; background: var(--ios-bg2); border-radius: 2px; margin: 4px auto 16px;"/>
           <!-- User info -->
           <div style="display: flex; align-items: center; gap: 12px; padding: 0 20px 16px; border-bottom: 0.5px solid rgba(0,0,0,0.08);">
-            <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #007aff, #5ac8fa); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: white; flex-shrink: 0;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, var(--ios-blue), #5ac8fa); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: white; flex-shrink: 0;">
               {{ (auth.user?.email || '?')[0].toUpperCase() }}
             </div>
             <div>
-              <div style="font-size: 16px; font-weight: 600; color: #1c1c1e;">{{ auth.user?.email }}</div>
-              <div style="font-size: 13px; margin-top: 2px;" :style="{ color: tier === 'premium' ? '#007aff' : tier === 'basic' ? '#007aff' : '#8e8e93' }">{{ tierLabel }}</div>
+              <div style="font-size: 16px; font-weight: 600; color: var(--ios-label);">{{ auth.user?.email }}</div>
+              <div style="font-size: 13px; margin-top: 2px;" :style="{ color: tier === 'premium' ? 'var(--ios-blue)' : tier === 'basic' ? 'var(--ios-blue)' : 'var(--ios-secondary)' }">{{ tierLabel }}</div>
             </div>
           </div>
           <!-- Menu items -->
           <button @click="() => { userMenuOpen = false; router.push('/account'); }" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
-            <div style="width: 32px; height: 32px; border-radius: 9px; background: #f2f2f7; display: flex; align-items: center; justify-content: center; font-size: 16px;">👤</div>
-            <span style="font-size: 16px; color: #1c1c1e; font-weight: 500;">账号设置</span>
+            <div style="width: 32px; height: 32px; border-radius: 9px; background: var(--ios-bg); display: flex; align-items: center; justify-content: center; color: var(--ios-secondary);">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <span style="font-size: 16px; color: var(--ios-label); font-weight: 500;">账号设置</span>
             <svg style="margin-left: auto;" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <button v-if="tier !== 'premium'" @click="() => { userMenuOpen = false; router.push('/upgrade'); }" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
-            <div style="width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #f0f6ff, #e7f1ff); display: flex; align-items: center; justify-content: center; font-size: 16px;">⬆️</div>
-            <span style="font-size: 16px; color: #1c1c1e; font-weight: 500;">升级套餐</span>
+            <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(47,111,104,0.10); color: var(--ios-blue); display: flex; align-items: center; justify-content: center;">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m7 17 10-10"/><path d="M8 7h9v9"/></svg>
+            </div>
+            <span style="font-size: 16px; color: var(--ios-label); font-weight: 500;">升级套餐</span>
             <svg style="margin-left: auto;" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <PwaInstallButton :appName="appName" variant="row" />
           <button @click="handleLogout" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
-            <div style="width: 32px; height: 32px; border-radius: 9px; background: #fff2f2; display: flex; align-items: center; justify-content: center; font-size: 16px;">🚪</div>
-            <span style="font-size: 16px; color: #ff3b30; font-weight: 500;">退出登录</span>
+            <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(166,67,67,0.10); color: var(--ios-red); display: flex; align-items: center; justify-content: center;">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+            </div>
+            <span style="font-size: 16px; color: var(--ios-red); font-weight: 500;">退出登录</span>
           </button>
         </div>
       </div>

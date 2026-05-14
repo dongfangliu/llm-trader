@@ -20,7 +20,7 @@
             <div class="notify-header">
               <div class="notify-icon">
                 <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                  <circle cx="11" cy="11" r="11" fill="#34c759" />
+                  <circle cx="11" cy="11" r="11" fill="var(--ios-green)" />
                   <path d="M6.5 11.5L9.5 14.5L15.5 8" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               </div>
@@ -36,7 +36,7 @@
                   <circle
                     cx="16" cy="16" r="13"
                     fill="none"
-                    stroke="#007aff"
+                    stroke="var(--ios-blue)"
                     stroke-width="3"
                     stroke-linecap="round"
                     :stroke-dasharray="circumference"
@@ -214,7 +214,7 @@ function handleDismiss() {
   position: absolute;
   font-size: 10px;
   font-weight: 700;
-  color: #007aff;
+  color: var(--ios-blue);
   line-height: 1;
 }
 
@@ -241,7 +241,7 @@ function handleDismiss() {
 }
 
 .notify-btn--primary {
-  background: #007aff;
+  background: var(--ios-blue);
   color: #fff;
 }
 

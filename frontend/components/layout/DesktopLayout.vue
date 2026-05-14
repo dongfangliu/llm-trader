@@ -37,14 +37,14 @@ const tierLabel: Record<string, string> = {
 }
 
 const tierColor: Record<string, string> = {
-  free: '#8e8e93',
-  basic: '#34c759',
-  premium: '#007aff',
+  free: 'var(--ios-secondary)',
+  basic: 'var(--ios-green)',
+  premium: 'var(--ios-blue)',
 }
 </script>
 
 <template>
-  <div style="display: flex; min-height: 100dvh; background: #f2f2f7;">
+  <div style="display: flex; min-height: 100dvh; background: var(--ios-bg);">
 
     <!-- Sidebar -->
     <aside style="width: 240px; min-width: 240px; height: 100dvh; position: sticky; top: 0; background: rgba(249,249,249,0.97); border-right: 0.5px solid rgba(0,0,0,0.12); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden;">
@@ -56,16 +56,16 @@ const tierColor: Record<string, string> = {
             <rect x="2" y="9" width="5" height="7" rx="1.5" fill="#dc2626"/>
             <line x1="4.5" y1="6" x2="4.5" y2="9" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
             <line x1="4.5" y1="16" x2="4.5" y2="19" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
-            <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759"/>
-            <line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="var(--ios-green)"/>
+            <line x1="11" y1="1.5" x2="11" y2="4" stroke="var(--ios-green)" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="11" y1="15" x2="11" y2="17.5" stroke="var(--ios-green)" stroke-width="1.5" stroke-linecap="round"/>
             <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626"/>
             <line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
             <line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span style="font-size: 15px; font-weight: 700; color: #1c1c1e; letter-spacing: -0.3px;">{{ DEFAULT_APP_NAME }}</span>
+          <span style="font-size: 15px; font-weight: 700; color: var(--ios-label); letter-spacing: -0.3px;">{{ DEFAULT_APP_NAME }}</span>
         </div>
-        <p style="margin: 5px 0 0 26px; font-size: 11px; color: #8e8e93;">股票智能研判</p>
+        <p style="margin: 5px 0 0 26px; font-size: 11px; color: var(--ios-secondary);">股票智能研判</p>
       </div>
 
       <!-- Nav links -->
@@ -103,20 +103,20 @@ const tierColor: Record<string, string> = {
         <template v-if="auth.isLoggedIn">
           <div style="display: flex; align-items: center; gap: 10px;">
             <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(0,122,255,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <span style="font-size: 13px; font-weight: 700; color: #007aff;">
+              <span style="font-size: 13px; font-weight: 700; color: var(--ios-blue);">
                 {{ (auth.user?.email || '?')[0].toUpperCase() }}
               </span>
             </div>
             <div style="flex: 1; min-width: 0;">
-              <p style="font-size: 13px; font-weight: 500; color: #1c1c1e; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <p style="font-size: 13px; font-weight: 500; color: var(--ios-label); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 {{ auth.user?.email }}
               </p>
               <p style="font-size: 11px; margin: 1px 0 0;">
                 <span
                   style="font-weight: 600; padding: 1px 5px; border-radius: 3px; font-size: 10px;"
                   :style="{
-                    color: tierColor[auth.tier] || '#8e8e93',
-                    background: (tierColor[auth.tier] || '#8e8e93') + '1a',
+                    color: tierColor[auth.tier] || 'var(--ios-secondary)',
+                    background: (tierColor[auth.tier] || 'var(--ios-secondary)') + '1a',
                   }"
                 >{{ tierLabel[auth.tier] || auth.tier }}</span>
               </p>
@@ -126,7 +126,7 @@ const tierColor: Record<string, string> = {
         <template v-else>
           <NuxtLink
             to="/login"
-            style="display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; color: #007aff; text-decoration: none;"
+            style="display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; color: var(--ios-blue); text-decoration: none;"
           >
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
               <path d="M13 3h4a1 1 0 011 1v12a1 1 0 01-1 1h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -167,6 +167,6 @@ const tierColor: Record<string, string> = {
 }
 .sl-nav-link.active {
   background: rgba(0,122,255,0.1);
-  color: #007aff;
+  color: var(--ios-blue);
 }
 </style>

@@ -11,7 +11,7 @@
           <circle
             cx="8" cy="8" r="6"
             fill="none"
-            stroke="#007aff"
+            stroke="var(--ios-blue)"
             stroke-width="2"
             stroke-linecap="round"
             stroke-dasharray="25 13"

@@ -29,7 +29,7 @@ function onBack() {
   <header
     :class="[
       'sticky top-0 z-30 ios-safe-top',
-      'bg-ios-card/80 backdrop-blur-xl',
+      'bg-ios-card/82 backdrop-blur-xl shadow-[inset_0_-1px_0_var(--ios-separator)]',
       border ? 'border-b border-ios-separator' : '',
     ]"
   >

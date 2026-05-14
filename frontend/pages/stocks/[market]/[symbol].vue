@@ -57,11 +57,13 @@ useJsonLd('stock-detail-jsonld', () => [
     },
   },
 ])
+
+useGsapReveal()
 </script>
 
 <template>
   <main class="seo-page">
-    <header class="hero">
+    <header class="hero" data-reveal>
       <NuxtLink to="/stocks" class="back">股票工具</NuxtLink>
       <h1>{{ data?.name || symbol }} <span>{{ symbol }}</span></h1>
       <p>{{ marketLabel }} 市场技术指标观察。数据用于研究和工具演示，不构成投资建议。</p>
@@ -71,7 +73,7 @@ useJsonLd('stock-detail-jsonld', () => [
       </div>
     </header>
 
-    <section v-if="latest" class="panel">
+    <section v-if="latest" class="panel" data-reveal>
       <h2>最新K线摘要</h2>
       <div class="metrics">
         <div><span>收盘</span><strong>{{ Number(latest.close).toFixed(2) }}</strong></div>
@@ -81,7 +83,7 @@ useJsonLd('stock-detail-jsonld', () => [
       </div>
     </section>
 
-    <section v-if="latest" class="panel">
+    <section v-if="latest" class="panel" data-reveal>
       <h2>技术指标</h2>
       <div class="metrics">
         <div><span>MA10</span><strong>{{ latest.ma10 ? Number(latest.ma10).toFixed(2) : '-' }}</strong></div>
@@ -92,12 +94,12 @@ useJsonLd('stock-detail-jsonld', () => [
       </div>
     </section>
 
-    <section v-else class="panel">
+    <section v-else class="panel" data-reveal>
       <h2>暂未取得行情数据</h2>
       <p>可以返回分析工具手动输入代码，或稍后在数据源恢复后再访问本页。</p>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-reveal>
       <h2>相关说明</h2>
       <div class="links">
         <NuxtLink to="/learn/ma">MA均线说明</NuxtLink>
@@ -111,23 +113,24 @@ useJsonLd('stock-detail-jsonld', () => [
 </template>
 
 <style scoped>
-.seo-page { min-height: 100vh; background: #f8fafc; color: #111827; padding: 24px 16px 56px; }
-.hero, .panel { max-width: 920px; margin: 0 auto 16px; }
-.back, .links a { color: #2563eb; text-decoration: none; font-weight: 600; }
-h1 { font-size: 34px; margin: 20px 0 8px; letter-spacing: 0; }
-h1 span { color: #6b7280; font-size: 22px; }
+.seo-page { min-height: 100vh; background: var(--ios-bg); color: var(--ios-label); padding: 24px 16px 64px; font-family: var(--app-font); }
+.hero, .panel { max-width: 980px; margin: 0 auto 16px; }
+.back, .links a { color: var(--ios-blue); text-decoration: none; font-weight: 700; }
+h1 { font-size: clamp(32px, 5vw, 52px); margin: 20px 0 8px; letter-spacing: 0; line-height: 1.04; }
+h1 span { color: var(--ios-secondary); font-size: .62em; }
 h2 { font-size: 20px; margin: 0 0 14px; }
-p { color: #4b5563; line-height: 1.8; }
+p { color: var(--ios-label2); line-height: 1.8; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 700; }
-.cta.primary { background: #2563eb; color: #fff; }
-.cta.secondary { background: #eef2ff; color: #3730a3; }
-.panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 18px; }
+.cta { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 8px; text-decoration: none; font-weight: 760; transition: transform .18s ease, background .18s ease; }
+.cta:active { transform: translateY(1px) scale(.99); }
+.cta.primary { background: var(--ios-blue); color: #fff; }
+.cta.secondary { background: var(--ios-card); color: var(--ios-blue); border: 1px solid var(--ios-separator); }
+.panel { background: color-mix(in srgb, var(--ios-card) 94%, transparent); border: 1px solid var(--ios-separator); border-radius: 8px; padding: 18px; box-shadow: var(--ios-shadow-sm); }
 .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-.metrics div { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
-.metrics span { display: block; color: #6b7280; font-size: 12px; margin-bottom: 6px; }
+.metrics div { border: 1px solid var(--ios-separator); border-radius: 8px; padding: 12px; background: var(--ios-card); }
+.metrics span { display: block; color: var(--ios-secondary); font-size: 12px; margin-bottom: 6px; }
 .metrics strong { font-size: 20px; }
-.up { color: #c2410c; }
-.down { color: #15803d; }
+.up { color: var(--finance-buy); }
+.down { color: var(--finance-sell); }
 .links { display: flex; flex-wrap: wrap; gap: 12px; }
 </style>

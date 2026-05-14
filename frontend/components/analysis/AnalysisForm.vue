@@ -19,10 +19,10 @@ const symbol = ref('')
 const localError = ref('')
 
 const markets = [
-  { value: 'a', label: 'A股', emoji: '🇨🇳' },
-  { value: 'hk', label: '港股', emoji: '🇭🇰' },
-  { value: 'us', label: '美股', emoji: '🇺🇸' },
-  { value: 'futures', label: '期货', emoji: '📊' },
+  { value: 'a', label: 'A股' },
+  { value: 'hk', label: '港股' },
+  { value: 'us', label: '美股' },
+  { value: 'futures', label: '期货' },
 ]
 
 const periods = [
@@ -66,7 +66,6 @@ function handleSubmit() {
         ]"
         @click="analysisStore.setMarket(m.value)"
       >
-        <span class="text-base">{{ m.emoji }}</span>
         <span>{{ m.label }}</span>
       </button>
     </div>

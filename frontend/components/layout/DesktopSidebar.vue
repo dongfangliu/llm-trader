@@ -77,27 +77,27 @@ const isAnalyzeActive = computed(() =>
           <rect x="2" y="9" width="5" height="7" rx="1.5" fill="#dc2626"/>
           <line x1="4.5" y1="6" x2="4.5" y2="9" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="4.5" y1="16" x2="4.5" y2="19" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
-          <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="#34c759"/>
-          <line x1="11" y1="1.5" x2="11" y2="4" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="11" y1="15" x2="11" y2="17.5" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
+          <rect x="8.5" y="4" width="5" height="11" rx="1.5" fill="var(--ios-green)"/>
+          <line x1="11" y1="1.5" x2="11" y2="4" stroke="var(--ios-green)" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="11" y1="15" x2="11" y2="17.5" stroke="var(--ios-green)" stroke-width="1.5" stroke-linecap="round"/>
           <rect x="15" y="7" width="5" height="8" rx="1.5" fill="#dc2626"/>
           <line x1="17.5" y1="4" x2="17.5" y2="7" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
           <line x1="17.5" y1="15" x2="17.5" y2="18" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
-        <span style="font-size: 15px; font-weight: 700; color: #1c1c1e; letter-spacing: -0.3px;">{{ appName }}</span>
+        <span style="font-size: 15px; font-weight: 700; color: var(--ios-label); letter-spacing: -0.3px;">{{ appName }}</span>
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <span
           v-if="isRegisteredProTrial || isGuestTrial"
-          style="font-size: 11px; color: #8e8e93;"
+          style="font-size: 11px; color: var(--ios-secondary);"
         >专业版体验中</span>
         <template v-else>
           <span
-            style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(0,122,255,0.1); color: #007aff;"
+            style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(0,122,255,0.1); color: var(--ios-blue);"
           >{{ tierLabel }}</span>
           <span
             v-if="remaining !== null && dailyLimit !== null"
-            style="font-size: 11px; color: #8e8e93;"
+            style="font-size: 11px; color: var(--ios-secondary);"
           >{{ remaining }} / {{ dailyLimit }} 次</span>
           <span
             v-if="tier === 'basic' && deepRemaining !== null && deepDailyLimit !== null"
@@ -145,7 +145,7 @@ const isAnalyzeActive = computed(() =>
           :class="{ open: allOpen }"
           width="12" height="12" viewBox="0 0 12 12" fill="none"
         >
-          <path d="M2 4.5L6 8L10 4.5" stroke="#8e8e93" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 4.5L6 8L10 4.5" stroke="var(--ios-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
 
@@ -158,20 +158,20 @@ const isAnalyzeActive = computed(() =>
           @click="emit('open-history', item)"
         >
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-            <span style="font-size: 13px; font-weight: 600; color: #1c1c1e; flex-shrink: 0;">{{ item.symbol }}</span>
+            <span style="font-size: 13px; font-weight: 600; color: var(--ios-label); flex-shrink: 0;">{{ item.symbol }}</span>
             <span
               style="font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; flex-shrink: 0;"
               :style="{ color: getActionDisplay(item.action).color, background: getActionDisplay(item.action).color + '1a' }"
             >{{ getActionDisplay(item.action).text }}</span>
           </div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
-            <span style="font-size: 11px; color: #8e8e93; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;">{{ item.name }}</span>
-            <span v-if="item.analyzedAt" style="font-size: 10px; color: #aeaeb2; flex-shrink: 0;">{{ formatTime(item.analyzedAt) }}</span>
+            <span style="font-size: 11px; color: var(--ios-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;">{{ item.name }}</span>
+            <span v-if="item.analyzedAt" style="font-size: 10px; color: var(--ios-tertiary); flex-shrink: 0;">{{ formatTime(item.analyzedAt) }}</span>
           </div>
         </button>
         <div
           v-if="history.length === 0"
-          style="padding: 16px 10px; font-size: 12px; color: #aeaeb2; text-align: center;"
+          style="padding: 16px 10px; font-size: 12px; color: var(--ios-tertiary); text-align: center;"
         >
           暂无分析记录
         </div>
@@ -186,11 +186,11 @@ const isAnalyzeActive = computed(() =>
             :class="{ open: favOpen }"
             width="12" height="12" viewBox="0 0 12 12" fill="none"
           >
-            <path d="M2 4.5L6 8L10 4.5" stroke="#8e8e93" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 4.5L6 8L10 4.5" stroke="var(--ios-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
         <template v-if="favOpen">
-          <div style="padding: 12px 10px; font-size: 12px; color: #aeaeb2; text-align: center;">
+          <div style="padding: 12px 10px; font-size: 12px; color: var(--ios-tertiary); text-align: center;">
             暂无收藏
           </div>
         </template>
@@ -201,12 +201,12 @@ const isAnalyzeActive = computed(() =>
     <!-- Bottom: quota + user button -->
     <div style="padding: 16px; border-top: 0.5px solid rgba(0,0,0,0.08); display: flex; align-items: flex-end; justify-content: space-between;">
       <div>
-        <div style="font-size: 10px; color: #8e8e93; margin-bottom: 2px; font-weight: 500;">今日剩余</div>
+        <div style="font-size: 10px; color: var(--ios-secondary); margin-bottom: 2px; font-weight: 500;">今日剩余</div>
         <div style="display: flex; align-items: baseline; gap: 3px;">
-          <span style="font-size: 24px; font-weight: 700; color: #1c1c1e; line-height: 1;">
+          <span style="font-size: 24px; font-weight: 700; color: var(--ios-label); line-height: 1;">
             {{ remaining ?? '—' }}
           </span>
-          <span v-if="dailyLimit !== null" style="font-size: 12px; color: #8e8e93;">/ {{ dailyLimit }} 次</span>
+          <span v-if="dailyLimit !== null" style="font-size: 12px; color: var(--ios-secondary);">/ {{ dailyLimit }} 次</span>
         </div>
       </div>
       <button
@@ -215,12 +215,12 @@ const isAnalyzeActive = computed(() =>
         @mouseenter="(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,122,255,0.18)'"
         @mouseleave="(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,122,255,0.1)'"
       >
-        <span v-if="user" style="font-size: 14px; font-weight: 700; color: #007aff;">
+        <span v-if="user" style="font-size: 14px; font-weight: 700; color: var(--ios-blue);">
           {{ (user.email || '?')[0].toUpperCase() }}
         </span>
         <svg v-else width="16" height="16" viewBox="0 0 20 20" fill="none">
-          <circle cx="10" cy="7" r="3.5" stroke="#007aff" stroke-width="1.5"/>
-          <path d="M3 17c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="#007aff" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="10" cy="7" r="3.5" stroke="var(--ios-blue)" stroke-width="1.5"/>
+          <path d="M3 17c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="var(--ios-blue)" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
     </div>
@@ -247,7 +247,7 @@ const isAnalyzeActive = computed(() =>
   transition: background 0.1s;
 }
 .dt-nav-btn:hover { background: rgba(0,0,0,0.05); }
-.dt-nav-btn.active { background: rgba(0,122,255,0.1); color: #007aff; }
+.dt-nav-btn.active { background: rgba(0,122,255,0.1); color: var(--ios-blue); }
 
 .dt-hist-btn {
   display: block;
@@ -275,7 +275,7 @@ const isAnalyzeActive = computed(() =>
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
-  color: #8e8e93;
+  color: var(--ios-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

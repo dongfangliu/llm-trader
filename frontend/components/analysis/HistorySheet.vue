@@ -36,7 +36,9 @@ const marketLabels: Record<string, string> = {
   <IosSheet :modelValue="modelValue" @update:modelValue="emit('update:modelValue', $event)" title="历史记录" :fullHeight="true">
     <!-- Not logged in -->
     <div v-if="!auth.isLoggedIn" class="flex flex-col items-center justify-center py-12 px-6 text-center">
-      <div class="text-4xl mb-3">🔐</div>
+      <div class="mb-3 text-ios-blue">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
       <p class="text-ios-secondary mb-4">登录后可查看分析历史</p>
       <NuxtLink to="/login" @click="emit('update:modelValue', false)">
         <IosButton variant="primary" size="md">去登录</IosButton>
@@ -50,7 +52,9 @@ const marketLabels: Record<string, string> = {
 
     <!-- Empty -->
     <div v-else-if="!history.length" class="flex flex-col items-center justify-center py-12 px-6 text-center">
-      <div class="text-4xl mb-3">📋</div>
+      <div class="mb-3 text-ios-blue">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
+      </div>
       <p class="text-ios-secondary">暂无分析记录</p>
     </div>
 

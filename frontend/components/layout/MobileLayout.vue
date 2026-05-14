@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { useRoute } from '#app'
 import { useAuthStore } from '~/stores/auth'
+import { PhChartLineUp, PhUser } from '@phosphor-icons/vue'
 
 const route = useRoute()
 const auth = useAuthStore()
 
 const navItems = [
-  { path: '/', label: '分析', icon: '📊' },
-  { path: '/account', label: '账户', icon: '👤' },
+  { path: '/', label: '分析', icon: PhChartLineUp },
+  { path: '/account', label: '账户', icon: PhUser },
 ]
 </script>
 
@@ -30,7 +31,7 @@ const navItems = [
             route.path === item.path ? 'text-ios-blue' : 'text-ios-secondary',
           ]"
         >
-          <span class="text-xl leading-none">{{ item.icon }}</span>
+          <component :is="item.icon" :size="20" weight="bold" />
           <span class="text-xs mt-1 font-medium">{{ item.label }}</span>
         </NuxtLink>
       </div>

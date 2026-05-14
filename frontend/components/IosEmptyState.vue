@@ -20,7 +20,7 @@ const padMap = {
 <template>
   <div :class="['flex flex-col items-center text-center px-6', padMap[size]]">
     <div
-      class="mb-4 flex items-center justify-center w-14 h-14 rounded-ios-lg bg-ios-fill text-ios-secondary"
+      class="mb-4 flex items-center justify-center w-14 h-14 rounded-ios-lg bg-ios-fill text-ios-blue ring-1 ring-ios-blue/10"
     >
       <slot name="icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">

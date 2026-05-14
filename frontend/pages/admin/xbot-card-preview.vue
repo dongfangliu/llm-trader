@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   PhArrowLeft,
   PhArrowSquareOut,
@@ -11,7 +11,6 @@ import {
 } from '@phosphor-icons/vue'
 import type { CardPayload } from '~/server/utils/xbot-cards/types'
 import { MOCK_HOLD_RESULT, MOCK_PREDICTION, MOCK_RESULT, MOCK_SUMMARY_A, MOCK_SUMMARY_HK } from '~/server/utils/xbot-cards/mock'
-import api from '~/lib/api'
 
 type ZoomLevel = 0.25 | 0.42 | 0.75 | 1
 
@@ -31,17 +30,9 @@ interface Slot {
 }
 
 const { data: appConfig } = await useFetch('/api/config')
-const xbotSettings = ref<Record<string, any> | null>(null)
-
-onMounted(async () => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : ''
-  if (!token) return
-  const res = await api.get('/api/admin/xbot/settings', { headers: { 'X-Admin-Token': token } }).catch(() => null)
-  xbotSettings.value = res?.data || null
-})
 
 const brandName = computed(() => (appConfig.value as any)?.app_name ?? undefined)
-const productUrl = computed(() => (xbotSettings.value as any)?.xbot_product_url || MOCK_PREDICTION.product_url)
+const productUrl = computed(() => MOCK_PREDICTION.product_url)
 
 const basePred = computed(() => ({ ...MOCK_PREDICTION, brand_name: brandName.value, product_url: productUrl.value }))
 const baseResult = computed(() => ({ ...MOCK_RESULT, brand_name: brandName.value, product_url: productUrl.value }))

@@ -339,15 +339,15 @@ async function handleCopyLink() {
           </button>
           <div class="sps2-platform-scroll">
             <div class="sps2-platform-pill" @click="handleSave(false)">
-              <span class="sps2-pill-icon">📷</span>
+              <span class="sps2-pill-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4 16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l1.5-3h5Z"/><circle cx="12" cy="13" r="3"/></svg></span>
               <span class="sps2-pill-text">小红书发笔记</span>
             </div>
             <div class="sps2-platform-pill" @click="handleSave(false)">
-              <span class="sps2-pill-icon">💬</span>
+              <span class="sps2-pill-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3 1.3-5.1A8 8 0 1 1 21 12Z"/></svg></span>
               <span class="sps2-pill-text">发给朋友</span>
             </div>
             <div class="sps2-platform-pill" @click="handleSave(false)">
-              <span class="sps2-pill-icon">🌐</span>
+              <span class="sps2-pill-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg></span>
               <span class="sps2-pill-text">朋友圈</span>
             </div>
           </div>
@@ -362,7 +362,9 @@ async function handleCopyLink() {
                 <span class="sps2-seal-title">研判时间戳</span>
                 <span class="sps2-seal-date">{{ dateStr }}</span>
               </div>
-              <div class="sps2-seal-lock">🔒</div>
+              <div class="sps2-seal-lock">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              </div>
             </div>
             <button
               class="sps2-archive-save-btn"

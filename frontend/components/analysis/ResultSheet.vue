@@ -375,7 +375,9 @@ async function handleShare() {
               <div style="font-size: 10px; font-weight: 600; color: rgba(0,0,0,0.4); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;">目标价</div>
               <div class="rs-blur-value-wrap">
                 <div class="rs-blur-value">{{ blurTarget }}</div>
-                <div class="rs-lock-badge">🔒</div>
+                <div class="rs-lock-badge">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                </div>
               </div>
             </div>
             <div class="rs-price-divider"/>
@@ -383,7 +385,9 @@ async function handleShare() {
               <div style="font-size: 10px; font-weight: 600; color: rgba(0,0,0,0.4); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;">止损价</div>
               <div class="rs-blur-value-wrap">
                 <div class="rs-blur-value">{{ blurStop }}</div>
-                <div class="rs-lock-badge">🔒</div>
+                <div class="rs-lock-badge">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                </div>
               </div>
             </div>
           </template>

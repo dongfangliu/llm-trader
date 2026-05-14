@@ -14,13 +14,14 @@ COPY . .
 
 # Download NotoSansSC OTF fonts for Satori card generation
 RUN mkdir -p public/fonts && \
-    wget -q -O public/fonts/NotoSansSC-Regular.otf \
+    (wget -q -O public/fonts/NotoSansSC-Regular.otf \
     "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" && \
     wget -q -O public/fonts/NotoSansSC-Bold.otf \
     "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Bold.otf" && \
     wget -q -O public/fonts/NotoSansSC-Black.otf \
-    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf" || \
-    echo "Font download failed, will use CDN fallback at runtime"
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Black.otf") || \
+    echo "Font download failed, will use system/CDN fallback at runtime"; \
+    find public/fonts -type f -size -1024c -delete
 
 # Build Nuxt app (outputs to .output/)
 RUN npm run build
@@ -29,6 +30,8 @@ RUN npm run build
 FROM docker.m.daocloud.io/library/node:20-alpine
 
 WORKDIR /app
+
+RUN apk add --no-cache font-noto-cjk
 
 # Copy built output — Nuxt 3 self-contained server in .output/
 COPY --from=builder /app/.output ./

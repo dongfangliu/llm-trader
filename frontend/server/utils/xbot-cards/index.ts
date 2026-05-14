@@ -1,6 +1,6 @@
 import satori from 'satori'
 import { Resvg } from '@resvg/resvg-js'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { CardPayload } from './types'
 import { renderPromise } from './variants/promise'
@@ -30,6 +30,10 @@ const FONT_FILES: Record<number, { local: string[]; urls: string[] }> = {
       'NotoSansSC-Regular.otf',
       'NotoSansSC-Regular.ttf',
       'NotoSansSC.ttf',
+      '/usr/share/fonts/noto/NotoSansCJK-Regular.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJKsc-Regular.otf',
+      '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
       'C:/Windows/Fonts/Deng.ttf',
       'C:/Windows/Fonts/simhei.ttf',
     ],
@@ -42,6 +46,10 @@ const FONT_FILES: Record<number, { local: string[]; urls: string[] }> = {
     local: [
       'NotoSansSC-Bold.otf',
       'NotoSansSC-Bold.ttf',
+      '/usr/share/fonts/noto/NotoSansCJK-Bold.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJKsc-Bold.otf',
+      '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
       'C:/Windows/Fonts/Dengb.ttf',
       'C:/Windows/Fonts/simhei.ttf',
     ],
@@ -54,6 +62,14 @@ const FONT_FILES: Record<number, { local: string[]; urls: string[] }> = {
     local: [
       'NotoSansSC-Black.otf',
       'NotoSansSC-Black.ttf',
+      '/usr/share/fonts/noto/NotoSansCJK-Black.ttc',
+      '/usr/share/fonts/noto/NotoSansCJK-Bold.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJK-Black.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc',
+      '/usr/share/fonts/noto-cjk/NotoSansCJKsc-Black.otf',
+      '/usr/share/fonts/noto-cjk/NotoSansCJKsc-Bold.otf',
+      '/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc',
+      '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
       'C:/Windows/Fonts/Dengb.ttf',
       'C:/Windows/Fonts/simhei.ttf',
     ],
@@ -64,6 +80,15 @@ const FONT_FILES: Record<number, { local: string[]; urls: string[] }> = {
   },
 }
 
+function isUsableFont(data: ArrayBuffer): boolean {
+  if (data.byteLength < 1024) return false
+  const view = new Uint8Array(data, 0, Math.min(4, data.byteLength))
+  const signature = String.fromCharCode(...view)
+  return signature === 'OTTO' || signature === 'true' || signature === 'ttcf' || (
+    view[0] === 0x00 && view[1] === 0x01 && view[2] === 0x00 && view[3] === 0x00
+  )
+}
+
 async function loadFont(weight: number): Promise<ArrayBuffer> {
   const cached = _fontCache.get(weight)
   if (cached) return cached
@@ -71,9 +96,10 @@ async function loadFont(weight: number): Promise<ArrayBuffer> {
   const spec = FONT_FILES[weight] ?? FONT_FILES[400]
   for (const file of spec.local) {
     const p = isAbsolute(file) ? file : resolve('./public/fonts', file)
-    if (existsSync(p)) {
+    if (existsSync(p) && statSync(p).size > 1024) {
       const buf = readFileSync(p)
       const data = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+      if (!isUsableFont(data)) continue
       _fontCache.set(weight, data)
       return data
     }
@@ -84,6 +110,7 @@ async function loadFont(weight: number): Promise<ArrayBuffer> {
       const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
       if (res.ok) {
         const data = await res.arrayBuffer()
+        if (!isUsableFont(data)) continue
         _fontCache.set(weight, data)
         return data
       }

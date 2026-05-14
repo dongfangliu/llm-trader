@@ -187,6 +187,8 @@ useJsonLd('upgrade-offer-jsonld', () => [
     ],
   },
 ])
+
+useGsapReveal()
 </script>
 
 <template>
@@ -200,7 +202,7 @@ useJsonLd('upgrade-offer-jsonld', () => [
     <div class="max-w-[600px] mx-auto">
 
       <!-- Hero -->
-      <div class="upgrade-hero px-6 pt-9 pb-8 text-center">
+      <div class="upgrade-hero px-6 pt-9 pb-8 text-center" data-reveal>
         <template v-if="tier === 'premium'">
           <div class="w-14 h-14 rounded-ios bg-white/10 ring-1 ring-white/15 mx-auto mb-4 flex items-center justify-center text-white">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -241,7 +243,7 @@ useJsonLd('upgrade-offer-jsonld', () => [
       </div>
 
       <!-- Pricing swipe cards -->
-      <div class="mt-5">
+      <div class="mt-5" data-reveal>
         <div
           id="pricing-swipe"
           class="pricing-track flex overflow-x-auto px-4 pt-2 pb-4 gap-3"
@@ -407,7 +409,7 @@ useJsonLd('upgrade-offer-jsonld', () => [
       </p>
 
       <!-- Premium benefits copy -->
-      <section class="px-4 pt-6">
+      <section class="px-4 pt-6" data-reveal>
         <IosCard elevation="raised" padding="lg">
           <h2 class="text-xl font-extrabold text-ios-label tracking-ios-tight">专业版权益</h2>
           <p class="text-sm text-ios-label2 leading-relaxed mt-2.5 mb-3.5">
@@ -425,7 +427,7 @@ useJsonLd('upgrade-offer-jsonld', () => [
       </section>
 
       <!-- How to subscribe -->
-      <div class="px-4 pt-7">
+      <div class="px-4 pt-7" data-reveal>
         <IosCard section-label="如何订阅" elevation="raised" padding="none">
           <div class="divide-y divide-ios-separator">
             <div v-for="step in SUBSCRIBE_STEPS" :key="step.num" class="flex items-center gap-3.5 px-4 py-3.5">
@@ -456,7 +458,7 @@ useJsonLd('upgrade-offer-jsonld', () => [
       </div>
 
       <!-- FAQ -->
-      <section class="px-4 pt-6">
+      <section class="px-4 pt-6" data-reveal>
         <IosCard elevation="raised" padding="lg">
           <h2 class="text-xl font-extrabold text-ios-label tracking-ios-tight mb-3.5">常见问题</h2>
           <div class="flex flex-col gap-4">
@@ -477,7 +479,7 @@ useJsonLd('upgrade-offer-jsonld', () => [
       </section>
 
       <!-- Activation -->
-      <div class="px-4 pt-6">
+      <div class="px-4 pt-6" data-reveal>
         <p class="text-xs font-semibold uppercase tracking-wide text-ios-secondary mb-2 px-1">激活订阅</p>
 
         <!-- Not logged in -->

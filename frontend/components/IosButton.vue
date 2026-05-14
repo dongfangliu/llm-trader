@@ -24,12 +24,12 @@ const emit = defineEmits<{
 }>()
 
 const variantClasses = {
-  primary: 'bg-ios-blue text-white hover:opacity-90 shadow-ios-sm',
-  secondary: 'bg-ios-card text-ios-blue border border-ios-separator hover:bg-ios-bg',
-  danger: 'bg-ios-red text-white hover:opacity-90 shadow-ios-sm',
+  primary: 'bg-ios-blue text-white hover:brightness-[0.96] shadow-ios-sm',
+  secondary: 'bg-ios-card text-ios-label border border-ios-separator hover:bg-ios-bg2',
+  danger: 'bg-ios-red text-white hover:brightness-[0.96] shadow-ios-sm',
   ghost: 'bg-transparent text-ios-blue hover:bg-ios-fill',
-  success: 'bg-ios-green text-white hover:opacity-90 shadow-ios-sm',
-  link: 'bg-transparent text-ios-blue hover:opacity-70 font-medium',
+  success: 'bg-ios-green text-white hover:brightness-[0.96] shadow-ios-sm',
+  link: 'bg-transparent text-ios-blue hover:opacity-80 font-semibold',
 }
 
 const sizeClasses = {
@@ -46,9 +46,9 @@ const isLink = computed(() => props.variant === 'link')
     :type="type"
     :disabled="disabled || loading"
     :class="[
-      'font-semibold transition-all duration-150 select-none',
+      'font-semibold transition-all duration-200 select-none fin-action',
       'inline-flex items-center justify-center gap-2',
-      'active:scale-[0.97] active:opacity-80',
+      'active:opacity-90',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ios-blue/40',
       variantClasses[variant],
       isLink ? 'px-0 py-0 min-h-0 text-base' : sizeClasses[size],

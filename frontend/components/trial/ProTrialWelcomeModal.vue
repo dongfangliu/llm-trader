@@ -10,20 +10,22 @@ const emit = defineEmits<{
 }>()
 
 const DEFAULT_PERKS = [
-  { icon: '🔍', text: '完整深度研判报告' },
-  { icon: '📐', text: '多周期联合分析' },
-  { icon: '💹', text: 'AI 买卖点精准定位' },
+  { text: '完整深度研判报告' },
+  { text: '多周期联合分析' },
+  { text: 'AI 买卖点精准定位' },
 ]
 </script>
 
 <template>
-  <div style="position: fixed; inset: 0; z-index: 9999; background: #f2f2f7; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 0 40px; overflow-y: auto;">
+  <div style="position: fixed; inset: 0; z-index: 9999; background: var(--ios-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 0 40px; overflow-y: auto;">
 
     <!-- App hero -->
     <div style="width: 100%; max-width: 480px; display: flex; flex-direction: column; align-items: center; padding: 48px 16px 24px; text-align: center;">
-      <div style="width: 80px; height: 80px; background: linear-gradient(145deg, #007aff, #0a84ff); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 40px; box-shadow: 0 8px 24px rgba(0,122,255,0.3); margin-bottom: 16px;">📈</div>
-      <h1 style="font-size: 28px; font-weight: 700; letter-spacing: -0.5px; color: #000; margin: 0 0 6px;">{{ props.appName || DEFAULT_APP_NAME }}</h1>
-      <p style="font-size: 15px; color: #8e8e93; margin: 0;">AI 驱动的专业技术分析平台</p>
+      <div style="width: 80px; height: 80px; background: linear-gradient(145deg, var(--ios-blue), #487f76); border-radius: 20px; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 8px 24px rgba(47,111,104,0.25); margin-bottom: 16px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m8 15 3.5-4 3 2.5L20 7"/></svg>
+      </div>
+      <h1 style="font-size: 28px; font-weight: 700; letter-spacing: 0; color: var(--ios-label); margin: 0 0 6px;">{{ props.appName || DEFAULT_APP_NAME }}</h1>
+      <p style="font-size: 15px; color: var(--ios-secondary); margin: 0;">AI 驱动的专业技术分析平台</p>
     </div>
 
     <!-- Card -->
@@ -41,26 +43,28 @@ const DEFAULT_PERKS = [
 
         <!-- Perks -->
         <div style="background: white; padding: 16px 20px 20px;">
-          <p style="font-size: 12px; font-weight: 600; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px;">本次体验包含</p>
+          <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px;">本次体验包含</p>
           <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
             <div v-for="(p, i) in DEFAULT_PERKS" :key="i" style="display: flex; align-items: center; gap: 10px;">
-              <div style="width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; background: linear-gradient(135deg, #007aff, #0a84ff); display: flex; align-items: center; justify-content: center; font-size: 15px;">{{ p.icon }}</div>
-              <p style="font-size: 14px; color: #1c1c1e; margin: 0; font-weight: 500;">{{ p.text }}</p>
+              <div style="width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; background: rgba(47,111,104,0.12); color: var(--ios-blue); display: flex; align-items: center; justify-content: center;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              </div>
+              <p style="font-size: 14px; color: var(--ios-label); margin: 0; font-weight: 500;">{{ p.text }}</p>
             </div>
           </div>
 
           <button
             @click="emit('dismiss')"
-            style="width: 100%; height: 50px; background: linear-gradient(135deg, #007aff, #0a84ff); color: white; border: none; border-radius: 12px; font-size: 17px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; margin-bottom: 12px; box-shadow: 0 4px 16px rgba(0,122,255,0.35);"
+            style="width: 100%; height: 50px; background: linear-gradient(135deg, var(--ios-blue), var(--ios-blue)); color: white; border: none; border-radius: 12px; font-size: 17px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; margin-bottom: 12px; box-shadow: 0 4px 16px rgba(0,122,255,0.35);"
           >
             立即开始体验
           </button>
 
-          <p style="font-size: 12px; color: #aeaeb2; margin: 0; line-height: 1.6; text-align: center;">
+          <p style="font-size: 12px; color: var(--ios-tertiary); margin: 0; line-height: 1.6; text-align: center;">
             点击即同意
-            <NuxtLink to="/terms" style="color: #8e8e93; text-decoration: none;">服务条款</NuxtLink>
+            <NuxtLink to="/terms" style="color: var(--ios-secondary); text-decoration: none;">服务条款</NuxtLink>
             与
-            <NuxtLink to="/privacy" style="color: #8e8e93; text-decoration: none;">隐私政策</NuxtLink>
+            <NuxtLink to="/privacy" style="color: var(--ios-secondary); text-decoration: none;">隐私政策</NuxtLink>
           </p>
         </div>
       </div>

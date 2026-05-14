@@ -16,12 +16,12 @@ const msgType = ref<'success' | 'error'>('success')
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const tabs = [
-  { key: 'llm', label: '🤖 AI 模型' },
-  { key: 'llm_model_review', label: '🔬 模型复盘 LLM' },
-  { key: 'pricing', label: '💰 定价展示' },
-  { key: 'afdian', label: '💳 爱发电' },
-  { key: 'email', label: '📧 邮件服务' },
-  { key: 'app', label: '⚙️ 应用信息' },
+  { key: 'llm', label: 'AI 模型' },
+  { key: 'llm_model_review', label: '模型复盘 LLM' },
+  { key: 'pricing', label: '定价展示' },
+  { key: 'afdian', label: '爱发电' },
+  { key: 'email', label: '邮件服务' },
+  { key: 'app', label: '应用信息' },
 ]
 
 const tiers = ['free', 'basic', 'premium']
@@ -100,9 +100,9 @@ async function autoFillFeatures() {
       settings.value.pricing[`${tier}_features`] = [...DEFAULT_TIER_FEATURES[tier]]
     }
     await api.put('/api/admin/settings', { pricing: settings.value.pricing }, { headers: getAdminHeaders() })
-    showMsg('✅ 已自动填充并保存', 'success')
+    showMsg('已自动填充并保存', 'success')
   } catch {
-    showMsg('❌ 自动填充失败', 'error')
+    showMsg('自动填充失败', 'error')
   } finally {
     autoFilling.value = false
   }
@@ -133,7 +133,7 @@ onMounted(async () => {
     const res = await api.get('/api/admin/settings', { headers: getAdminHeaders() })
     settings.value = res.data || {}
   } catch {
-    showMsg('❌ 加载失败，请检查 Admin Token', 'error')
+    showMsg('加载失败，请检查 Admin Token', 'error')
   } finally {
     loading.value = false
   }
@@ -143,10 +143,10 @@ async function saveSettings() {
   saving.value = true
   try {
     await api.put('/api/admin/settings', settings.value, { headers: getAdminHeaders() })
-    showMsg('✅ 保存成功', 'success')
+    showMsg('保存成功', 'success')
   } catch (e: any) {
     const detail = e.response?.data?.detail || '保存失败'
-    showMsg(`❌ ${detail}`, 'error')
+    showMsg(detail, 'error')
   } finally {
     saving.value = false
   }
@@ -164,9 +164,9 @@ async function exportSettings() {
     a.download = `settings-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    showMsg('✅ 导出成功', 'success')
+    showMsg('导出成功', 'success')
   } catch {
-    showMsg('❌ 导出失败', 'error')
+    showMsg('导出失败', 'error')
   }
 }
 
@@ -183,25 +183,25 @@ async function onFileChange(e: Event) {
     await api.post('/api/admin/settings/import', form, {
       headers: { ...getAdminHeaders(), 'Content-Type': 'multipart/form-data' },
     })
-    showMsg('✅ 导入成功，重新加载中...', 'success')
+    showMsg('导入成功，重新加载中...', 'success')
     const res = await api.get('/api/admin/settings', { headers: getAdminHeaders() })
     settings.value = res.data || {}
   } catch {
-    showMsg('❌ 导入失败', 'error')
+    showMsg('导入失败', 'error')
   }
   ;(e.target as HTMLInputElement).value = ''
 }
 </script>
 
 <template>
-  <div style="position:fixed;inset:0;background:#f2f2f7;display:flex;flex-direction:column;overflow-y:auto;">
+  <div style="position:fixed;inset:0;background:var(--ios-bg);display:flex;flex-direction:column;overflow-y:auto;font-family:var(--app-font);">
 
     <!-- Flash message -->
     <Transition name="flash">
       <div
         v-if="msg"
         style="position:fixed;top:16px;right:16px;z-index:9999;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.18);"
-        :style="{ background: msgType === 'success' ? '#34c759' : '#ff3b30' }"
+        :style="{ background: msgType === 'success' ? 'var(--ios-green)' : 'var(--ios-red)' }"
       >
         {{ msg }}
       </div>
@@ -209,21 +209,21 @@ async function onFileChange(e: Event) {
 
     <!-- Header -->
     <div style="display:flex;align-items:center;padding:48px 16px 16px;">
-      <NuxtLink to="/admin" style="color:#007aff;text-decoration:none;font-size:15px;">← 返回</NuxtLink>
-      <h1 style="flex:1;text-align:center;font-size:17px;font-weight:600;color:#1c1c1e;margin-right:40px;">系统设置</h1>
+      <NuxtLink to="/admin" style="color:var(--ios-blue);text-decoration:none;font-size:15px;font-weight:700;">返回</NuxtLink>
+      <h1 style="flex:1;text-align:center;font-size:17px;font-weight:700;color:var(--ios-label);margin-right:40px;">系统设置</h1>
     </div>
 
     <div style="padding:0 16px 32px;max-width:720px;margin:0 auto;width:100%;box-sizing:border-box;">
 
       <!-- Loading -->
       <div v-if="loading" style="display:flex;justify-content:center;padding:48px 0;">
-        <div style="width:28px;height:28px;border:3px solid #007aff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;" />
+        <div style="width:28px;height:28px;border:3px solid var(--ios-blue);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;" />
       </div>
 
       <template v-else>
 
         <!-- Tab bar -->
-        <div style="display:flex;gap:4px;overflow-x:auto;background:#fff;border-radius:12px;padding:6px;margin-bottom:16px;-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+        <div style="display:flex;gap:4px;overflow-x:auto;background:var(--ios-card);border:1px solid var(--ios-separator);border-radius:12px;padding:6px;margin-bottom:16px;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:var(--ios-shadow-sm);">
           <button
             v-for="tab in tabs"
             :key="tab.key"
@@ -238,8 +238,8 @@ async function onFileChange(e: Event) {
               fontWeight:'600',
               whiteSpace:'nowrap',
               transition:'background 0.15s,color 0.15s',
-              background: activeTab === tab.key ? '#007aff' : 'transparent',
-              color: activeTab === tab.key ? '#fff' : '#3c3c43',
+              background: activeTab === tab.key ? 'var(--ios-blue)' : 'transparent',
+              color: activeTab === tab.key ? '#fff' : 'var(--ios-label2)',
             }"
           >
             {{ tab.label }}
@@ -247,15 +247,15 @@ async function onFileChange(e: Event) {
         </div>
 
         <!-- Content card -->
-        <div style="background:#fff;border-radius:16px;padding:24px;">
+        <div style="background:var(--ios-card);border:1px solid var(--ios-separator);border-radius:16px;padding:24px;box-shadow:var(--ios-shadow-sm);">
 
           <!-- ===================== LLM TAB ===================== -->
           <template v-if="activeTab === 'llm'">
-            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 20px;">AI 模型配置</h2>
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 20px;">AI 模型配置</h2>
 
             <div style="display:flex;flex-direction:column;gap:16px;">
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Provider</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Provider</label>
                 <input
                   type="text"
                   :value="getField('llm','provider')"
@@ -265,7 +265,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">API Key</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">API Key</label>
                 <input
                   type="password"
                   :value="getField('llm','api_key')"
@@ -275,7 +275,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Base URL</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Base URL</label>
                 <input
                   type="text"
                   :value="getField('llm','base_url')"
@@ -285,7 +285,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Model</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Model</label>
                 <input
                   type="text"
                   :value="getField('llm','model')"
@@ -295,7 +295,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Max Tokens</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Max Tokens</label>
                 <input
                   type="number"
                   :value="getField('llm','max_tokens')"
@@ -305,7 +305,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Temperature</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Temperature</label>
                 <input
                   type="number"
                   step="0.1"
@@ -319,13 +319,13 @@ async function onFileChange(e: Event) {
                     width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:'8px',
                     border:'1px solid rgba(0,0,0,0.12)',fontSize:'15px',outline:'none',
                     opacity: getField('llm','thinking_enabled') ? 0.4 : 1,
-                    background: getField('llm','thinking_enabled') ? '#f2f2f7' : '#fff',
+                    background: getField('llm','thinking_enabled') ? 'var(--ios-bg)' : '#fff',
                   }"
                 />
-                <p v-if="getField('llm','thinking_enabled')" style="margin:4px 0 0;font-size:12px;color:#8e8e93;">Thinking 模式开启时 temperature 参数无效</p>
+                <p v-if="getField('llm','thinking_enabled')" style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);">Thinking 模式开启时 temperature 参数无效</p>
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">最长查询超时时间（秒）</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">最长查询超时时间（秒）</label>
                 <input
                   type="number"
                   min="30"
@@ -335,14 +335,14 @@ async function onFileChange(e: Event) {
                   placeholder="300"
                   style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
                 />
-                <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">作用于分析任务的 LLM 调用与前端等待时间，范围 30-1800 秒</p>
+                <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);">作用于分析任务的 LLM 调用与前端等待时间，范围 30-1800 秒</p>
               </div>
 
               <!-- Thinking Mode Toggle -->
               <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">
                 <div style="flex:1;">
-                  <label style="font-size:13px;font-weight:600;color:#1c1c1e;">DeepSeek Thinking 模式</label>
-                  <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;line-height:1.4;">适用于 deepseek-v4-pro / deepseek-reasoner，开启后 temperature 自动忽略，max_tokens 仍有效</p>
+                  <label style="font-size:13px;font-weight:600;color:var(--ios-label);">DeepSeek Thinking 模式</label>
+                  <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);line-height:1.4;">适用于 deepseek-v4-pro / deepseek-reasoner，开启后 temperature 自动忽略，max_tokens 仍有效</p>
                 </div>
                 <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;flex-shrink:0;margin-top:2px;">
                   <input
@@ -351,14 +351,14 @@ async function onFileChange(e: Event) {
                     @change="setField('llm','thinking_enabled',($event.target as HTMLInputElement).checked)"
                     style="opacity:0;width:0;height:0;"
                   />
-                  <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm','thinking_enabled')?'#007aff':'rgba(120,120,128,0.32)'}" />
+                  <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm','thinking_enabled')?'var(--ios-blue)':'rgba(120,120,128,0.32)'}" />
                   <span :style="{position:'absolute',top:'3px',left:getField('llm','thinking_enabled')?'21px':'3px',width:'20px',height:'20px',borderRadius:'50%',background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.3)',transition:'left 0.2s'}" />
                 </label>
               </div>
 
               <!-- Reasoning Effort (only when thinking enabled) -->
               <div v-if="getField('llm','thinking_enabled')">
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Reasoning Effort</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Reasoning Effort</label>
                 <select
                   :value="getField('llm','thinking_effort') || 'high'"
                   @change="setField('llm','thinking_effort',($event.target as HTMLSelectElement).value)"
@@ -373,15 +373,15 @@ async function onFileChange(e: Event) {
 
           <!-- ===================== MODEL REVIEW LLM TAB ===================== -->
           <template v-if="activeTab === 'llm_model_review'">
-            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 8px;">模型复盘专用 LLM</h2>
-            <p style="margin:0 0 20px;font-size:13px;color:#8e8e93;line-height:1.5;">独立配置 model-review 调用的 LLM，并设置置信度门槛与最大尝试次数。生成时会重复采样直到达到门槛，否则保留最高置信度结果并标记为 best-effort。</p>
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 8px;">模型复盘专用 LLM</h2>
+            <p style="margin:0 0 20px;font-size:13px;color:var(--ios-secondary);line-height:1.5;">独立配置 model-review 调用的 LLM，并设置置信度门槛与最大尝试次数。生成时会重复采样直到达到门槛，否则保留最高置信度结果并标记为 best-effort。</p>
 
             <div style="display:flex;flex-direction:column;gap:16px;">
               <!-- Inherit toggle -->
               <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">
                 <div style="flex:1;">
-                  <label style="font-size:13px;font-weight:600;color:#1c1c1e;">继承主 LLM 配置</label>
-                  <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;line-height:1.4;">开启时直接复用 AI 模型 Tab 中的 provider / api_key / model 等；关闭后下方字段才生效</p>
+                  <label style="font-size:13px;font-weight:600;color:var(--ios-label);">继承主 LLM 配置</label>
+                  <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);line-height:1.4;">开启时直接复用 AI 模型 Tab 中的 provider / api_key / model 等；关闭后下方字段才生效</p>
                 </div>
                 <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;flex-shrink:0;margin-top:2px;">
                   <input
@@ -390,14 +390,14 @@ async function onFileChange(e: Event) {
                     @change="setField('llm_model_review','inherit',($event.target as HTMLInputElement).checked)"
                     style="opacity:0;width:0;height:0;"
                   />
-                  <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm_model_review','inherit')?'#007aff':'rgba(120,120,128,0.32)'}" />
+                  <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm_model_review','inherit')?'var(--ios-blue)':'rgba(120,120,128,0.32)'}" />
                   <span :style="{position:'absolute',top:'3px',left:getField('llm_model_review','inherit')?'21px':'3px',width:'20px',height:'20px',borderRadius:'50%',background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.3)',transition:'left 0.2s'}" />
                 </label>
               </div>
 
               <!-- Scheduler params (always visible) -->
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">置信度门槛（0-100）</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">置信度门槛（0-100）</label>
                 <input
                   type="number"
                   min="0"
@@ -408,10 +408,10 @@ async function onFileChange(e: Event) {
                   placeholder="75"
                   style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
                 />
-                <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">达到该值即视为高置信预测；未达到则继续重试</p>
+                <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);">达到该值即视为高置信预测；未达到则继续重试</p>
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">最大尝试次数（1-5）</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">最大尝试次数（1-5）</label>
                 <input
                   type="number"
                   min="1"
@@ -424,7 +424,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">重试温度步长（0-0.5）</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">重试温度步长（0-0.5）</label>
                 <input
                   type="number"
                   min="0"
@@ -435,14 +435,14 @@ async function onFileChange(e: Event) {
                   placeholder="0.1"
                   style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
                 />
-                <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">每次重试 temperature 递增该步长，避免重复采样到相同结果</p>
+                <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);">每次重试 temperature 递增该步长，避免重复采样到相同结果</p>
               </div>
 
               <!-- Override fields (only when inherit=false) -->
               <template v-if="!getField('llm_model_review','inherit')">
                 <div style="height:1px;background:rgba(0,0,0,0.08);margin:4px 0;"></div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Provider</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Provider</label>
                   <input
                     type="text"
                     :value="getField('llm_model_review','provider')"
@@ -452,7 +452,7 @@ async function onFileChange(e: Event) {
                   />
                 </div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">API Key</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">API Key</label>
                   <input
                     type="password"
                     :value="getField('llm_model_review','api_key')"
@@ -462,7 +462,7 @@ async function onFileChange(e: Event) {
                   />
                 </div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Base URL</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Base URL</label>
                   <input
                     type="text"
                     :value="getField('llm_model_review','base_url')"
@@ -472,7 +472,7 @@ async function onFileChange(e: Event) {
                   />
                 </div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Model</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Model</label>
                   <input
                     type="text"
                     :value="getField('llm_model_review','model')"
@@ -482,7 +482,7 @@ async function onFileChange(e: Event) {
                   />
                 </div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Max Tokens</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Max Tokens</label>
                   <input
                     type="number"
                     :value="getField('llm_model_review','max_tokens')"
@@ -492,7 +492,7 @@ async function onFileChange(e: Event) {
                   />
                 </div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Temperature（首次尝试）</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Temperature（首次尝试）</label>
                   <input
                     type="number"
                     step="0.1"
@@ -506,13 +506,13 @@ async function onFileChange(e: Event) {
                       width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:'8px',
                       border:'1px solid rgba(0,0,0,0.12)',fontSize:'15px',outline:'none',
                       opacity: getField('llm_model_review','thinking_enabled') ? 0.4 : 1,
-                      background: getField('llm_model_review','thinking_enabled') ? '#f2f2f7' : '#fff',
+                      background: getField('llm_model_review','thinking_enabled') ? 'var(--ios-bg)' : '#fff',
                     }"
                   />
-                  <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;">每次重试 temperature 会在此基础上叠加"重试温度步长"</p>
+                  <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);">每次重试 temperature 会在此基础上叠加"重试温度步长"</p>
                 </div>
                 <div>
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">超时（秒）</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">超时（秒）</label>
                   <input
                     type="number"
                     min="30"
@@ -525,8 +525,8 @@ async function onFileChange(e: Event) {
                 </div>
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;gap:12px;">
                   <div style="flex:1;">
-                    <label style="font-size:13px;font-weight:600;color:#1c1c1e;">DeepSeek Thinking 模式</label>
-                    <p style="margin:4px 0 0;font-size:12px;color:#8e8e93;line-height:1.4;">deepseek-v4-pro / deepseek-reasoner 专用</p>
+                    <label style="font-size:13px;font-weight:600;color:var(--ios-label);">DeepSeek Thinking 模式</label>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--ios-secondary);line-height:1.4;">deepseek-v4-pro / deepseek-reasoner 专用</p>
                   </div>
                   <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;flex-shrink:0;margin-top:2px;">
                     <input
@@ -535,12 +535,12 @@ async function onFileChange(e: Event) {
                       @change="setField('llm_model_review','thinking_enabled',($event.target as HTMLInputElement).checked)"
                       style="opacity:0;width:0;height:0;"
                     />
-                    <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm_model_review','thinking_enabled')?'#007aff':'rgba(120,120,128,0.32)'}" />
+                    <span :style="{position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',background:getField('llm_model_review','thinking_enabled')?'var(--ios-blue)':'rgba(120,120,128,0.32)'}" />
                     <span :style="{position:'absolute',top:'3px',left:getField('llm_model_review','thinking_enabled')?'21px':'3px',width:'20px',height:'20px',borderRadius:'50%',background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.3)',transition:'left 0.2s'}" />
                   </label>
                 </div>
                 <div v-if="getField('llm_model_review','thinking_enabled')">
-                  <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Reasoning Effort</label>
+                  <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Reasoning Effort</label>
                   <select
                     :value="getField('llm_model_review','thinking_effort') || 'high'"
                     @change="setField('llm_model_review','thinking_effort',($event.target as HTMLSelectElement).value)"
@@ -556,14 +556,14 @@ async function onFileChange(e: Event) {
 
           <!-- ===================== PRICING TAB ===================== -->
           <template v-if="activeTab === 'pricing'">
-            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 20px;">定价展示配置</h2>
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 20px;">定价展示配置</h2>
 
             <div style="display:flex;flex-direction:column;gap:24px;">
               <div v-for="tier in tiers" :key="tier" style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:16px;">
-                <h3 style="font-size:14px;font-weight:700;color:#007aff;margin:0 0 14px;">{{ tierLabels[tier] }}</h3>
+                <h3 style="font-size:14px;font-weight:700;color:var(--ios-blue);margin:0 0 14px;">{{ tierLabels[tier] }}</h3>
                 <div style="display:flex;flex-direction:column;gap:12px;">
                   <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">每日限额</label>
+                    <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">每日限额</label>
                     <input
                       type="number"
                       :value="getTierField(tier,'daily_limit')"
@@ -572,7 +572,7 @@ async function onFileChange(e: Event) {
                     />
                   </div>
                   <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">价格</label>
+                    <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">价格</label>
                     <input
                       type="text"
                       :value="getTierField(tier,'price')"
@@ -582,7 +582,7 @@ async function onFileChange(e: Event) {
                     />
                   </div>
                   <div>
-                    <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">周期</label>
+                    <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">周期</label>
                     <input
                       type="text"
                       :value="getTierField(tier,'period')"
@@ -592,9 +592,9 @@ async function onFileChange(e: Event) {
                     />
                   </div>
                   <div v-if="tier === 'basic'">
-                    <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">
+                    <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">
                       每日深度研判次数
-                      <span style="font-size:11px;font-weight:500;color:#8e8e93;margin-left:6px;">（完整结果，超出后降为标准研判）</span>
+                      <span style="font-size:11px;font-weight:500;color:var(--ios-secondary);margin-left:6px;">（完整结果，超出后降为标准研判）</span>
                     </label>
                     <input
                       type="number"
@@ -612,7 +612,7 @@ async function onFileChange(e: Event) {
           <!-- Per-tier features editor -->
           <div style="margin-top:24px;display:flex;flex-direction:column;gap:16px;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
-              <h3 style="font-size:14px;font-weight:700;color:#1c1c1e;margin:0;">各版本功能列表</h3>
+              <h3 style="font-size:14px;font-weight:700;color:var(--ios-label);margin:0;">各版本功能列表</h3>
               <button
                 @click="autoFillFeatures"
                 :disabled="autoFilling"
@@ -622,12 +622,12 @@ async function onFileChange(e: Event) {
             </div>
             <div v-for="tier in tiers" :key="tier" style="border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:14px;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                <h3 style="font-size:14px;font-weight:700;margin:0;" :style="{ color: tier === 'free' ? '#8e8e93' : tier === 'basic' ? '#1d4ed8' : '#7c3aed' }">
+                <h3 style="font-size:14px;font-weight:700;margin:0;" :style="{ color: tier === 'free' ? 'var(--ios-secondary)' : tier === 'basic' ? '#1d4ed8' : '#7c3aed' }">
                   {{ tierLabels[tier] }}功能列表
                 </h3>
                 <button
                   @click="addTierFeature(tier)"
-                  style="padding:5px 10px;background:#007aff;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;"
+                  style="padding:5px 10px;background:var(--ios-blue);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;"
                 >➕ 添加</button>
               </div>
               <div style="display:flex;flex-direction:column;gap:6px;">
@@ -645,10 +645,10 @@ async function onFileChange(e: Event) {
                   />
                   <button
                     @click="removeTierFeature(tier, i)"
-                    style="padding:4px 8px;background:#ff3b30;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;"
+                    style="padding:4px 8px;background:var(--ios-red);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;"
                   >删除</button>
                 </div>
-                <p v-if="getTierFeatures(tier).length === 0" style="font-size:13px;color:#aeaeb2;text-align:center;padding:6px 0;">暂无功能</p>
+                <p v-if="getTierFeatures(tier).length === 0" style="font-size:13px;color:var(--ios-tertiary);text-align:center;padding:6px 0;">暂无功能</p>
               </div>
             </div>
           </div>
@@ -656,11 +656,11 @@ async function onFileChange(e: Event) {
 
           <!-- ===================== AFDIAN TAB ===================== -->
           <template v-if="activeTab === 'afdian'">
-            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 20px;">爱发电配置</h2>
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 20px;">爱发电配置</h2>
 
             <div style="display:flex;flex-direction:column;gap:16px;">
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">标准版 Plan ID</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">标准版 Plan ID</label>
                 <input
                   type="text"
                   :value="getField('afdian','basic_plan_id')"
@@ -669,7 +669,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">专业版 Plan ID</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">专业版 Plan ID</label>
                 <input
                   type="text"
                   :value="getField('afdian','premium_plan_id')"
@@ -678,7 +678,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">User ID</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">User ID</label>
                 <input
                   type="text"
                   :value="getField('afdian','user_id')"
@@ -687,7 +687,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Token</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Token</label>
                 <input
                   type="password"
                   :value="getField('afdian','token')"
@@ -700,11 +700,11 @@ async function onFileChange(e: Event) {
 
           <!-- ===================== EMAIL TAB ===================== -->
           <template v-if="activeTab === 'email'">
-            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 20px;">邮件服务配置</h2>
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 20px;">邮件服务配置</h2>
 
             <div style="display:flex;flex-direction:column;gap:16px;">
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Resend API Key</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Resend API Key</label>
                 <input
                   type="password"
                   :value="getField('email','resend_api_key')"
@@ -714,7 +714,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">发件地址</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">发件地址</label>
                 <input
                   type="text"
                   :value="getField('email','from_address')"
@@ -724,7 +724,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">前端基础 URL</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">前端基础 URL</label>
                 <input
                   type="text"
                   :value="getField('email','frontend_base_url')"
@@ -738,11 +738,11 @@ async function onFileChange(e: Event) {
 
           <!-- ===================== APP TAB ===================== -->
           <template v-if="activeTab === 'app'">
-            <h2 style="font-size:15px;font-weight:700;color:#1c1c1e;margin:0 0 20px;">应用信息配置</h2>
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 20px;">应用信息配置</h2>
 
             <div style="display:flex;flex-direction:column;gap:16px;">
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">应用名称</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">应用名称</label>
                 <input
                   type="text"
                   :value="getField('app','name')"
@@ -752,7 +752,7 @@ async function onFileChange(e: Event) {
               </div>
 
               <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:10px;">
-                <label style="font-size:13px;font-weight:600;color:#1c1c1e;">需要邀请码注册</label>
+                <label style="font-size:13px;font-weight:600;color:var(--ios-label);">需要邀请码注册</label>
                 <label style="position:relative;display:inline-block;width:44px;height:26px;cursor:pointer;">
                   <input
                     type="checkbox"
@@ -763,7 +763,7 @@ async function onFileChange(e: Event) {
                   <span
                     :style="{
                       position:'absolute',inset:'0',borderRadius:'13px',transition:'background 0.2s',
-                      background: getField('app','require_invite_code') ? '#007aff' : 'rgba(120,120,128,0.32)',
+                      background: getField('app','require_invite_code') ? 'var(--ios-blue)' : 'rgba(120,120,128,0.32)',
                     }"
                   />
                   <span
@@ -778,7 +778,7 @@ async function onFileChange(e: Event) {
               </div>
 
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Pro 试用弹窗标题</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Pro 试用弹窗标题</label>
                 <input
                   type="text"
                   :value="getField('app','pro_trial_title')"
@@ -787,7 +787,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">Pro 试用弹窗副标题</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">Pro 试用弹窗副标题</label>
                 <input
                   type="text"
                   :value="getField('app','pro_trial_subtitle')"
@@ -796,7 +796,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">试用结束页标题</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">试用结束页标题</label>
                 <input
                   type="text"
                   :value="getField('app','trial_ended_title')"
@@ -805,7 +805,7 @@ async function onFileChange(e: Event) {
                 />
               </div>
               <div>
-                <label style="display:block;font-size:13px;font-weight:600;color:#1c1c1e;margin-bottom:4px;">试用结束页副标题</label>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">试用结束页副标题</label>
                 <input
                   type="text"
                   :value="getField('app','trial_ended_subtitle')"
@@ -821,10 +821,10 @@ async function onFileChange(e: Event) {
             <button
               @click="saveSettings"
               :disabled="saving"
-              style="padding:12px 24px;background:#007aff;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;opacity:1;transition:opacity 0.15s;"
+              style="padding:12px 24px;background:var(--ios-blue);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;opacity:1;transition:opacity 0.15s;"
               :style="{ opacity: saving ? 0.6 : 1 }"
             >
-              {{ saving ? '保存中...' : '💾 保存' }}
+              {{ saving ? '保存中...' : '保存' }}
             </button>
           </div>
 
@@ -834,13 +834,13 @@ async function onFileChange(e: Event) {
         <div style="display:flex;gap:12px;margin-top:16px;">
           <button
             @click="exportSettings"
-            style="flex:1;padding:12px;background:#fff;color:#007aff;border:1px solid #007aff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;"
+            style="flex:1;padding:12px;background:#fff;color:var(--ios-blue);border:1px solid var(--ios-blue);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;"
           >
             导出配置
           </button>
           <button
             @click="triggerImport"
-            style="flex:1;padding:12px;background:#fff;color:#34c759;border:1px solid #34c759;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;"
+            style="flex:1;padding:12px;background:#fff;color:var(--ios-green);border:1px solid var(--ios-green);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;"
           >
             导入配置
           </button>
@@ -858,5 +858,5 @@ async function onFileChange(e: Event) {
 }
 .flash-enter-active, .flash-leave-active { transition: opacity 0.3s, transform 0.3s; }
 .flash-enter-from, .flash-leave-to { opacity: 0; transform: translateY(-8px); }
-input:focus { border-color: #007aff !important; box-shadow: 0 0 0 3px rgba(0,122,255,0.15); }
+input:focus { border-color: var(--ios-blue) !important; box-shadow: 0 0 0 3px rgba(0,122,255,0.15); }
 </style>
