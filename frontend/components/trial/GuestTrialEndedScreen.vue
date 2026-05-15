@@ -9,6 +9,8 @@ const emit = defineEmits<{
   (e: 'dismiss'): void
 }>()
 
+const { trackGrowthEvent } = useGrowthEvents()
+
 const PERK_BG = [
   'linear-gradient(135deg, var(--ios-blue), #487f76)',
   'linear-gradient(135deg, var(--ios-green), #477f59)',
@@ -20,6 +22,14 @@ const DEFAULT_PERKS = [
   { text: '跨设备同步，数据不丢失' },
   { text: '邀请好友获得额外永久额度' },
 ]
+
+function trackRegisterClick() {
+  void trackGrowthEvent('result_register_clicked', { context: 'guest_trial_ended' })
+}
+
+function trackUpgradeClick() {
+  void trackGrowthEvent('upgrade_clicked', { context: 'guest_trial_ended' })
+}
 </script>
 
 <template>
@@ -60,6 +70,7 @@ const DEFAULT_PERKS = [
 
           <NuxtLink
             to="/register"
+            @click="trackRegisterClick"
             style="display: block; width: 100%; height: 50px; background: var(--ios-blue); color: white; border-radius: 12px; font-size: 17px; font-weight: 600; text-decoration: none; text-align: center; line-height: 50px; margin-bottom: 10px; box-shadow: 0 4px 16px rgba(0,122,255,0.3); -webkit-tap-highlight-color: transparent;"
           >
             免费注册，继续使用
@@ -80,7 +91,7 @@ const DEFAULT_PERKS = [
           <p style="font-size: 14px; font-weight: 600; color: var(--ios-label); margin: 0 0 2px;">想要更多分析次数？</p>
           <p style="font-size: 12px; color: var(--ios-secondary); margin: 0;">标准版 ¥19.9/月 · 专业版 ¥49/月</p>
         </div>
-        <NuxtLink to="/upgrade" style="font-size: 13px; font-weight: 600; color: var(--ios-blue); text-decoration: none; white-space: nowrap;">了解套餐</NuxtLink>
+        <NuxtLink to="/upgrade" style="font-size: 13px; font-weight: 600; color: var(--ios-blue); text-decoration: none; white-space: nowrap;" @click="trackUpgradeClick">了解套餐</NuxtLink>
       </div>
 
       <PwaInstallButton :appName="props.appName || DEFAULT_APP_NAME" variant="card" />

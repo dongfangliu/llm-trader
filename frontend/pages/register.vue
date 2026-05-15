@@ -6,6 +6,7 @@ import api from '~/lib/api'
 import { DEFAULT_APP_NAME } from '~/constants/app'
 
 const auth = useAuthStore()
+const { trackGrowthEvent } = useGrowthEvents()
 
 const appName = ref(DEFAULT_APP_NAME)
 const email = ref('')
@@ -66,6 +67,7 @@ async function handleRegister() {
   loading.value = true
   try {
     await auth.register(email.value, password.value, inviteCode.value.trim() || undefined)
+    void trackGrowthEvent('registered', { has_invite: !!inviteCode.value.trim() })
     if (inviteCode.value.trim() && typeof window !== 'undefined') {
       localStorage.removeItem('pendingInviteCode')
     }

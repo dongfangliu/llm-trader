@@ -14,6 +14,7 @@ usePublicSeo({
   title,
   description,
   path: () => `/futures/${symbol.value}`,
+  robots: 'noindex,follow',
 })
 useJsonLd('futures-detail-jsonld', () => [
   breadcrumbJsonLd(requestUrl.origin, [
@@ -39,7 +40,7 @@ useJsonLd('futures-detail-jsonld', () => [
       <h1>{{ contractName }} <span>{{ symbol }}</span> 期货技术指标观察</h1>
       <p>查看期货品种的K线与技术指标摘要。数据与分析仅用于研究，不构成投资建议。</p>
       <div class="actions">
-        <NuxtLink class="cta primary" :to="analyzePath('futures', symbol)">分析 {{ contractName }}({{ symbol }})</NuxtLink>
+        <NuxtLink class="cta primary" :to="analyzePath('futures', symbol, 'seo_futures')">分析 {{ contractName }}({{ symbol }})</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">查看专业版权益</NuxtLink>
       </div>
     </header>

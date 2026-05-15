@@ -18,6 +18,7 @@ class RegisterRequest(BaseModel):
     password: str  # min 6 chars (validated in service)
     username: Optional[str] = None
     invite_code: Optional[str] = None
+    device_id: Optional[str] = None
 
 class LoginRequest(BaseModel):
     email: str

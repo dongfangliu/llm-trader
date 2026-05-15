@@ -92,7 +92,7 @@ async def job_generate_predictions(force: bool = False):
     if not force and not _is_auto_enabled(config):
         return
 
-    markets = [m.strip() for m in config.get("xbot_markets", "a,hk").split(",") if m.strip()]
+    markets = [m.strip() for m in config.get("xbot_markets", "a").split(",") if m.strip()]
     count = int(config.get("xbot_hot_stock_count", 5))
     logger.info("[ModelRecords] Generating predictions for markets={}, count={}", markets, count)
 

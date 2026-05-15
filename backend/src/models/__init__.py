@@ -10,6 +10,7 @@ from src.models.settings import SystemSetting  # noqa: F401
 from src.models.logs import UsageLog, IpUsageLog  # noqa: F401
 from src.models.xbot import XBotPrediction  # noqa: F401
 from src.models.push_subscription import PushSubscription  # noqa: F401
+from src.models.growth import GrowthEvent  # noqa: F401
 
 __all__ = [
     "Base",
@@ -25,4 +26,5 @@ __all__ = [
     "IpUsageLog",
     "XBotPrediction",
     "PushSubscription",
+    "GrowthEvent",
 ]

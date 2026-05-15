@@ -10,7 +10,7 @@ if (!doc.value) {
 const requestUrl = useRequestURL()
 const title = computed(() => `${doc.value!.title} - 技术指标解释与AI分析入口`)
 const description = computed(() => doc.value!.desc)
-const analyzeLink = computed(() => doc.value?.market ? `/?market=${doc.value.market}` : '/')
+const analyzeLink = computed(() => doc.value?.market ? `/?market=${doc.value.market}&src=seo_learn` : '/?src=seo_learn')
 usePublicSeo({
   title,
   description,

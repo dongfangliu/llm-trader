@@ -34,6 +34,7 @@ usePublicSeo({
   title,
   description,
   path: () => `/stocks/${market.value}/${symbol.value}`,
+  robots: () => market.value === 'a' ? 'index,follow' : 'noindex,follow',
 })
 useJsonLd('stock-detail-jsonld', () => [
   breadcrumbJsonLd(requestUrl.origin, [
@@ -68,7 +69,7 @@ useGsapReveal()
       <h1>{{ data?.name || symbol }} <span>{{ symbol }}</span></h1>
       <p>{{ marketLabel }} 市场技术指标观察。数据用于研究和工具演示，不构成投资建议。</p>
       <div class="actions">
-        <NuxtLink class="cta primary" :to="analyzePath(market, symbol)">分析 {{ data?.name || symbol }}({{ symbol }})</NuxtLink>
+        <NuxtLink class="cta primary" :to="analyzePath(market, symbol, 'seo_stock')">分析 {{ data?.name || symbol }}({{ symbol }})</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">查看专业版权益</NuxtLink>
       </div>
     </header>

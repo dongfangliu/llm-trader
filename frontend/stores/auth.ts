@@ -25,6 +25,20 @@ export const useAuthStore = defineStore('auth', () => {
   const tier = computed(() => user.value?.tier || 'free')
   const trialState = computed(() => user.value?.trial_state || 'available')
 
+  function currentDeviceId() {
+    if (typeof window === 'undefined') return ''
+    let id = localStorage.getItem('device_id')
+    if (!id) {
+      id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0
+        const v = c === 'x' ? r : (r & 0x3 | 0x8)
+        return v.toString(16)
+      })
+      localStorage.setItem('device_id', id)
+    }
+    return id
+  }
+
   function initFromStorage() {
     if (typeof window !== 'undefined') {
       const savedToken = localStorage.getItem('token')
@@ -66,7 +80,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(email: string, password: string) {
-    const res = await api.post('/api/auth/login', { email, password })
+    const body: any = { email, password }
+    const deviceId = currentDeviceId()
+    if (deviceId) body.device_id = deviceId
+    const res = await api.post('/api/auth/login', body)
     const { access_token, user: userData } = res.data
     setToken(access_token)
     setUser(userData)
@@ -76,6 +93,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(email: string, password: string, inviteCode?: string) {
     const body: any = { email, password }
     if (inviteCode) body.invite_code = inviteCode
+    const deviceId = currentDeviceId()
+    if (deviceId) body.device_id = deviceId
     const res = await api.post('/api/auth/register', body)
     return res.data
   }

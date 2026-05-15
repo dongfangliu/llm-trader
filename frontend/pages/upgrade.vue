@@ -9,6 +9,7 @@ import { SITE_NAME } from '~/constants/seo'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { trackGrowthEvent } = useGrowthEvents()
 
 interface FeatureItem { text: string; tiers: string[] }
 interface PricingData {
@@ -75,6 +76,7 @@ function handleSwipeScroll(e: Event) {
 
 function handleUpgrade(t: string) {
   const link = t === 'basic' ? afdianBasicLink.value : afdianPremiumLink.value
+  void trackGrowthEvent('afdian_opened', { tier: t, price: t === 'basic' ? basicPrice.value : premiumPrice.value })
   window.open(link, '_blank', 'noopener,noreferrer')
 }
 
@@ -90,6 +92,7 @@ async function handleActivate() {
   try {
     const res = await api.post('/api/subscription/activate', { order_id: orderNo.value.trim() })
     activateResult.value = res.data
+    void trackGrowthEvent('activation_success', { tier: res.data?.tier, order_id_suffix: orderNo.value.trim().slice(-6) })
     await auth.fetchMe()
   } catch (e: any) {
     activateError.value = e.response?.data?.detail || '激活失败，请检查订单号'

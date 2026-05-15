@@ -1,6 +1,6 @@
 """New async database setup using the refactored models."""
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from src.config import settings
@@ -9,6 +9,7 @@ from src.models import (  # noqa: F401 — import all to register with Base.meta
     User, Device, AnalysisRequest, AnalysisHistory,
     AfdianOrder, MarketBar, SymbolName, SystemSetting,
     UsageLog, IpUsageLog, XBotPrediction, PushSubscription,
+    GrowthEvent,
 )
 
 # ---------------------------------------------------------------------------
@@ -61,8 +62,16 @@ async def init_db():
 async def _migrate_db():
     """Idempotently add new columns to existing tables (poor man's Alembic)."""
     async with engine.begin() as conn:
-        for col_sql in [
-            "ALTER TABLE xbot_predictions ADD COLUMN IF NOT EXISTS attempts INTEGER",
-            "ALTER TABLE xbot_predictions ADD COLUMN IF NOT EXISTS met_confidence BOOLEAN",
-        ]:
-            await conn.execute(text(col_sql))
+        columns = [
+            ("xbot_predictions", "attempts", "INTEGER"),
+            ("xbot_predictions", "met_confidence", "BOOLEAN"),
+        ]
+        for table, column, definition in columns:
+            exists = await conn.run_sync(
+                lambda sync_conn, t=table, c=column: any(
+                    col["name"] == c for col in inspect(sync_conn).get_columns(t)
+                )
+            )
+            if exists:
+                continue
+            await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))

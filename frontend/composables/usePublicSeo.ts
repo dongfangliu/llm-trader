@@ -10,6 +10,7 @@ type SeoInput = {
   imageHeight?: MaybeRefOrGetter<number>
   type?: 'website' | 'article'
   preloadImage?: MaybeRefOrGetter<boolean>
+  robots?: MaybeRefOrGetter<string>
 }
 
 export function useCanonical(path: MaybeRefOrGetter<string>) {
@@ -46,7 +47,7 @@ export function usePublicSeo(input: SeoInput) {
     ogImageHeight: () => imgH.value,
     twitterCard: 'summary_large_image',
     twitterImage: () => imageUrl.value,
-    robots: 'index,follow',
+    robots: () => toValue(input.robots) || 'index,follow',
   })
 
   if (input.preloadImage) {

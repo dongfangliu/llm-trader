@@ -268,7 +268,7 @@ _XBOT_KEYS = [
 _DEFAULT_SETTINGS = {
     "xbot_enabled": "false",
     "xbot_operation_mode": "manual",
-    "xbot_markets": "a,hk",
+    "xbot_markets": "a",
     "xbot_hot_stock_count": "5",
     "xbot_min_price_a": "5",
     "xbot_min_price_hk": "1",
@@ -306,7 +306,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db), _=_Admin):
     predict_time    = config.get("xbot_predict_time", "16:45")
     a_settle_time   = config.get("xbot_a_settle_time", "15:30")
     hk_settle_time  = config.get("xbot_hk_settle_time", "16:30")
-    markets         = config.get("xbot_markets", "a,hk")
+    markets         = config.get("xbot_markets", "a")
     enabled = config.get("xbot_enabled", "false") == "true"
     operation_mode = config.get("xbot_operation_mode", "manual")
 
@@ -520,7 +520,7 @@ async def get_candidates(db: AsyncSession = Depends(get_db), _=_Admin):
     """Scan hot stocks and return candidate list WITHOUT generating predictions."""
     from src.services.xbot.hot_stocks_service import get_hot_stocks, get_hk_hot_stocks
     config = await _load_config(db)
-    markets = [m.strip() for m in config.get("xbot_markets", "a,hk").split(",") if m.strip()]
+    markets = [m.strip() for m in config.get("xbot_markets", "a").split(",") if m.strip()]
     count = int(config.get("xbot_hot_stock_count", 5))
 
     candidates = []
@@ -585,7 +585,7 @@ async def post_candidates_client(
 
     config = await _load_config(db)
     enabled_markets = {
-        m.strip() for m in config.get("xbot_markets", "a,hk").split(",") if m.strip()
+        m.strip() for m in config.get("xbot_markets", "a").split(",") if m.strip()
     }
     count = int(config.get("xbot_hot_stock_count", 5))
 

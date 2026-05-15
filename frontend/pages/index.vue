@@ -18,6 +18,7 @@ const route = useRoute()
 const auth = useAuthStore()
 const analysisStore = useAnalysisStore()
 const { getDeviceId } = useDevice()
+const { trackGrowthEvent } = useGrowthEvents()
 
 const {
   isAnalyzing, taskId, result, historyId, error, errorCode, progress, statusMessage, isFirstTrial,
@@ -383,6 +384,13 @@ watch(() => route.query, applyRoutePrefill)
 // ── Watch analysis result ──
 watch(result, (newResult) => {
   if (newResult) {
+    void trackGrowthEvent('analysis_completed', {
+      market: analysisStore.market,
+      symbol: analysisStore.symbol,
+      tier: effectiveTier.value,
+      is_pro_trial: isFirstTrial.value,
+      history_id: historyId.value,
+    })
     const histItem = {
       id: historyId.value ? String(historyId.value) : `${analysisStore.symbol}_${Date.now()}`,
       symbol: analysisStore.symbol,
@@ -505,6 +513,13 @@ async function handleAnalyze() {
   analysisStore.setSymbol(symbol.value.toUpperCase())
   analysisStore.setMarket(market.value)
   analysisStore.setPeriod(period.value)
+  void trackGrowthEvent('analysis_submitted', {
+    market: market.value,
+    symbol: symbol.value.toUpperCase(),
+    period: period.value,
+    tier: effectiveTier.value,
+    landing_prefilled: landingPrefilled.value,
+  })
   await submitAnalysis(symbol.value, market.value, period.value, {
     holdingQuantity: holdingQuantity.value ? Number(holdingQuantity.value) : undefined,
     costPrice: costPrice.value ? Number(costPrice.value) : undefined,
@@ -512,6 +527,24 @@ async function handleAnalyze() {
     multiPeriodEnabled: multiPeriodEnabled.value,
     auxiliaryPeriods: multiPeriodEnabled.value ? auxiliaryPeriods.value : [],
   })
+}
+
+function trackRegisterClick() {
+  void trackGrowthEvent('result_register_clicked', {
+    market: market.value,
+    symbol: symbol.value.toUpperCase(),
+    has_result: !!sheetResult.value || !!result.value,
+  })
+}
+
+function goUpgrade(context = 'analysis_page') {
+  void trackGrowthEvent('upgrade_clicked', {
+    context,
+    market: market.value,
+    symbol: symbol.value.toUpperCase(),
+    tier: tier.value,
+  })
+  router.push('/upgrade')
 }
 
 function openHistoryDetail(item: any) {
@@ -626,7 +659,7 @@ function handleLogout() {
       :selectedHistoryId="selectedHistoryId"
       @new-analysis="activePanel = 'analyze'"
       @open-history="openHistoryDetail"
-      @upgrade="router.push('/upgrade')"
+      @upgrade="goUpgrade('result_sheet_desktop')"
       @user-menu-open="dtUserMenuOpen = !dtUserMenuOpen"
     />
 
@@ -879,7 +912,7 @@ function handleLogout() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         账号设置
       </button>
-      <button v-if="tier !== 'premium'" @click="() => { router.push('/upgrade'); dtUserMenuOpen = false; }" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.08); cursor: pointer; font-size: 14px; color: var(--ios-label); text-align: left;">
+      <button v-if="tier !== 'premium'" @click="() => { dtUserMenuOpen = false; goUpgrade('desktop_user_menu'); }" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.08); cursor: pointer; font-size: 14px; color: var(--ios-label); text-align: left;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         升级套餐
       </button>
@@ -905,7 +938,7 @@ function handleLogout() {
       @save="handleToggleFavorite"
       @share="() => {}"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
-      @upgrade="router.push('/upgrade')"
+      @upgrade="goUpgrade('result_sheet_desktop_secondary')"
     />
 
   </div><!-- end desktop -->
@@ -949,7 +982,7 @@ function handleLogout() {
           </button>
           <template v-else>
             <NuxtLink to="/login" style="font-size: 15px; font-weight: 400; color: var(--ios-blue); text-decoration: none; padding: 6px 4px;">登录</NuxtLink>
-            <NuxtLink :to="registerPath" style="font-size: 13px; font-weight: 600; color: white; background: var(--ios-blue); border-radius: 8px; padding: 6px 12px; text-decoration: none;">注册</NuxtLink>
+            <NuxtLink :to="registerPath" style="font-size: 13px; font-weight: 600; color: white; background: var(--ios-blue); border-radius: 8px; padding: 6px 12px; text-decoration: none;" @click="trackRegisterClick">注册</NuxtLink>
           </template>
         </div>
       </template>
@@ -1220,7 +1253,7 @@ function handleLogout() {
           <button v-if="tier === 'premium'" class="fab-btn" disabled style="background: rgba(0,122,255,0.25); color: rgba(158,200,255,0.6); cursor: default; opacity: 1;">
             明天重置 · 敬请期待
           </button>
-          <button v-else class="fab-btn" @click="router.push('/upgrade')" :style="{ background: tier === 'basic' ? 'linear-gradient(135deg, var(--ios-blue), var(--ios-blue))' : 'linear-gradient(135deg, #ff9500, #ff6b00)', opacity: 1 }">
+          <button v-else class="fab-btn" @click="goUpgrade('quota_fab')" :style="{ background: tier === 'basic' ? 'linear-gradient(135deg, var(--ios-blue), var(--ios-blue))' : 'linear-gradient(135deg, #ff9500, #ff6b00)', opacity: 1 }">
             {{ tier === 'basic' ? '升级专业版 →' : '立即升级 →' }}
           </button>
         </template>
@@ -1367,7 +1400,7 @@ function handleLogout() {
       @save="handleToggleFavorite"
       @share="() => {}"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
-      @upgrade="router.push('/upgrade')"
+      @upgrade="goUpgrade('result_sheet_mobile')"
     />
 
     <!-- ═══ USER MENU SHEET (mobile) ═══ -->
@@ -1394,7 +1427,7 @@ function handleLogout() {
             <span style="font-size: 16px; color: var(--ios-label); font-weight: 500;">账号设置</span>
             <svg style="margin-left: auto;" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <button v-if="tier !== 'premium'" @click="() => { userMenuOpen = false; router.push('/upgrade'); }" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
+          <button v-if="tier !== 'premium'" @click="() => { userMenuOpen = false; goUpgrade('mobile_user_menu'); }" style="display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 20px; background: none; border: none; border-bottom: 0.5px solid rgba(0,0,0,0.06); cursor: pointer; text-align: left; -webkit-tap-highlight-color: transparent;">
             <div style="width: 32px; height: 32px; border-radius: 9px; background: rgba(47,111,104,0.10); color: var(--ios-blue); display: flex; align-items: center; justify-content: center;">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m7 17 10-10"/><path d="M8 7h9v9"/></svg>
             </div>

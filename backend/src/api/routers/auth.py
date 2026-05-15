@@ -12,7 +12,8 @@ from src.api.schemas.auth import (
 from src.api.schemas.common import SuccessResponse
 from src.api.dependencies.auth import get_current_user
 from src.services.auth_service import (
-    register_user, login_user, verify_email, resend_verification, get_user_by_id
+    register_user, login_user, verify_email, resend_verification, get_user_by_id,
+    bind_device_to_user,
 )
 from src.models.user import User
 
@@ -37,7 +38,7 @@ def _user_to_out(user: User) -> UserOut:
 @router.post("/register", status_code=201)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Register a new user."""
-    user = await register_user(db, req.email, req.password, req.username, req.invite_code)
+    user = await register_user(db, req.email, req.password, req.username, req.invite_code, req.device_id)
     return {"success": True, "message": "注册成功，请查收验证邮件", "user_id": user.id}
 
 
@@ -45,6 +46,7 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Login with email and password."""
     user, token = await login_user(db, req.email, req.password)
+    await bind_device_to_user(db, user, req.device_id)
     return TokenResponse(access_token=token, token_type="bearer", user=_user_to_out(user))
 
 

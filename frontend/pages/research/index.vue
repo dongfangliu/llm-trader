@@ -214,7 +214,7 @@ const metrics = computed(() => [
           已通过预测会先进入待验证状态，结算后同一路径自动变成复盘记录，保留原始方向、关键价格和实际结果。
         </p>
         <div class="flex flex-wrap gap-2.5 mt-4">
-          <NuxtLink to="/"><IosButton size="md">打开 AI 分析工具</IosButton></NuxtLink>
+          <NuxtLink to="/?src=seo_research_index"><IosButton size="md">打开 AI 分析工具</IosButton></NuxtLink>
           <NuxtLink to="/upgrade?tier=premium"><IosButton variant="secondary" size="md">升级专业版</IosButton></NuxtLink>
         </div>
       </header>

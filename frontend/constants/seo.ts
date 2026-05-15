@@ -115,7 +115,9 @@ export function getLearnArticle(slug: string) {
   return LEARN_ARTICLES.find(article => article.slug === slug)
 }
 
-export function analyzePath(market?: string, symbol?: string) {
-  if (!market || !symbol) return '/'
-  return `/?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`
+export function analyzePath(market?: string, symbol?: string, source?: string) {
+  const src = source ? `src=${encodeURIComponent(source)}` : ''
+  if (!market || !symbol) return src ? `/?${src}` : '/'
+  const srcParam = src ? `&${src}` : ''
+  return `/?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}${srcParam}`
 }

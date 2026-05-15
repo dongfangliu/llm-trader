@@ -27,7 +27,7 @@ useGsapReveal()
       <h1>股票技术指标工具</h1>
       <p>查看常见股票的K线数据与技术指标摘要。页面内容仅用于研究记录，不构成投资建议。</p>
       <div class="actions">
-        <NuxtLink class="cta primary" to="/">打开 AI 分析工具</NuxtLink>
+        <NuxtLink class="cta primary" to="/?src=seo_stocks_index">打开 AI 分析工具</NuxtLink>
         <NuxtLink class="cta secondary" to="/upgrade?tier=premium">查看专业版权益</NuxtLink>
       </div>
     </header>

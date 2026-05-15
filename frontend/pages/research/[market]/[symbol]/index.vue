@@ -32,6 +32,7 @@ usePublicSeo({
   image: () => cardImage.value,
   imageWidth: 1080,
   imageHeight: 1350,
+  robots: () => market.value === 'a' ? 'index,follow' : 'noindex,follow',
 })
 useJsonLd('research-symbol-breadcrumb-jsonld', () => breadcrumbJsonLd(requestUrl.origin, [
   { name: SITE_NAME, path: '/' },
@@ -135,7 +136,7 @@ const missCount = computed(() => records.value.filter(r => r.is_correct === fals
             </span>
           </div>
           <div class="mr-toolbar" style="margin: 18px 0 0">
-            <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
+            <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol, 'seo_research')">自己分析该标的</NuxtLink>
             <NuxtLink class="mr-btn mr-btn-secondary" to="/upgrade?tier=premium">升级专业版</NuxtLink>
           </div>
         </div>

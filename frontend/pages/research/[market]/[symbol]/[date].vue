@@ -96,6 +96,7 @@ usePublicSeo({
   imageHeight: 1350,
   type: 'article',
   preloadImage: true,
+  robots: () => market.value === 'a' ? 'index,follow' : 'noindex,follow',
 })
 
 const articleJsonLd = computed(() => ({
@@ -245,7 +246,7 @@ async function copyLink() {
             {{ awaitingResult ? `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 技术面预测，目标日 ${record.target_date || '-'} 尚待结算。本页展示原始判断、方向、置信度和关键价格，结算后会自动更新为复盘记录。` : `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 技术面预测，目标日 ${record.target_date || '-'} 已完成结算。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。` }}
           </p>
           <div class="mr-toolbar mr-toolbar-desktop" style="margin: 20px 0 0">
-            <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol)">自己分析该标的</NuxtLink>
+            <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol, 'seo_research_detail')">自己分析该标的</NuxtLink>
             <NuxtLink class="mr-btn mr-btn-secondary" to="/research">查看复盘档案</NuxtLink>
           </div>
         </div>
@@ -382,7 +383,7 @@ async function copyLink() {
       </section>
 
       <div class="mr-toolbar mr-toolbar-desktop">
-        <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol)">
+        <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol, 'seo_research_detail')">
           <PhMagnifyingGlass :size="17" weight="bold" />
           自己分析该标的
         </NuxtLink>
@@ -392,7 +393,7 @@ async function copyLink() {
     </article>
 
     <div class="mr-mobile-cta">
-      <NuxtLink class="mr-btn mr-btn-primary mr-btn-full" :to="analyzePath(market, symbol)">
+      <NuxtLink class="mr-btn mr-btn-primary mr-btn-full" :to="analyzePath(market, symbol, 'seo_research_detail')">
         <PhMagnifyingGlass :size="16" weight="bold" />
         去分析 {{ record.symbol_name || symbol }}
       </NuxtLink>

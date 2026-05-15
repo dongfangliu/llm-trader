@@ -1206,7 +1206,7 @@ onMounted(async () => {
             <option value="auto">自动</option>
           </select>
         </label>
-        <label class="mr-field"><span class="mr-label">市场</span><input v-model="settings.xbot_markets" class="mr-input" placeholder="a,hk"></label>
+        <label class="mr-field"><span class="mr-label">市场</span><input v-model="settings.xbot_markets" class="mr-input" placeholder="a"></label>
         <label class="mr-field"><span class="mr-label">每市场候选数</span><input v-model="settings.xbot_hot_stock_count" class="mr-input" type="number"></label>
         <label class="mr-field"><span class="mr-label">A股最低价格</span><input v-model="settings.xbot_min_price_a" class="mr-input" type="number"></label>
         <label class="mr-field"><span class="mr-label">港股最低价格</span><input v-model="settings.xbot_min_price_hk" class="mr-input" type="number"></label>

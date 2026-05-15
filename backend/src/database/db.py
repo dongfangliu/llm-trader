@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Date, Boolean, Text, UniqueConstraint, text
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Date, Boolean, Text, UniqueConstraint, inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -296,6 +296,25 @@ class SystemSetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class GrowthEvent(Base):
+    """Append-only growth funnel event."""
+    __tablename__ = "growth_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_name = Column(String(80), nullable=False, index=True)
+    session_id = Column(String(80), nullable=True, index=True)
+    device_id = Column(String(255), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    path = Column(String(500), nullable=True)
+    landing_path = Column(String(500), nullable=True, index=True)
+    referrer = Column(String(500), nullable=True)
+    source = Column(String(80), nullable=True, index=True)
+    market = Column(String(20), nullable=True, index=True)
+    symbol = Column(String(50), nullable=True, index=True)
+    payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
 async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
@@ -305,29 +324,35 @@ async def init_db():
 
 async def _migrate_db():
     """Add new columns to existing databases without Alembic."""
-    # Use IF NOT EXISTS so each statement is a no-op when the column already
-    # exists, keeping the transaction alive for all subsequent statements.
     async with engine.begin() as conn:
-        for col_sql in [
-            "ALTER TABLE device_subscriptions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(255)",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_code VARCHAR(16)",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_quota INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS used_invite_code VARCHAR(16)",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_position_usage INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_position_date TIMESTAMP",
-            "ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS position_count INTEGER DEFAULT 0",
-            "ALTER TABLE device_subscriptions ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE device_subscriptions ADD COLUMN IF NOT EXISTS has_had_pro_trial BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS has_had_pro_trial BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_device_id VARCHAR(255)",
-            "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE analysis_histories ADD COLUMN IF NOT EXISTS is_pro_trial BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE xbot_predictions ADD COLUMN IF NOT EXISTS attempts INTEGER",
-            "ALTER TABLE xbot_predictions ADD COLUMN IF NOT EXISTS met_confidence BOOLEAN",
-        ]:
-            await conn.execute(text(col_sql))
+        columns = [
+            ("device_subscriptions", "expires_at", "TIMESTAMP"),
+            ("users", "email_verified", "BOOLEAN DEFAULT FALSE"),
+            ("users", "email_verification_token", "VARCHAR(255)"),
+            ("users", "email_verification_expires", "TIMESTAMP"),
+            ("users", "invite_code", "VARCHAR(16)"),
+            ("users", "bonus_quota", "INTEGER DEFAULT 0"),
+            ("users", "used_invite_code", "VARCHAR(16)"),
+            ("users", "daily_position_usage", "INTEGER DEFAULT 0"),
+            ("users", "last_position_date", "TIMESTAMP"),
+            ("usage_logs", "position_count", "INTEGER DEFAULT 0"),
+            ("device_subscriptions", "is_banned", "BOOLEAN DEFAULT FALSE"),
+            ("device_subscriptions", "has_had_pro_trial", "BOOLEAN DEFAULT FALSE"),
+            ("users", "has_had_pro_trial", "BOOLEAN DEFAULT FALSE"),
+            ("users", "is_banned", "BOOLEAN DEFAULT FALSE"),
+            ("users", "subscription_expires_at", "TIMESTAMP"),
+            ("users", "last_device_id", "VARCHAR(255)"),
+            ("analysis_histories", "is_favorited", "BOOLEAN DEFAULT FALSE"),
+            ("analysis_histories", "is_pro_trial", "BOOLEAN DEFAULT FALSE"),
+            ("xbot_predictions", "attempts", "INTEGER"),
+            ("xbot_predictions", "met_confidence", "BOOLEAN"),
+        ]
+        for table, column, definition in columns:
+            exists = await conn.run_sync(
+                lambda sync_conn, t=table, c=column: any(
+                    col["name"] == c for col in inspect(sync_conn).get_columns(t)
+                )
+            )
+            if exists:
+                continue
+            await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))

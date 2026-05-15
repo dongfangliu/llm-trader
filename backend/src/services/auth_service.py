@@ -12,6 +12,8 @@ from fastapi import HTTPException
 from src.config import settings
 from src.models.user import User
 from src.models.settings import SystemSetting
+from src.models.device import Device
+from src.models.analysis import AnalysisHistory
 from src.services.email_service import send_verification_email as _send_verification_email
 
 
@@ -45,7 +47,14 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-async def register_user(db: AsyncSession, email: str, password: str, username: Optional[str] = None, invite_code: Optional[str] = None) -> User:
+async def register_user(
+    db: AsyncSession,
+    email: str,
+    password: str,
+    username: Optional[str] = None,
+    invite_code: Optional[str] = None,
+    device_id: Optional[str] = None,
+) -> User:
     """Register a new user."""
     normalized_invite_code = invite_code.strip().upper() if invite_code else None
 
@@ -108,7 +117,34 @@ async def register_user(db: AsyncSession, email: str, password: str, username: O
     if normalized_invite_code:
         await _apply_invite_code(db, user, normalized_invite_code)
 
+    await bind_device_to_user(db, user, device_id)
     return user
+
+
+async def bind_device_to_user(db: AsyncSession, user: User, device_id: Optional[str]) -> None:
+    """Attach guest state from this browser/device to the authenticated user."""
+    device_id = (device_id or "").strip()
+    if not device_id:
+        return
+
+    user.last_device_id = device_id
+
+    result = await db.execute(select(Device).where(Device.device_id == device_id))
+    device = result.scalar_one_or_none()
+    if device and device.has_had_pro_trial and not user.has_had_pro_trial:
+        user.has_had_pro_trial = True
+
+    histories = await db.execute(
+        select(AnalysisHistory).where(
+            AnalysisHistory.device_id == device_id,
+            AnalysisHistory.user_id.is_(None),
+        )
+    )
+    for item in histories.scalars().all():
+        item.user_id = user.id
+
+    await db.commit()
+    await db.refresh(user)
 
 
 async def _get_email_settings(db: AsyncSession) -> dict:
