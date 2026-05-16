@@ -10,7 +10,9 @@ function xmlEscape(value: string) {
 }
 
 export default defineEventHandler(async (event) => {
-  const origin = getRequestURL(event).origin
+  // Prefer APP_BASE_URL env so prod sitemap uses the real public domain even when
+  // requests come from a 127.0.0.1 health-check / reverse-proxy probe.
+  const origin = (process.env.APP_BASE_URL || getRequestURL(event).origin).replace(/\/$/, '')
   const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000'
   const today = new Date().toISOString().slice(0, 10)
   const urls = new Map<string, string>()

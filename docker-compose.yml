@@ -93,6 +93,8 @@ services:
     environment:
       # 运行时注入：Nuxt server routeRules 在启动时读取此变量，代理 /api/** → backend
       - BACKEND_URL=http://backend:8000
+      # 站点公网域名，用于 sitemap.xml / robots.txt 生成绝对 URL（避免被 nginx 探针改成 127.0.0.1）
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
