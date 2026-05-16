@@ -20,6 +20,9 @@ export default defineEventHandler(async (event) => {
   addUrl('/upgrade')
   addUrl('/stocks')
   addUrl('/research')
+  addUrl('/predictions')
+  addUrl('/terms')
+  addUrl('/privacy')
   for (const article of LEARN_ARTICLES) addUrl(`/learn/${article.slug}`)
   for (const stock of CORE_STOCKS.filter(item => item.market === 'a')) {
     addUrl(`/stocks/${stock.market}/${stock.symbol}`)

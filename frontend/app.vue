@@ -28,13 +28,20 @@ useHead(() => ({
           name: SITE_NAME,
           url: requestUrl.origin,
           logo: `${requestUrl.origin}/icons/icon-512.png`,
+          description: SITE_DESCRIPTION,
         },
         {
           '@context': 'https://schema.org',
           '@type': 'WebSite',
           name: SITE_NAME,
           url: requestUrl.origin,
+          inLanguage: 'zh-CN',
           description: SITE_DESCRIPTION,
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: `${requestUrl.origin}/?market=a&symbol={search_term_string}`,
+            'query-input': 'required name=search_term_string',
+          },
         },
         {
           '@context': 'https://schema.org',
