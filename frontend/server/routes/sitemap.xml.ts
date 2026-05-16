@@ -1,4 +1,4 @@
-import { CORE_STOCKS, LEARN_ARTICLES } from '~/constants/seo'
+import { CORE_FUTURES, CORE_STOCKS, LEARN_ARTICLES } from '~/constants/seo'
 
 function xmlEscape(value: string) {
   return value
@@ -26,14 +26,12 @@ export default defineEventHandler(async (event) => {
   addUrl('/terms')
   addUrl('/privacy')
   for (const article of LEARN_ARTICLES) addUrl(`/learn/${article.slug}`)
-  for (const stock of CORE_STOCKS.filter(item => item.market === 'a')) {
-    addUrl(`/stocks/${stock.market}/${stock.symbol}`)
-  }
+  for (const stock of CORE_STOCKS) addUrl(`/stocks/${stock.market}/${stock.symbol}`)
+  for (const future of CORE_FUTURES) addUrl(`/futures/${future.symbol}`)
 
   try {
     const res = await $fetch<any>(`${backendUrl}/api/public/research`, { query: { limit: 300 } })
     for (const p of res.predictions || []) {
-      if (p.market !== 'a') continue
       addUrl(`/research/${p.market}/${p.symbol}`, p.updated_at?.slice?.(0, 10) || p.prediction_date || today)
       addUrl(`/research/${p.market}/${p.symbol}/${p.prediction_date}`, p.updated_at?.slice?.(0, 10) || p.prediction_date || today)
     }
