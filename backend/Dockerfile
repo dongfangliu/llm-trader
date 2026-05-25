@@ -7,8 +7,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 
 # Use Aliyun apt mirror for faster downloads in China
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null || true
 
 # Install system dependencies (libpq-dev for asyncpg/psycopg2, supervisor for process management)
 RUN apt-get update && apt-get install -y \
