@@ -18,7 +18,7 @@ def _position_hash(holding_quantity, cost_price, max_position) -> str:
 def _cache_key(symbol: str, market: str, period: str,
                holding_quantity=None, cost_price=None, max_position=None) -> str:
     pos = _position_hash(holding_quantity, cost_price, max_position)
-    return f"analysis_cache:{market}:{symbol}:{period}:{pos}"
+    return f"analysis_cache:m2:{market}:{symbol}:{period}:{pos}"
 
 
 def _first_positive(*vals) -> Optional[float]:
@@ -359,6 +359,12 @@ async def analyze_task(
 
         llm_cfg = await get_llm_config_from_db()
 
+        # 多周期协同：分钟线分析叠加日线大周期方向（周期扩散）；日线无需（自身 MA120 即大方向）
+        higher_tf_features = None
+        if period != "daily":
+            from src.services.data.data_service import fetch_higher_tf_features
+            higher_tf_features = await fetch_higher_tf_features(symbol, market)
+
         result = await analyze_with_llm(
             df=df,
             symbol=symbol,
@@ -377,6 +383,8 @@ async def analyze_task(
                 "cost_price": cost_price,
                 "max_position": max_position,
             },
+            period=period,
+            higher_tf_features=higher_tf_features,
         )
 
         latest_price = float(df.iloc[-1]["close"])

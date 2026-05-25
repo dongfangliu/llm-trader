@@ -662,3 +662,21 @@ def _calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["macd_bar"] = macd_obj.macd_diff()
 
     return df
+
+
+async def fetch_higher_tf_features(symbol: str, market: str) -> Optional[dict]:
+    """取日线大周期趋势特征，用于分钟线分析的"大周期定方向"（周期扩散）。
+
+    复用 fetch_market_data 的 DB-first 日线数据，对其算 compute_trend_features
+    （日线做 5 类时钟方向分类）。任何失败/数据不足均返回 None，不阻断主流程。
+    """
+    from src.services.data.trend_features import compute_trend_features
+
+    try:
+        daily_df = await fetch_market_data(symbol=symbol, market=market, period=PERIOD_DAILY)
+    except Exception as exc:
+        logger.warning("[大周期] %s:%s 取日线失败，降级仅主图: %s", market, symbol, exc)
+        return None
+    if daily_df is None or daily_df.empty:
+        return None
+    return compute_trend_features(daily_df, classify_trend=True, bars_per_year=250)

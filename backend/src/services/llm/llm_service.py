@@ -24,7 +24,9 @@ WORKER_JOB_TIMEOUT_BUFFER_SECONDS = 30
 
 # Backtest-aligned system prompt
 SYSTEM_PROMPT = (
-    "你是经验丰富的交易分析师。"
+    "你是一位精通趋势跟随交易体系的资深分析师，信奉「跟随趋势、不预测趋势」。"
+    "你擅长用时钟方向斜率、均线(MA/EMA 20/60/120)排列、抵扣价、密集成交区、"
+    "破线-拐头-交叉三步转折等工具研判行情。"
     "请遵循用户给出的四步决策框架进行分析，并严格只输出JSON。"
 )
 
@@ -61,7 +63,7 @@ async def get_llm_config_from_db(section: str = "llm") -> dict:
         "api_key": cfg["api_key"],
         "base_url": cfg.get("base_url", ""),
         "model": cfg.get("model", ""),
-        "max_tokens": int(cfg.get("max_tokens", 1500)),
+        "max_tokens": int(cfg.get("max_tokens", 2400)),
         "temperature": float(cfg.get("temperature", 0.7)),
         "timeout_seconds": normalize_timeout_seconds(cfg.get("timeout_seconds")),
         "thinking_enabled": bool(cfg.get("thinking_enabled", False)),
@@ -107,7 +109,7 @@ async def get_model_review_llm_config() -> dict:
             "api_key": overrides["api_key"],
             "base_url": overrides.get("base_url", ""),
             "model": overrides.get("model", ""),
-            "max_tokens": int(overrides.get("max_tokens", 1500)),
+            "max_tokens": int(overrides.get("max_tokens", 2400)),
             "temperature": float(overrides.get("temperature", 0.7)),
             "timeout_seconds": normalize_timeout_seconds(overrides.get("timeout_seconds")),
             "thinking_enabled": bool(overrides.get("thinking_enabled", False)),
@@ -161,6 +163,8 @@ async def analyze_with_llm(
     timeout: float = 90.0,
     thinking_enabled: bool = False,
     thinking_effort: str = "high",
+    period: str = "daily",
+    higher_tf_features: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Analyze market data using LLM.
 
@@ -194,7 +198,10 @@ async def analyze_with_llm(
     )
 
     # Build backtest-aligned enhanced prompt
-    prompt = _build_enhanced_prompt(df, symbol=symbol, market=market, user_context=user_context)
+    prompt = _build_enhanced_prompt(
+        df, symbol=symbol, market=market, user_context=user_context,
+        period=period, higher_tf_features=higher_tf_features,
+    )
 
     # Call LLM with timeout
     try:
@@ -343,28 +350,107 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context: Optional[Dict[str, Any]] = None) -> str:
-    """Build backtest-style enhanced decision prompt."""
+def _fmt(v, fmt: str = "{:.2f}", dash: str = "-") -> str:
+    """格式化数值，None/NaN/不可格式化时返回占位符。"""
+    try:
+        if v is None:
+            return dash
+        return fmt.format(v)
+    except (TypeError, ValueError):
+        return dash
+
+
+def _trend_diagnosis_block(feat: dict, *, with_classify: bool) -> str:
+    """把 compute_trend_features 的输出渲染成趋势诊断文本块；None 项省略，绝不臆造。"""
+    lines = []
+    if with_classify and feat.get("trend_type"):
+        extra = []
+        if feat.get("slope_ann") is not None:
+            extra.append(f"年化斜率{feat['slope_ann'] * 100:.0f}%")
+        if feat.get("r2") is not None:
+            extra.append(f"R2={feat['r2']:.2f}")
+        suffix = f"（{', '.join(extra)}）" if extra else ""
+        lines.append(f"- 趋势类型(时钟方向): {feat['trend_type']}{suffix}")
+    if feat.get("alignment"):
+        lines.append(
+            f"- 均线排列(MA20/60/120): {feat['alignment']} "
+            f"(MA20={_fmt(feat.get('ma20'))}, MA60={_fmt(feat.get('ma60'))}, MA120={_fmt(feat.get('ma120'))})"
+        )
+    if feat.get("ema20") is not None:
+        lines.append(
+            "- EMA互验(EMA20/60/120): "
+            f"EMA20={_fmt(feat.get('ema20'))}, EMA60={_fmt(feat.get('ema60'))}, EMA120={_fmt(feat.get('ema120'))}"
+        )
+    if feat.get("ma_spread_pct") is not None:
+        conv = "是(密集)" if feat.get("converged") else "否"
+        lines.append(f"- 均线密集度: {feat['ma_spread_pct']:.2f}% (是否<2%密集: {conv})")
+    ded = feat.get("deduction") or {}
+    ded_parts = []
+    for n in (20, 60, 120):
+        d = ded.get(n) or {}
+        if d.get("price") is not None:
+            arrow = "将上行" if d.get("will_rise") else "将下行"
+            ded_parts.append(f"MA{n}={_fmt(d['price'])}({arrow})")
+    if ded_parts:
+        lines.append("- 抵扣价(预测均线下一步方向): " + "; ".join(ded_parts))
+    cons = feat.get("consolidation") or {}
+    if cons.get("in"):
+        lines.append(
+            f"- 密集成交区: 已持续约{cons.get('days')}根, "
+            f"箱体[{_fmt(cons.get('box_lo'))}~{_fmt(cons.get('box_hi'))}]（突破参考位）"
+        )
+    elif cons.get("in") is False:
+        lines.append("- 密集成交区: 当前非密集")
+    rev = feat.get("reversal") or {}
+    rev_parts = [k for k, v in rev.items() if v]
+    if rev_parts:
+        lines.append(f"- 转折迹象(20均线组): 近期出现 {'、'.join(rev_parts)}")
+    pb = feat.get("pullback") or {}
+    pb_parts = [f"距{k.upper()} {pb[k]:+.1f}%" for k in ("ma20", "ma60", "ma120") if pb.get(k) is not None]
+    if pb_parts:
+        lines.append("- 回撤位: " + ", ".join(pb_parts))
+    return "\n".join(lines) if lines else "- （趋势特征数据不足，暂略）"
+
+
+def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context: Optional[Dict[str, Any]] = None,
+                           period: str = "daily", higher_tf_features: Optional[Dict[str, Any]] = None) -> str:
+    """Build trend-methodology multi-timeframe decision prompt."""
+    from src.services.data.trend_features import compute_trend_features
+
     latest = df.iloc[-1]
     recent = df.tail(10)
+    is_daily = (period == "daily")
+    period_label = "日线" if is_daily else f"{period}分钟线"
 
     close = _safe_float(latest.get("close"))
     high = _safe_float(latest.get("high"))
     low = _safe_float(latest.get("low"))
     open_price = _safe_float(latest.get("open"))
     volume = _safe_float(latest.get("volume"))
-    ma10 = _safe_float(latest.get("ma10"))
-    ma30 = _safe_float(latest.get("ma30"))
-    ma60 = _safe_float(latest.get("ma60"))
     rsi = _safe_float(latest.get("rsi"), 50.0)
     atr = _safe_float(latest.get("atr"))
     macd = _safe_float(latest.get("macd"))
     macd_dea = _safe_float(latest.get("macd_dea"))
     macd_bar = _safe_float(latest.get("macd_bar"))
 
-    ma_trend = "多头排列" if ma10 > ma30 else "空头排列"
     rsi_state = "超买区" if rsi > 70 else ("超卖区" if rsi < 30 else "中性区")
     macd_state = "多头" if macd > macd_dea else "空头"
+
+    # 主图方法论特征：日线做 5 类时钟方向分类；分钟线不分类（方向以日线大周期为准，避免年化失真）
+    feat = compute_trend_features(df, classify_trend=is_daily)
+    trend_block = _trend_diagnosis_block(feat, with_classify=is_daily)
+
+    # 大周期方向块：仅分钟线呈现日线大周期（周期扩散——大周期定方向）
+    if not is_daily and higher_tf_features:
+        higher_block = (
+            "## 日线大周期方向（定方向：主图入场须顺此方向，逆势不做）\n"
+            + _trend_diagnosis_block(higher_tf_features, with_classify=True)
+            + "\n\n"
+        )
+    elif not is_daily:
+        higher_block = "## 日线大周期方向\n- 大周期数据暂缺，仅按主图研判，注意防守。\n\n"
+    else:
+        higher_block = ""
 
     holding_qty = int(user_context.get("holding_quantity") or 0) if user_context else 0
     cost_price = _safe_float(user_context.get("cost_price") if user_context else 0)
@@ -372,23 +458,23 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
 
     if market == "futures":
         position_info = (
-            f"""## 📋 当前持仓状态（期货）
+            f"""## 当前持仓状态（期货）
 - 持有数量: {holding_qty}手
 - 成本价: {cost_price:.2f}元
 - 当前价格: {close:.2f}元
 - 最大持仓: {max_position}手
 """
             if holding_qty > 0 or cost_price > 0 or max_position > 0
-            else """## 📋 当前持仓状态（期货）
+            else """## 当前持仓状态（期货）
 - 当前无持仓（空仓）
 """
         )
-        account_info = """## 💰 账户状态
+        account_info = """## 账户状态
 - 交易品类: 期货
 - 交易方向: 支持做多（open_long/close_long）和做空（open_short/close_short）
 - 注意: 期货有杠杆，需严格控制仓位和止损
 """
-        costs_info = """## 💸 交易成本
+        costs_info = """## 交易成本
 - 期货保证金交易，杠杆放大盈亏
 - 持仓过夜有隔夜风险，注意合约到期日
 """
@@ -398,22 +484,22 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
         position_unit = "手"
     else:
         position_info = (
-            f"""## 📋 当前持仓状态（股票）
+            f"""## 当前持仓状态（股票）
 - 持有数量: {holding_qty}股
 - 成本价: {cost_price:.2f}元
 - 当前价格: {close:.2f}元
 - 最大持仓: {max_position}股
 """
             if holding_qty > 0 or cost_price > 0 or max_position > 0
-            else """## 📋 当前持仓状态（股票）
+            else """## 当前持仓状态（股票）
 - 当前无持仓（空仓）
 """
         )
-        account_info = """## 💰 账户状态
+        account_info = """## 账户状态
 - 交易品类: 股票
 - 交易限制: 股票只能做多，不支持做空
 """
-        costs_info = """## 💸 交易成本
+        costs_info = """## 交易成本
 - 股票全额买入（无杠杆）
 - 交易手续费、印花税会影响实际收益
 """
@@ -426,19 +512,21 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
 
 {system_role}
 
-## 📊 决策周期: 日内技术快照
+{higher_block}## 主图({period_label})技术快照
 - 当前价格: {close:.2f}
-- MA趋势: {ma_trend} (MA10={ma10:.2f}, MA30={ma30:.2f}, MA60={ma60:.2f})
 - 价格K线: 开盘{open_price:.2f} / 最高{high:.2f} / 最低{low:.2f}
 - MACD: {macd_state} (MACD={macd:.4f}, DEA={macd_dea:.4f}, BAR={macd_bar:.4f})
 - RSI: {rsi:.1f} ({rsi_state})
 - ATR: {atr:.4f}
 - 成交量: {volume:,.0f}
 
-## 📈 最近10根收盘价
+## 主图({period_label})趋势诊断（方法论量化特征，已算好，请直接采信）
+{trend_block}
+
+## 最近10根收盘价
 {recent['close'].to_string()}
 
-## 📉 最近10根成交量
+## 最近10根成交量
 {recent['volume'].to_string()}
 
 {position_info}
@@ -449,37 +537,34 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
 
 ---
 
-# 🎯 决策任务
-请按照专业交易员的思维框架，系统性地分析并输出交易决策。
+# 决策任务（趋势跟随方法论）
+核心信条：跟随趋势、不预测趋势；趋势的最小阻力方向就是均线运行方向；没有顶/底部构造就不会见顶/底；趋势转折必经"破线→拐头→交叉"三步。请严格按以下四步研判并输出决策。
 
-## 第一步：市场状态诊断 🔍
-- 当前市场处于什么状态？（强势趋势/温和趋势/震荡/反转）
-- 主要驱动因素是什么？（价格突破/成交量确认/技术指标）
-- 市场情绪如何？（恐慌/贪婪/犹豫/理性）
-- 波动率处于什么状态？（扩张/收缩/正常）
+## 第一步：趋势诊断（定方向）
+- {"先依据上方【日线大周期方向】定方向，主图不得逆大周期方向交易；再看主图入场结构。" if not is_daily else "用 MA120(半年线)+长斜率定大方向，用 MA20 看入场结构。"}
+- 当前趋势属哪一类（时钟方向5类：12点加速涨 / 2点稳定涨 / 3点横向密集 / 4点稳定跌 / 6点加速跌）？
+- 均线是多头排列、空头排列还是纠缠？均线是否已高度密集（<2%）？是否处于密集成交区、已持续多久、箱体上下沿在哪？
 
-## 第二步：交易机会评估 💡
-- 识别到的机会是什么？（趋势跟随/均值回归/突破/观望）
-- 信号强度如何？（强/中/弱）
-- 确认程度如何？（多重确认/部分确认/单一信号）
-- 时间窗口如何？（立即/短期观察/继续跟踪）
-- 机会质量评级？（A级优质/B级良好/C级一般/D级观望）
+## 第二步：交易机会评估（找入场）
+判断当前属于以下哪类可交易场景及信号强弱：
+- ①密集区末端埋伏突破：时长足够 + 均线密集<2% + 排列开始张嘴；期待突破，底线=排列被破坏。
+- ②假突破反转：刚突破又快速跌回（"真突破让人追不上"）；只能标"疑似假突破"并相应反手。
+- ③稳定趋势回撤入场：中长期均线平行 + 价格回撤到 MA20/60/120 + 抵扣价显示该均线方向不变 + 出现底/顶部构造{"，且与日线大方向一致(周期扩散)" if not is_daily else ""}。
+- ④斜率加速行情：不追（坐轿子不抬轿子），持仓者等顶/底部构造再动。
+- 给出机会质量评级（A级优质/B级良好/C级一般/D级观望）。
 
-## 第三步：风险收益分析 ⚖️
-- 预期收益是多少？（目标价位和预期收益率）
-- 潜在风险是多少？（止损价位和最大亏损）
-- 风险收益比是否合适？当前应该激进、稳健还是保守？
-- 主要风险因素有哪些？（技术风险/消息风险/流动性风险）
+## 第三步：风险收益分析
+- 止损=方法论"底线"：多头/空头排列被破坏、二六均线组交叉、或跌破/升破密集区箱体波谷。
+- 目标=突破量度幅度（"横有多长、竖有多高"）或趋势延续目标。
+- 风险收益比是否合适？主要风险因素（技术/消息/流动性）？
 
-## 第四步：执行方案制定 📝
-- 具体操作：开多/平多/开空/平空/观望
-- 仓位建议：建议仓位（单位：{position_unit}）与风险敞口
-- 入场时机：立即还是等待确认
-- 出场计划：止损价位、止盈价位
+## 第四步：执行方案制定
+- 只在"关键性波动"（可能改变均线运行方向的位置）上动手，而非随意位置。
+- 具体操作、仓位建议（单位：{position_unit}）、入场时机、止损价位、止盈价位。
 
 ---
 
-# 📤 决策输出格式
+# 决策输出格式
 请仅输出以下标准JSON格式（不要markdown）：
 {{
   "action": "{action_enum}",
@@ -499,7 +584,7 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
   "opportunity_quality": "A|B|C|D"
 }}
 
-重要：target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
+重要：每步摘要≤2句、reasons/risk_factors 数组≤3项，控制长度避免截断。target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
 hold 操作时 target_price 填写当前价格附近的关键支撑或压力位。
 """
 

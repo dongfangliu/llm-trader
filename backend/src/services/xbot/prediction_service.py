@@ -153,6 +153,7 @@ async def _analyze_with_retry(
                 timeout=llm_cfg["timeout_seconds"],
                 thinking_enabled=llm_cfg["thinking_enabled"],
                 thinking_effort=llm_cfg["thinking_effort"],
+                period="daily",
             )
         except Exception as e:
             last_error = e
