@@ -25,7 +25,7 @@ WORKER_JOB_TIMEOUT_BUFFER_SECONDS = 30
 # Methodology (trend-following) system prompt
 METHODOLOGY_SYSTEM_PROMPT = (
     "你是一位精通趋势跟随交易体系的资深分析师，信奉「跟随趋势、不预测趋势」。"
-    "你擅长用时钟方向斜率、均线(MA/EMA 20/60/120)排列、抵扣价、密集成交区、"
+    "你擅长用趋势斜率、均线(MA/EMA 20/60/120)排列、抵扣价、密集成交区、"
     "破线-拐头-交叉三步转折等工具研判行情。"
     "请遵循用户给出的四步决策框架进行分析，并严格只输出JSON。"
 )
@@ -403,7 +403,7 @@ def _trend_diagnosis_block(feat: dict, *, with_classify: bool) -> str:
         if feat.get("r2") is not None:
             extra.append(f"R2={feat['r2']:.2f}")
         suffix = f"（{', '.join(extra)}）" if extra else ""
-        lines.append(f"- 趋势类型(时钟方向): {feat['trend_type']}{suffix}")
+        lines.append(f"- 趋势类型: {feat['trend_type'].split('点 ', 1)[-1]}{suffix}")
     if feat.get("alignment"):
         lines.append(
             f"- 均线排列(MA20/60/120): {feat['alignment']} "
@@ -579,7 +579,7 @@ def _build_methodology_prompt(df, symbol: str = "", market: str = "a", user_cont
 
 ## 第一步：趋势诊断（定方向）
 - {"先依据上方【日线大周期方向】定方向，主图不得逆大周期方向交易；再看主图入场结构。" if not is_daily else "用 MA120(半年线)+长斜率定大方向，用 MA20 看入场结构。"}
-- 当前趋势属哪一类（时钟方向5类：12点加速涨 / 2点稳定涨 / 3点横向密集 / 4点稳定跌 / 6点加速跌）？
+- 当前趋势属哪一类（加速上涨 / 稳定上涨 / 横向整理 / 稳定下跌 / 加速下跌）？请直接用这些趋势词，不要使用「几点」之类的时钟数字表述。
 - 均线是多头排列、空头排列还是纠缠？均线是否已高度密集（<2%）？是否处于密集成交区、已持续多久、箱体上下沿在哪？
 
 ## 第二步：交易机会评估（找入场）

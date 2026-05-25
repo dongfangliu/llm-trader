@@ -128,6 +128,10 @@ function dirLabel(wr: boolean | null | undefined): string {
   if (wr === false) return '将下行'
   return '—'
 }
+function cleanType(t: string | null | undefined): string {
+  // 展示用：去掉「X点」时钟方向数字前缀，只保留趋势词（如 "4点 稳定下跌" → "稳定下跌"）
+  return t ? String(t).replace(/^\d+\s*点\s*/, '') : '—'
+}
 
 const ACTION_CONFIG: Record<string, any> = {
   buy: {
@@ -477,49 +481,58 @@ async function handleShare() {
         </div>
 
         <!-- ── 趋势诊断 (trend-following methodology) ── -->
-        <div v-if="trend" class="rs-section">
+        <div v-if="trend" class="rs-section rs-t2">
           <div class="rs-section-label">趋势诊断</div>
 
-          <div v-if="trendHigher" class="rs-trend-higher">
-            <span class="rs-trend-higher-tag">日线大周期</span>
-            <span class="rs-trend-higher-type">{{ trendHigher.trend_type || '方向参考' }}</span>
-            <span v-if="trendHigher.alignment" class="rs-trend-pill" :style="{ color: alignColor(trendHigher.alignment), background: alignColor(trendHigher.alignment) + '18' }">{{ trendHigher.alignment }}</span>
+          <!-- 分钟线：日线大周期背景条 -->
+          <div v-if="trendHigher" class="rs-t2-higher">
+            <span class="rs-t2-higher-dot"/>
+            <span>日线大周期 · {{ cleanType(trendHigher.trend_type) }}<span v-if="trendHigher.alignment"> · {{ trendHigher.alignment }}</span></span>
           </div>
 
-          <div class="rs-trend-head">
-            <span v-if="trend.trend_type" class="rs-trend-clock">{{ trend.trend_type }}</span>
-            <span v-if="trend.alignment" class="rs-trend-pill" :style="{ color: alignColor(trend.alignment), background: alignColor(trend.alignment) + '18' }">{{ trend.alignment }}</span>
-            <span v-if="trend.converged" class="rs-trend-pill" style="color:#b45309;background:rgba(245,158,11,0.14);">均线密集</span>
-          </div>
-
-          <!-- 抵扣价：预测均线方向（方法论核心信号）-->
-          <div class="rs-trend-ded">
-            <div class="rs-trend-ded-title">抵扣价 · 预测均线方向<span v-if="trend.ma_spread_pct != null"> · 密集度 {{ trend.ma_spread_pct.toFixed(2) }}%</span></div>
-            <div class="rs-trend-ded-row">
-              <div v-for="it in dedItems" :key="it.n" class="rs-trend-ded-cell">
-                <span class="rs-trend-ded-ma">MA{{ it.n }}</span>
-                <span class="rs-trend-ded-dir" :style="{ color: dirColor(it.will_rise) }">{{ dirLabel(it.will_rise) }}</span>
-                <span class="rs-trend-ded-price" :class="{ 'rs-locked-inline': isFree }">{{ isFree ? '██' : fmtNum(it.price) }}</span>
-              </div>
+          <!-- 主结论：趋势 + 排列 + 副信息 -->
+          <div class="rs-t2-hero">
+            <div class="rs-t2-trend">
+              <span class="rs-t2-trend-name">{{ cleanType(trend.trend_type) }}</span>
+              <span v-if="trend.alignment" class="rs-t2-align" :style="{ color: alignColor(trend.alignment), background: alignColor(trend.alignment) + '14' }">{{ trend.alignment }}</span>
+            </div>
+            <div v-if="trend.slope_ann != null || trend.ma_spread_pct != null" class="rs-t2-sub">
+              <span v-if="trend.slope_ann != null">年化 {{ (trend.slope_ann * 100).toFixed(0) }}%</span>
+              <span v-if="trend.r2 != null"> · 拟合 {{ (trend.r2 * 100).toFixed(0) }}%</span>
+              <span v-if="trend.ma_spread_pct != null"> · 密集度 {{ trend.ma_spread_pct.toFixed(1) }}%{{ trend.converged ? ' 密集' : '' }}</span>
             </div>
           </div>
 
-          <!-- 密集成交区 + 回撤位 -->
-          <div class="rs-indicator-grid" style="margin-top:10px;">
-            <div v-if="trend.consolidation && trend.consolidation.in != null" class="rs-indicator-card">
-              <div class="rs-indicator-name">密集成交区</div>
-              <div class="rs-indicator-value">{{ trend.consolidation.in ? (trend.consolidation.days + '根') : '否' }}</div>
-              <div v-if="trend.consolidation.in" class="rs-indicator-status" style="color:#8e8e93;" :class="{ 'rs-locked-inline': isFree }">{{ isFree ? '██~██' : (fmtNum(trend.consolidation.box_lo) + '~' + fmtNum(trend.consolidation.box_hi)) }}</div>
-            </div>
-            <div v-for="it in pbItems" :key="'pb' + it.n" class="rs-indicator-card">
-              <div class="rs-indicator-name">距MA{{ it.n }}</div>
-              <div class="rs-indicator-value" :style="{ color: it.v >= 0 ? '#dc2626' : '#16a34a' }">{{ (it.v >= 0 ? '+' : '') + it.v.toFixed(1) }}%</div>
+          <!-- 均线方向（抵扣价预判）—— 有序信号列表 -->
+          <div class="rs-t2-ma-head">均线方向 · 抵扣价预判</div>
+          <div class="rs-t2-ma-list">
+            <div v-for="it in dedItems" :key="it.n" class="rs-t2-ma-row">
+              <span class="rs-t2-ma-bar" :style="{ background: dirColor(it.will_rise) }"/>
+              <span class="rs-t2-ma-name">MA{{ it.n }}</span>
+              <span class="rs-t2-ma-dir" :style="{ color: dirColor(it.will_rise) }">{{ dirLabel(it.will_rise) }}</span>
+              <span class="rs-t2-ma-price" :class="{ 'rs-locked-inline': isFree }">{{ isFree ? '抵扣 ██' : ('抵扣 ' + fmtNum(it.price)) }}</span>
             </div>
           </div>
 
-          <div v-if="revFlags.length" class="rs-trend-rev">
-            <span class="rs-trend-rev-label">转折迹象</span>
-            <span v-for="f in revFlags" :key="f" class="rs-trend-rev-chip">{{ f }}</span>
+          <!-- 次级信息归组：密集区 / 回撤 / 转折 -->
+          <div class="rs-t2-meta">
+            <div v-if="trend.consolidation && trend.consolidation.in != null" class="rs-t2-meta-row">
+              <span class="rs-t2-meta-k">密集成交区</span>
+              <span class="rs-t2-meta-v">
+                <template v-if="trend.consolidation.in">已持续 {{ trend.consolidation.days }} 根 · 箱体 <span :class="{ 'rs-locked-inline': isFree }">{{ isFree ? '██~██' : (fmtNum(trend.consolidation.box_lo) + '~' + fmtNum(trend.consolidation.box_hi)) }}</span></template>
+                <template v-else>当前非密集</template>
+              </span>
+            </div>
+            <div v-if="pbItems.length" class="rs-t2-meta-row">
+              <span class="rs-t2-meta-k">回撤位</span>
+              <span class="rs-t2-meta-v">
+                <span v-for="it in pbItems" :key="'pb' + it.n" class="rs-t2-pb" :style="{ color: it.v >= 0 ? '#dc2626' : '#16a34a' }">MA{{ it.n }} {{ (it.v >= 0 ? '+' : '') + it.v.toFixed(1) }}%</span>
+              </span>
+            </div>
+            <div v-if="revFlags.length" class="rs-t2-meta-row">
+              <span class="rs-t2-meta-k">转折迹象</span>
+              <span class="rs-t2-meta-v"><span v-for="f in revFlags" :key="f" class="rs-t2-rev">{{ f }}</span></span>
+            </div>
           </div>
         </div>
 

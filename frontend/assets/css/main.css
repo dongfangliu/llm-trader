@@ -516,22 +516,27 @@
 .rs-indicator-status { font-size: 10px; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px; opacity: 0.85; }
 
 /* 趋势诊断卡片（趋势跟随方法论）*/
-.rs-trend-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.rs-trend-clock { font-size: 17px; font-weight: 800; color: #1c1c1e; letter-spacing: -0.3px; }
-.rs-trend-pill { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
-.rs-trend-higher { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: linear-gradient(135deg, #eef4ff, #f7faff); border: 0.5px solid rgba(0,122,255,0.18); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; }
-.rs-trend-higher-tag { font-size: 10px; font-weight: 800; color: #007aff; background: rgba(0,122,255,0.1); padding: 2px 8px; border-radius: 6px; letter-spacing: 0.3px; }
-.rs-trend-higher-type { font-size: 13px; font-weight: 700; color: #1c1c1e; }
-.rs-trend-ded { margin-top: 12px; background: var(--ios-bg); border-radius: 12px; padding: 10px 12px; }
-.rs-trend-ded-title { font-size: 10px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
-.rs-trend-ded-row { display: flex; gap: 8px; }
-.rs-trend-ded-cell { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.rs-trend-ded-ma { font-size: 11px; font-weight: 700; color: var(--ios-secondary); }
-.rs-trend-ded-dir { font-size: 13px; font-weight: 800; }
-.rs-trend-ded-price { font-size: 12px; font-weight: 600; color: #1c1c1e; font-variant-numeric: tabular-nums; }
-.rs-trend-rev { margin-top: 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.rs-trend-rev-label { font-size: 11px; font-weight: 600; color: var(--ios-secondary); }
-.rs-trend-rev-chip { font-size: 11px; font-weight: 700; color: #dc2626; background: rgba(220,38,38,0.1); padding: 2px 8px; border-radius: 6px; }
+.rs-t2-higher { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: #0369a1; background: linear-gradient(135deg, #eff6ff, #f8fafc); border: 0.5px solid rgba(3,105,161,0.15); border-radius: 10px; padding: 7px 11px; margin-bottom: 12px; }
+.rs-t2-higher-dot { width: 6px; height: 6px; border-radius: 50%; background: #0ea5e9; flex-shrink: 0; }
+.rs-t2-hero { padding-bottom: 12px; border-bottom: 0.5px solid rgba(0,0,0,0.06); margin-bottom: 10px; }
+.rs-t2-trend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rs-t2-trend-name { font-size: 22px; font-weight: 800; color: #1c1c1e; letter-spacing: -0.5px; }
+.rs-t2-align { font-size: 12px; font-weight: 700; padding: 3px 11px; border-radius: 999px; }
+.rs-t2-sub { margin-top: 6px; font-size: 12px; color: #8e8e93; font-weight: 500; font-variant-numeric: tabular-nums; }
+.rs-t2-ma-head { font-size: 10px; font-weight: 700; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+.rs-t2-ma-list { margin-bottom: 12px; }
+.rs-t2-ma-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 0.5px solid rgba(0,0,0,0.045); }
+.rs-t2-ma-row:last-child { border-bottom: none; }
+.rs-t2-ma-bar { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+.rs-t2-ma-name { font-size: 13px; font-weight: 700; color: #1c1c1e; width: 44px; }
+.rs-t2-ma-dir { font-size: 13px; font-weight: 700; flex: 1; }
+.rs-t2-ma-price { font-size: 12px; font-weight: 600; color: #8e8e93; font-variant-numeric: tabular-nums; }
+.rs-t2-meta { background: var(--ios-bg); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.rs-t2-meta-row { display: flex; align-items: baseline; gap: 10px; font-size: 12px; line-height: 1.5; }
+.rs-t2-meta-k { font-size: 11px; font-weight: 600; color: #8e8e93; width: 60px; flex-shrink: 0; }
+.rs-t2-meta-v { color: #3c3c43; font-weight: 500; }
+.rs-t2-pb { margin-right: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rs-t2-rev { display: inline-block; font-weight: 700; color: #dc2626; background: rgba(220,38,38,0.1); padding: 1px 7px; border-radius: 5px; margin-right: 5px; }
 .rs-locked-inline { filter: blur(5px); user-select: none; }
 .rs-history-strip { display: flex; gap: 10px; padding: 12px 16px 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .rs-history-strip::-webkit-scrollbar { display: none; }
