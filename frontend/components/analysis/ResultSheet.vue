@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import SharePreviewSheet from '~/components/analysis/SharePreviewSheet.vue'
+import { stripClock } from '~/lib/format'
 
 const props = defineProps<{
   isOpen: boolean
@@ -129,9 +130,14 @@ function dirLabel(wr: boolean | null | undefined): string {
   return '—'
 }
 function cleanType(t: string | null | undefined): string {
-  // 展示用：去掉「X点」时钟方向数字前缀，只保留趋势词（如 "4点 稳定下跌" → "稳定下跌"）
-  return t ? String(t).replace(/^\d+\s*点\s*/, '') : '—'
+  // 展示用：去掉「X点」时钟方向数字（如 "4点 稳定下跌" → "稳定下跌"）
+  return stripClock(t) || '—'
 }
+// LLM 自由文本展示前统一过滤掉「X点」时钟数字（兼顾旧缓存/历史残留数据）
+function sec(k: string): string {
+  return stripClock(props.result?.result?.[k] || '')
+}
+const reasonText = computed<string>(() => stripClock(props.result?.result?.reason || ''))
 
 const ACTION_CONFIG: Record<string, any> = {
   buy: {
@@ -469,14 +475,14 @@ async function handleShare() {
         <!-- ── REASON ── -->
         <div v-if="result?.result?.reason" class="rs-section">
           <div class="rs-reason-lead" :style="{ borderLeft: `3px solid ${info.color}` }">
-            <template v-for="(part, i) in highlightText(result.result.reason.slice(0, result.result.reason.indexOf('。') !== -1 ? result.result.reason.indexOf('。') + 1 : 80), info.color)" :key="i">
+            <template v-for="(part, i) in highlightText(reasonText.slice(0, reasonText.indexOf('。') !== -1 ? reasonText.indexOf('。') + 1 : 80), info.color)" :key="i">
               <strong v-if="part.isNumber" :style="{ color: info.color, fontSize: '1.05em', fontWeight: 800, background: `${info.color}14`, borderRadius: '5px', padding: '0 4px', letterSpacing: '-0.2px', display: 'inline-block' }">{{ part.text }}</strong>
               <strong v-else-if="part.isKeyword" :style="{ color: info.color, fontWeight: 700 }">{{ part.text }}</strong>
               <span v-else>{{ part.text }}</span>
             </template>
           </div>
-          <div v-if="result.result.reason.indexOf('。') !== -1 && result.result.reason.slice(result.result.reason.indexOf('。') + 1).trim()" class="rs-reason-body">
-            {{ result.result.reason.slice(result.result.reason.indexOf('。') + 1).trim() }}
+          <div v-if="reasonText.indexOf('。') !== -1 && reasonText.slice(reasonText.indexOf('。') + 1).trim()" class="rs-reason-body">
+            {{ reasonText.slice(reasonText.indexOf('。') + 1).trim() }}
           </div>
         </div>
 
@@ -558,10 +564,10 @@ async function handleShare() {
               </template>
               <template v-else>
                 <div class="rs-narr-lead" :style="{ borderLeft: `3px solid ${ns.tint}` }">
-                  {{ result.result[ns.key].slice(0, result.result[ns.key].indexOf('。') !== -1 ? result.result[ns.key].indexOf('。') + 1 : 90) }}
+                  {{ sec(ns.key).slice(0, sec(ns.key).indexOf('。') !== -1 ? sec(ns.key).indexOf('。') + 1 : 90) }}
                 </div>
-                <div v-if="result.result[ns.key].indexOf('。') !== -1 && result.result[ns.key].slice(result.result[ns.key].indexOf('。') + 1).trim()" class="rs-narr-body">
-                  {{ result.result[ns.key].slice(result.result[ns.key].indexOf('。') + 1).trim() }}
+                <div v-if="sec(ns.key).indexOf('。') !== -1 && sec(ns.key).slice(sec(ns.key).indexOf('。') + 1).trim()" class="rs-narr-body">
+                  {{ sec(ns.key).slice(sec(ns.key).indexOf('。') + 1).trim() }}
                 </div>
               </template>
             </div>
@@ -579,7 +585,7 @@ async function handleShare() {
               :style="{ background: riskSeverity(f).bg, borderLeft: `3px solid ${riskSeverity(f).dot}` }"
             >
               <span class="rs-risk-dot" :style="{ background: riskSeverity(f).dot }"/>
-              <span :style="{ color: riskSeverity(f).textColor, fontSize: '13.5px', lineHeight: 1.5 }">{{ f }}</span>
+              <span :style="{ color: riskSeverity(f).textColor, fontSize: '13.5px', lineHeight: 1.5 }">{{ stripClock(f) }}</span>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useHead, useRequestURL, useSeoMeta } from '#app'
 import { useRoute, useRouter } from 'vue-router'
 import api from '~/lib/api'
+import { stripClock } from '~/lib/format'
 import { preloadAll, preloadMarket, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
 import { useAnalysis } from '~/composables/useAnalysis'
 import { useQuota } from '~/composables/useQuota'
@@ -881,7 +882,7 @@ function handleLogout() {
               </div>
             </div>
             <p v-if="sheetResult.result?.reason" style="font-size: 14px; color: #3c3c43; line-height: 1.75; margin: 0; padding-top: 16px; border-top: 0.5px solid rgba(0,0,0,0.08);">
-              {{ sheetResult.result.reason }}
+              {{ stripClock(sheetResult.result.reason) }}
             </p>
           </div>
 
@@ -1337,7 +1338,7 @@ function handleLogout() {
                 <div class="rg-card-bar"><div class="rg-card-bar-fill" :style="{ width: `${item.confidence}%`, background: getActionDisplay(item.action).color }"/></div>
                 <span class="rg-card-conf" :style="{ color: getActionDisplay(item.action).color }">{{ item.confidence }}%</span>
               </div>
-              <p v-if="item.detail?.result?.reason" class="rg-card-reason">{{ item.detail.result.reason.slice(0, 68) }}…</p>
+              <p v-if="item.detail?.result?.reason" class="rg-card-reason">{{ stripClock(item.detail.result.reason).slice(0, 68) }}…</p>
               <div class="rg-card-footer">
                 <span class="rg-card-date">{{ item.analyzedAt ? formatCardTime(item.analyzedAt) : '' }}</span>
                 <svg class="rg-card-chevron" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#c7c7cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>

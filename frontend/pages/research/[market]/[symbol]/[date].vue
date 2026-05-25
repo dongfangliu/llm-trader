@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/vue'
 import { MARKET_LABELS, SITE_NAME, analyzePath } from '~/constants/seo'
 import MrStatusBadge from '~/components/model-review/MrStatusBadge.vue'
+import { stripClock } from '~/lib/format'
 import { useShareCard } from '~/composables/useShareCard'
 
 const route = useRoute()
@@ -69,10 +70,10 @@ const priceMetrics = computed(() => [
   { label: '实际收盘', value: record.value?.actual_close == null ? '待结算' : Number(record.value.actual_close).toFixed(2) },
 ])
 const analysisSections = computed(() => [
-  { title: '市场诊断', text: record.value?.market_diagnosis },
-  { title: '机会评估', text: record.value?.opportunity_assessment },
-  { title: '风险分析', text: record.value?.risk_analysis },
-  { title: '执行计划', text: record.value?.execution_plan },
+  { title: '市场诊断', text: stripClock(record.value?.market_diagnosis) },
+  { title: '机会评估', text: stripClock(record.value?.opportunity_assessment) },
+  { title: '风险分析', text: stripClock(record.value?.risk_analysis) },
+  { title: '执行计划', text: stripClock(record.value?.execution_plan) },
 ].filter(item => item.text))
 
 const cardVariant = computed(() => awaitingResult.value ? 'promise' : (record.value?.is_correct != null ? 'proof' : 'promise'))
@@ -320,7 +321,7 @@ async function copyLink() {
           <h2 class="mr-panel-title">摘要</h2>
           <MrStatusBadge :status="resultTone" :label="resultLabel" />
         </div>
-        <p class="mr-copy">{{ record.analysis_summary }}</p>
+        <p class="mr-copy">{{ stripClock(record.analysis_summary) }}</p>
       </section>
 
       <section class="mr-content-section">
