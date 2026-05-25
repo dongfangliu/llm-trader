@@ -66,6 +66,15 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         elif section_key == "llm":
             analyze_timeout_seconds = normalize_timeout_seconds(data.get("timeout_seconds"))
 
+    # Methodology mode (admin-configurable; users cannot choose — read-only here)
+    methodology_mode = "trend"
+    _m_row = await db.get(SystemSetting, "methodology")
+    if _m_row:
+        try:
+            methodology_mode = json.loads(_m_row.value).get("mode") or "trend"
+        except Exception:
+            pass
+
     return {
         "app_name": app_name,
         "require_invite_code": require_invite_code,
@@ -78,6 +87,7 @@ async def get_config(db: AsyncSession = Depends(get_db)):
         "pricing_premium_price": pricing_premium_price,
         "pricing_premium_daily": pricing_premium_daily,
         "analyze_timeout_seconds": analyze_timeout_seconds,
+        "methodology_mode": methodology_mode,
         "afdian_basic_link": afdian_basic_link,
         "afdian_premium_link": afdian_premium_link,
         "markets": [

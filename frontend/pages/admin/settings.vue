@@ -22,6 +22,7 @@ const tabs = [
   { key: 'afdian', label: '爱发电' },
   { key: 'email', label: '邮件服务' },
   { key: 'app', label: '应用信息' },
+  { key: 'methodology', label: '分析方法论' },
 ]
 
 const tiers = ['free', 'basic', 'premium']
@@ -813,6 +814,26 @@ async function onFileChange(e: Event) {
                   style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;"
                 />
               </div>
+            </div>
+          </template>
+
+          <!-- ===================== METHODOLOGY TAB ===================== -->
+          <template v-if="activeTab === 'methodology'">
+            <h2 style="font-size:15px;font-weight:700;color:var(--ios-label);margin:0 0 8px;">分析方法论</h2>
+            <p style="margin:0 0 20px;font-size:13px;color:var(--ios-secondary);line-height:1.5;">选择全站分析使用的方法论。默认「趋势跟随」（时钟方向 / 均线排列 / 抵扣价 / 密集成交区 / 多周期协同）；可回退「经典四步」。仅管理员可配，普通用户不可选。</p>
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div>
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--ios-label);margin-bottom:4px;">方法论模式</label>
+                <select
+                  :value="getField('methodology','mode') || 'trend'"
+                  @change="setField('methodology','mode',($event.target as HTMLSelectElement).value)"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);font-size:15px;outline:none;background:#fff;appearance:none;-webkit-appearance:none;"
+                >
+                  <option value="trend">趋势跟随（最新，推荐）</option>
+                  <option value="legacy">经典四步（旧版）</option>
+                </select>
+              </div>
+              <p style="margin:0;font-size:12px;color:var(--ios-tertiary);line-height:1.6;">切换后对新的分析立即生效（已缓存结果在过期前仍为旧方法论）。trend 模式下前端计算时钟方向 / 抵扣价 / 密集成交区等并展示趋势诊断卡片；legacy 模式回退经典四步、不展示趋势诊断。</p>
             </div>
           </template>
 

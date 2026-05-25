@@ -3,6 +3,7 @@ import api from '~/lib/api'
 import { useDevice } from '~/composables/useDevice'
 import { useAuthStore } from '~/stores/auth'
 import { fetchOhlcv } from '~/composables/useMarketDataFetcher'
+import { computeTrendFeatures, computeLegacyIndicators, type TrendFeatures } from '~/lib/indicators'
 
 export type AnalysisStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'
 
@@ -38,6 +39,8 @@ export function useAnalysis() {
   const progress = ref(0)
   const statusMessage = ref('')
   const isFirstTrial = ref(false)  // was this a trial analysis?
+  const trendFeatures = ref<TrendFeatures | null>(null)  // 前端自算特征，供即时展示
+  const methodologyMode = ref<string>('trend')
 
   let abortController: AbortController | null = null
   let pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -52,6 +55,7 @@ export function useAnalysis() {
     progress.value = 0
     statusMessage.value = ''
     isFirstTrial.value = false
+    trendFeatures.value = null
   }
 
   function cancelAnalysis() {
@@ -178,9 +182,41 @@ export function useAnalysis() {
     try {
       const deviceId = getDeviceId()
 
-      // Fetch OHLCV data from browser (client-side, user IP)
-      const historyDays = options?.historyDays ?? 90
+      // 读方法论模式（决定前端算什么、是否展示趋势诊断）
+      let mode = 'trend'
+      try {
+        const cfg = await api.get('/api/config')
+        mode = cfg.data?.methodology_mode || 'trend'
+      } catch { /* 默认 trend */ }
+      methodologyMode.value = mode
+
+      // 取行情（日线需更长历史以满足 250 根斜率窗口）
+      const historyDays = options?.historyDays ?? (period === 'daily' ? 400 : 90)
       const ohlcvBars = await fetchOhlcv(symbol, market, period, historyDays)
+
+      // 前端计算特征/指标（按模式），既即时展示又随请求发送
+      let trendPayload: any = null
+      let trendHigherPayload: any = null
+      let indicatorsPayload: any = null
+      const enoughBars = Array.isArray(ohlcvBars) && ohlcvBars.length >= 20
+      if (enoughBars) {
+        if (mode === 'legacy') {
+          indicatorsPayload = computeLegacyIndicators(ohlcvBars)
+        } else {
+          const tf = computeTrendFeatures(ohlcvBars, { classifyTrend: period === 'daily' })
+          trendFeatures.value = tf
+          trendPayload = tf
+          if (period !== 'daily') {
+            // 周期扩散：分钟线叠加日线大周期方向
+            try {
+              const dailyBars = await fetchOhlcv(symbol, market, 'daily', 400)
+              if (Array.isArray(dailyBars) && dailyBars.length >= 60) {
+                trendHigherPayload = computeTrendFeatures(dailyBars, { classifyTrend: true })
+              }
+            } catch { /* 大周期可选，失败忽略 */ }
+          }
+        }
+      }
 
       statusMessage.value = '正在提交分析任务...'
       progress.value = 10
@@ -197,6 +233,9 @@ export function useAnalysis() {
         max_position: options?.maxPosition ?? null,
         holding_text: options?.holdingText ?? null,
         ohlcv_bars: ohlcvBars,
+        trend_features: trendPayload,
+        trend_higher: trendHigherPayload,
+        indicators: indicatorsPayload,
       })
 
       const submitData = submitRes.data
@@ -248,6 +287,7 @@ export function useAnalysis() {
 
   return {
     isAnalyzing, taskId, result, historyId, error, errorCode, progress, statusMessage, isFirstTrial,
+    trendFeatures, methodologyMode,
     submitAnalysis, cancelAnalysis, clearState,
   }
 }

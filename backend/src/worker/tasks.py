@@ -227,6 +227,9 @@ async def analyze_task(
     ohlcv_bars: Optional[list] = None,
     is_pro_trial: bool = False,
     is_deep: bool = False,
+    trend_features: Optional[dict] = None,
+    trend_higher: Optional[dict] = None,
+    indicators: Optional[dict] = None,
 ) -> dict:
     """
     arq task: fetch market data + run LLM analysis.
@@ -355,13 +358,14 @@ async def analyze_task(
             return {"status": "failed", "error": f'未找到 "{symbol}" 的市场数据'}
 
         # --- LLM analysis ---
-        from src.services.llm.llm_service import analyze_with_llm, get_llm_config_from_db
+        from src.services.llm.llm_service import analyze_with_llm, get_llm_config_from_db, get_methodology_mode
 
         llm_cfg = await get_llm_config_from_db()
+        methodology_mode = await get_methodology_mode()
 
-        # 多周期协同：分钟线分析叠加日线大周期方向（周期扩散）；日线无需（自身 MA120 即大方向）
-        higher_tf_features = None
-        if period != "daily":
+        # 多周期协同（trend 模式）：优先用前端传来的日线大周期；否则后端兜底拉取；日线无需
+        higher_tf_features = trend_higher
+        if higher_tf_features is None and methodology_mode != "legacy" and period != "daily":
             from src.services.data.data_service import fetch_higher_tf_features
             higher_tf_features = await fetch_higher_tf_features(symbol, market)
 
@@ -385,6 +389,9 @@ async def analyze_task(
             },
             period=period,
             higher_tf_features=higher_tf_features,
+            methodology_mode=methodology_mode,
+            trend_features=trend_features,
+            indicators=indicators,
         )
 
         latest_price = float(df.iloc[-1]["close"])
@@ -399,6 +406,17 @@ async def analyze_task(
             max_position=max_position,
             atr=latest_atr,
         )
+
+        # trend 模式：把方法论特征附进结果，供前端展示（前端传的优先，否则后端兜底算）；
+        # 存入 history + 返回，使当前分析与历史回看都能渲染趋势诊断。
+        if methodology_mode != "legacy":
+            try:
+                from src.services.data.trend_features import compute_trend_features as _ctf
+                normalized["trend"] = trend_features or _ctf(df, classify_trend=(period == "daily"))
+                if higher_tf_features:
+                    normalized["trend_higher"] = higher_tf_features
+            except Exception as _tf_err:
+                logger.warning("attach trend features failed (non-fatal): %s", _tf_err)
 
         # --- Get symbol name for data envelope ---
         from src.services.data.name_service import get_symbol_name as _get_symbol_name

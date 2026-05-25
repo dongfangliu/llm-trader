@@ -101,10 +101,10 @@ const history = ref<Array<{
 // ── Loading narrative ──
 const NARRATIVE_TEXTS = [
   '正在读取历史 K 线数据…',
-  '分析技术形态与趋势…',
-  '评估主力资金动向…',
-  'AI 正在生成研判建议…',
-  '整合多维度信号…',
+  '识别时钟方向与趋势类型…',
+  '校验 MA/EMA 20/60/120 均线排列…',
+  '计算抵扣价、扫描密集成交区…',
+  '多周期协同，生成研判建议…',
 ]
 const narrativeIdx = ref(0)
 const analyzingSymbol = ref('')

@@ -289,6 +289,10 @@ async def analyze(
             ohlcv_bars=client_bars,
             is_deep=is_deep,
             is_pro_trial=is_first_trial,
+            # 仅在客户端数据有效(同源)时透传前端算好的特征；否则 worker 自算兜底
+            trend_features=req.trend_features if client_bars else None,
+            trend_higher=req.trend_higher if client_bars else None,
+            indicators=req.indicators if client_bars else None,
         )
     except Exception as eq_err:
         logger.error("enqueue_job failed: %s", eq_err)

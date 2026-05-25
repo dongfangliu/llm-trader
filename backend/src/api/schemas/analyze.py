@@ -36,6 +36,10 @@ class AnalyzeRequest(BaseModel):
     holding_text: Optional[str] = Field(None, max_length=500)
     device_id: Optional[str] = None
     ohlcv_bars: Optional[List[OhlcvBarInput]] = Field(default=None)
+    # 前端算好的特征（trend 模式 trend_features/trend_higher；legacy 模式 indicators）
+    trend_features: Optional[dict] = None
+    trend_higher: Optional[dict] = None
+    indicators: Optional[dict] = None
 
 class AnalyzeResponse(BaseModel):
     task_id: str

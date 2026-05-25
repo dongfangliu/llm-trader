@@ -22,11 +22,17 @@ MAX_LLM_TIMEOUT_SECONDS = 1800
 WORKER_JOB_TIMEOUT_BUFFER_SECONDS = 30
 
 
-# Backtest-aligned system prompt
-SYSTEM_PROMPT = (
+# Methodology (trend-following) system prompt
+METHODOLOGY_SYSTEM_PROMPT = (
     "你是一位精通趋势跟随交易体系的资深分析师，信奉「跟随趋势、不预测趋势」。"
     "你擅长用时钟方向斜率、均线(MA/EMA 20/60/120)排列、抵扣价、密集成交区、"
     "破线-拐头-交叉三步转折等工具研判行情。"
+    "请遵循用户给出的四步决策框架进行分析，并严格只输出JSON。"
+)
+
+# Legacy (classic four-step) system prompt
+LEGACY_SYSTEM_PROMPT = (
+    "你是经验丰富的交易分析师。"
     "请遵循用户给出的四步决策框架进行分析，并严格只输出JSON。"
 )
 
@@ -69,6 +75,21 @@ async def get_llm_config_from_db(section: str = "llm") -> dict:
         "thinking_enabled": bool(cfg.get("thinking_enabled", False)),
         "thinking_effort": cfg.get("thinking_effort", "high"),
     }
+
+
+async def get_methodology_mode() -> str:
+    """Read admin-configured analysis methodology mode ('trend' default | 'legacy')."""
+    import json as _json
+    from src.database.db import async_session, SystemSetting
+
+    async with async_session() as _db:
+        row = await _db.get(SystemSetting, "methodology")
+    if not row:
+        return "trend"
+    try:
+        return _json.loads(row.value).get("mode") or "trend"
+    except Exception:
+        return "trend"
 
 
 # Defaults for model-review LLM scheduling. Kept in one place so admin defaults,
@@ -165,6 +186,9 @@ async def analyze_with_llm(
     thinking_effort: str = "high",
     period: str = "daily",
     higher_tf_features: Optional[Dict[str, Any]] = None,
+    methodology_mode: str = "trend",
+    trend_features: Optional[Dict[str, Any]] = None,
+    indicators: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Analyze market data using LLM.
 
@@ -197,11 +221,20 @@ async def analyze_with_llm(
         thinking_enabled, thinking_effort if thinking_enabled else "N/A",
     )
 
-    # Build backtest-aligned enhanced prompt
-    prompt = _build_enhanced_prompt(
-        df, symbol=symbol, market=market, user_context=user_context,
-        period=period, higher_tf_features=higher_tf_features,
-    )
+    # Dispatch by methodology mode; prefer client-computed features, fall back to server-side.
+    if methodology_mode == "legacy":
+        system_prompt = LEGACY_SYSTEM_PROMPT
+        prompt = _build_legacy_prompt(
+            df, symbol=symbol, market=market, user_context=user_context,
+            indicators=indicators,
+        )
+    else:
+        system_prompt = METHODOLOGY_SYSTEM_PROMPT
+        prompt = _build_methodology_prompt(
+            df, symbol=symbol, market=market, user_context=user_context,
+            period=period, higher_tf_features=higher_tf_features,
+            trend_features=trend_features,
+        )
 
     # Call LLM with timeout
     try:
@@ -211,7 +244,7 @@ async def analyze_with_llm(
                 _call_anthropic(
                     api_key=api_key,
                     model=model,
-                    system_prompt=SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     user_prompt=prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
@@ -225,7 +258,7 @@ async def analyze_with_llm(
                     api_key=api_key,
                     base_url=base_url,
                     model=model,
-                    system_prompt=SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     user_prompt=prompt,
                     max_tokens=max_tokens,
                     temperature=temperature,
@@ -387,7 +420,7 @@ def _trend_diagnosis_block(feat: dict, *, with_classify: bool) -> str:
     ded = feat.get("deduction") or {}
     ded_parts = []
     for n in (20, 60, 120):
-        d = ded.get(n) or {}
+        d = ded.get(n) or ded.get(str(n)) or {}  # 兼容前端 JSON 的字符串 key
         if d.get("price") is not None:
             arrow = "将上行" if d.get("will_rise") else "将下行"
             ded_parts.append(f"MA{n}={_fmt(d['price'])}({arrow})")
@@ -412,9 +445,13 @@ def _trend_diagnosis_block(feat: dict, *, with_classify: bool) -> str:
     return "\n".join(lines) if lines else "- （趋势特征数据不足，暂略）"
 
 
-def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context: Optional[Dict[str, Any]] = None,
-                           period: str = "daily", higher_tf_features: Optional[Dict[str, Any]] = None) -> str:
-    """Build trend-methodology multi-timeframe decision prompt."""
+def _build_methodology_prompt(df, symbol: str = "", market: str = "a", user_context: Optional[Dict[str, Any]] = None,
+                              period: str = "daily", higher_tf_features: Optional[Dict[str, Any]] = None,
+                              trend_features: Optional[Dict[str, Any]] = None) -> str:
+    """Build trend-methodology multi-timeframe decision prompt.
+
+    Prefers client-supplied ``trend_features``; falls back to server-side compute (xbot / no client).
+    """
     from src.services.data.trend_features import compute_trend_features
 
     latest = df.iloc[-1]
@@ -436,8 +473,8 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
     rsi_state = "超买区" if rsi > 70 else ("超卖区" if rsi < 30 else "中性区")
     macd_state = "多头" if macd > macd_dea else "空头"
 
-    # 主图方法论特征：日线做 5 类时钟方向分类；分钟线不分类（方向以日线大周期为准，避免年化失真）
-    feat = compute_trend_features(df, classify_trend=is_daily)
+    # 主图方法论特征：优先用前端传入；否则后端自算（日线做 5 类分类，分钟线不分类避免年化失真）
+    feat = trend_features or compute_trend_features(df, classify_trend=is_daily)
     trend_block = _trend_diagnosis_block(feat, with_classify=is_daily)
 
     # 大周期方向块：仅分钟线呈现日线大周期（周期扩散——大周期定方向）
@@ -585,6 +622,178 @@ def _build_enhanced_prompt(df, symbol: str = "", market: str = "a", user_context
 }}
 
 重要：每步摘要≤2句、reasons/risk_factors 数组≤3项，控制长度避免截断。target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
+hold 操作时 target_price 填写当前价格附近的关键支撑或压力位。
+"""
+
+
+def _build_legacy_prompt(df, symbol: str = "", market: str = "a", user_context: Optional[Dict[str, Any]] = None,
+                         indicators: Optional[Dict[str, Any]] = None) -> str:
+    """Classic four-step decision prompt (legacy methodology).
+
+    Prefers client-supplied ``indicators``; falls back to df columns (xbot / no client).
+    """
+    latest = df.iloc[-1]
+    recent = df.tail(10)
+    ind = indicators or {}
+
+    def _ind(key: str, default: float = 0.0) -> float:
+        v = ind.get(key) if ind else None
+        if v is None:
+            v = latest.get(key)
+        return _safe_float(v, default)
+
+    close = _safe_float(latest.get("close"))
+    high = _safe_float(latest.get("high"))
+    low = _safe_float(latest.get("low"))
+    open_price = _safe_float(latest.get("open"))
+    volume = _safe_float(latest.get("volume"))
+    ma10 = _ind("ma10")
+    ma30 = _ind("ma30")
+    ma60 = _ind("ma60")
+    rsi = _ind("rsi", 50.0)
+    atr = _ind("atr")
+    macd = _ind("macd")
+    macd_dea = _ind("macd_dea")
+    macd_bar = _ind("macd_bar")
+
+    ma_trend = "多头排列" if ma10 > ma30 else "空头排列"
+    rsi_state = "超买区" if rsi > 70 else ("超卖区" if rsi < 30 else "中性区")
+    macd_state = "多头" if macd > macd_dea else "空头"
+
+    holding_qty = int(user_context.get("holding_quantity") or 0) if user_context else 0
+    cost_price = _safe_float(user_context.get("cost_price") if user_context else 0)
+    max_position = int(user_context.get("max_position") or 0) if user_context else 0
+
+    if market == "futures":
+        position_info = (
+            f"""## 当前持仓状态（期货）
+- 持有数量: {holding_qty}手
+- 成本价: {cost_price:.2f}元
+- 当前价格: {close:.2f}元
+- 最大持仓: {max_position}手
+"""
+            if holding_qty > 0 or cost_price > 0 or max_position > 0
+            else """## 当前持仓状态（期货）
+- 当前无持仓（空仓）
+"""
+        )
+        account_info = """## 账户状态
+- 交易品类: 期货
+- 交易方向: 支持做多（open_long/close_long）和做空（open_short/close_short）
+- 注意: 期货有杠杆，需严格控制仓位和止损
+"""
+        costs_info = """## 交易成本
+- 期货保证金交易，杠杆放大盈亏
+- 持仓过夜有隔夜风险，注意合约到期日
+"""
+        system_title = f"# 期货交易决策系统 - {symbol or 'UNKNOWN'}"
+        system_role = "你是一位经验丰富的期货交易员，精通技术分析与趋势判断，能够同时操作多空两个方向。"
+        action_enum = "open_long|close_long|open_short|close_short|hold"
+        position_unit = "手"
+    else:
+        position_info = (
+            f"""## 当前持仓状态（股票）
+- 持有数量: {holding_qty}股
+- 成本价: {cost_price:.2f}元
+- 当前价格: {close:.2f}元
+- 最大持仓: {max_position}股
+"""
+            if holding_qty > 0 or cost_price > 0 or max_position > 0
+            else """## 当前持仓状态（股票）
+- 当前无持仓（空仓）
+"""
+        )
+        account_info = """## 账户状态
+- 交易品类: 股票
+- 交易限制: 股票只能做多，不支持做空
+"""
+        costs_info = """## 交易成本
+- 股票全额买入（无杠杆）
+- 交易手续费、印花税会影响实际收益
+"""
+        system_title = f"# 股票交易决策系统 - {symbol or 'UNKNOWN'}"
+        system_role = "你是一位经验丰富的股票投资专家，精通技术分析与择时，需要基于市场数据做出专业交易决策。"
+        action_enum = "open_long|close_long|adjust_position|hold"
+        position_unit = "股"
+
+    return f"""{system_title}
+
+{system_role}
+
+## 决策周期: 技术快照
+- 当前价格: {close:.2f}
+- MA趋势: {ma_trend} (MA10={ma10:.2f}, MA30={ma30:.2f}, MA60={ma60:.2f})
+- 价格K线: 开盘{open_price:.2f} / 最高{high:.2f} / 最低{low:.2f}
+- MACD: {macd_state} (MACD={macd:.4f}, DEA={macd_dea:.4f}, BAR={macd_bar:.4f})
+- RSI: {rsi:.1f} ({rsi_state})
+- ATR: {atr:.4f}
+- 成交量: {volume:,.0f}
+
+## 最近10根收盘价
+{recent['close'].to_string()}
+
+## 最近10根成交量
+{recent['volume'].to_string()}
+
+{position_info}
+
+{account_info}
+
+{costs_info}
+
+---
+
+# 决策任务
+请按照专业交易员的思维框架，系统性地分析并输出交易决策。
+
+## 第一步：市场状态诊断
+- 当前市场处于什么状态？（强势趋势/温和趋势/震荡/反转）
+- 主要驱动因素是什么？（价格突破/成交量确认/技术指标）
+- 市场情绪如何？（恐慌/贪婪/犹豫/理性）
+- 波动率处于什么状态？（扩张/收缩/正常）
+
+## 第二步：交易机会评估
+- 识别到的机会是什么？（趋势跟随/均值回归/突破/观望）
+- 信号强度如何？（强/中/弱）
+- 确认程度如何？（多重确认/部分确认/单一信号）
+- 时间窗口如何？（立即/短期观察/继续跟踪）
+- 机会质量评级？（A级优质/B级良好/C级一般/D级观望）
+
+## 第三步：风险收益分析
+- 预期收益是多少？（目标价位和预期收益率）
+- 潜在风险是多少？（止损价位和最大亏损）
+- 风险收益比是否合适？当前应该激进、稳健还是保守？
+- 主要风险因素有哪些？（技术风险/消息风险/流动性风险）
+
+## 第四步：执行方案制定
+- 具体操作：开多/平多/开空/平空/观望
+- 仓位建议：建议仓位（单位：{position_unit}）与风险敞口
+- 入场时机：立即还是等待确认
+- 出场计划：止损价位、止盈价位
+
+---
+
+# 决策输出格式
+请仅输出以下标准JSON格式（不要markdown）：
+{{
+  "action": "{action_enum}",
+  "target_position": <int, 目标总持仓（仅用于adjust_position，必须>=0）>,
+  "position_size": <int, 本次操作数量（单位：{position_unit}）>,
+  "target_price": <float, 【必填，非null非0】根据技术分析推算的目标价格>,
+  "stop_loss": <float, 【必填，非null非0】止损价格>,
+  "take_profit": <float, 止盈价格>,
+  "confidence": <float 0.0-1.0 或 0-100>,
+  "summary": "<必填，1句可读中文摘要，概括方向、核心理由和主要风险>",
+  "reasons": ["关键理由1", "关键理由2", "关键理由3"],
+  "market_diagnosis": "<第一步摘要>",
+  "opportunity_assessment": "<第二步摘要>",
+  "risk_analysis": "<第三步摘要>",
+  "execution_plan": "<第四步摘要>",
+  "risk_factors": ["风险1", "风险2"],
+  "opportunity_quality": "A|B|C|D"
+}}
+
+重要：target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
 hold 操作时 target_price 填写当前价格附近的关键支撑或压力位。
 """
 

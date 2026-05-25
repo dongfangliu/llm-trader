@@ -26,6 +26,9 @@ async def submit_analysis(
     ohlcv_bars: Optional[list] = None,
     is_pro_trial: bool = False,
     is_deep: bool = False,
+    trend_features: Optional[dict] = None,
+    trend_higher: Optional[dict] = None,
+    indicators: Optional[dict] = None,
 ) -> str:
     """Submit analysis task to worker queue. Returns task_id.
 
@@ -65,6 +68,9 @@ async def submit_analysis(
         _job_id=task_id,
         is_pro_trial=is_pro_trial,
         is_deep=is_deep,
+        trend_features=trend_features,
+        trend_higher=trend_higher,
+        indicators=indicators,
     )
 
     return task_id

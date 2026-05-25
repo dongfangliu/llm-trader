@@ -95,6 +95,40 @@ const latest = computed<number | null>(() => props.result?.data?.latest_price ??
 const target = computed<number | null>(() => props.result?.result?.target_price ?? null)
 const stopLoss = computed<number | null>(() => props.result?.result?.stop_loss ?? null)
 
+// ── 趋势诊断（趋势跟随方法论特征；前端自算 / 后端透传，存于 result.result.trend）──
+const trend = computed<any>(() => props.result?.result?.trend ?? null)
+const trendHigher = computed<any>(() => props.result?.result?.trend_higher ?? null)
+const revFlags = computed<string[]>(() => {
+  const r = trend.value?.reversal || {}
+  return Object.keys(r).filter((k) => r[k])
+})
+const dedItems = computed(() => {
+  const d = trend.value?.deduction || {}
+  return [20, 60, 120].map((n) => ({ n, ...(d[n] || d[String(n)] || {}) }))
+})
+const pbItems = computed(() => {
+  const p = trend.value?.pullback || {}
+  return [20, 60, 120].map((n) => ({ n, v: p['ma' + n] })).filter((x) => x.v != null)
+})
+function fmtNum(v: any): string {
+  return v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(2)
+}
+function alignColor(a: string | null | undefined): string {
+  if (a === '多头排列') return '#dc2626'
+  if (a === '空头排列') return '#16a34a'
+  return '#8e8e93'
+}
+function dirColor(wr: boolean | null | undefined): string {
+  if (wr === true) return '#dc2626'
+  if (wr === false) return '#16a34a'
+  return '#8e8e93'
+}
+function dirLabel(wr: boolean | null | undefined): string {
+  if (wr === true) return '将上行'
+  if (wr === false) return '将下行'
+  return '—'
+}
+
 const ACTION_CONFIG: Record<string, any> = {
   buy: {
     text: '看涨', color: '#dc2626', dimColor: 'rgba(220,38,38,0.55)',
@@ -141,9 +175,11 @@ const NARRATIVE_SECTIONS = [
   { key: 'execution_plan',         icon: '行', title: '执行方案', tint: '#10b981' },
 ]
 
-const KEYWORDS = ['RSI', 'MACD', 'MA10', 'MA20', 'MA30', 'MA60', 'KDJ', 'EMA', 'ATR',
+const KEYWORDS = ['RSI', 'MACD', 'MA10', 'MA20', 'MA30', 'MA60', 'MA120', 'KDJ', 'EMA', 'ATR',
   '均线', '金叉', '死叉', '支撑', '阻力', '超买', '超卖', '成交量', '换手率', '布林',
-  '趋势', '突破', '压力', '量能', '筑底', '顶部', '背离']
+  '趋势', '突破', '压力', '量能', '筑底', '顶部', '背离',
+  '密集成交区', '抵扣价', '多头排列', '空头排列', '拐头', '交叉', '破线',
+  '底部构造', '顶部构造', '回撤', '排列', '密集', '时钟方向']
 
 function highlightText(text: string, accent: string): Array<{ text: string; isKeyword: boolean; isNumber: boolean }> {
   const pattern = new RegExp(`(\\d+\\.?\\d*%|\\d+\\.?\\d*x|${KEYWORDS.join('|')})`, 'g')
@@ -437,6 +473,53 @@ async function handleShare() {
           </div>
           <div v-if="result.result.reason.indexOf('。') !== -1 && result.result.reason.slice(result.result.reason.indexOf('。') + 1).trim()" class="rs-reason-body">
             {{ result.result.reason.slice(result.result.reason.indexOf('。') + 1).trim() }}
+          </div>
+        </div>
+
+        <!-- ── 趋势诊断 (trend-following methodology) ── -->
+        <div v-if="trend" class="rs-section">
+          <div class="rs-section-label">趋势诊断</div>
+
+          <div v-if="trendHigher" class="rs-trend-higher">
+            <span class="rs-trend-higher-tag">日线大周期</span>
+            <span class="rs-trend-higher-type">{{ trendHigher.trend_type || '方向参考' }}</span>
+            <span v-if="trendHigher.alignment" class="rs-trend-pill" :style="{ color: alignColor(trendHigher.alignment), background: alignColor(trendHigher.alignment) + '18' }">{{ trendHigher.alignment }}</span>
+          </div>
+
+          <div class="rs-trend-head">
+            <span v-if="trend.trend_type" class="rs-trend-clock">{{ trend.trend_type }}</span>
+            <span v-if="trend.alignment" class="rs-trend-pill" :style="{ color: alignColor(trend.alignment), background: alignColor(trend.alignment) + '18' }">{{ trend.alignment }}</span>
+            <span v-if="trend.converged" class="rs-trend-pill" style="color:#b45309;background:rgba(245,158,11,0.14);">均线密集</span>
+          </div>
+
+          <!-- 抵扣价：预测均线方向（方法论核心信号）-->
+          <div class="rs-trend-ded">
+            <div class="rs-trend-ded-title">抵扣价 · 预测均线方向<span v-if="trend.ma_spread_pct != null"> · 密集度 {{ trend.ma_spread_pct.toFixed(2) }}%</span></div>
+            <div class="rs-trend-ded-row">
+              <div v-for="it in dedItems" :key="it.n" class="rs-trend-ded-cell">
+                <span class="rs-trend-ded-ma">MA{{ it.n }}</span>
+                <span class="rs-trend-ded-dir" :style="{ color: dirColor(it.will_rise) }">{{ dirLabel(it.will_rise) }}</span>
+                <span class="rs-trend-ded-price" :class="{ 'rs-locked-inline': isFree }">{{ isFree ? '██' : fmtNum(it.price) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 密集成交区 + 回撤位 -->
+          <div class="rs-indicator-grid" style="margin-top:10px;">
+            <div v-if="trend.consolidation && trend.consolidation.in != null" class="rs-indicator-card">
+              <div class="rs-indicator-name">密集成交区</div>
+              <div class="rs-indicator-value">{{ trend.consolidation.in ? (trend.consolidation.days + '根') : '否' }}</div>
+              <div v-if="trend.consolidation.in" class="rs-indicator-status" style="color:#8e8e93;" :class="{ 'rs-locked-inline': isFree }">{{ isFree ? '██~██' : (fmtNum(trend.consolidation.box_lo) + '~' + fmtNum(trend.consolidation.box_hi)) }}</div>
+            </div>
+            <div v-for="it in pbItems" :key="'pb' + it.n" class="rs-indicator-card">
+              <div class="rs-indicator-name">距MA{{ it.n }}</div>
+              <div class="rs-indicator-value" :style="{ color: it.v >= 0 ? '#dc2626' : '#16a34a' }">{{ (it.v >= 0 ? '+' : '') + it.v.toFixed(1) }}%</div>
+            </div>
+          </div>
+
+          <div v-if="revFlags.length" class="rs-trend-rev">
+            <span class="rs-trend-rev-label">转折迹象</span>
+            <span v-for="f in revFlags" :key="f" class="rs-trend-rev-chip">{{ f }}</span>
           </div>
         </div>
 

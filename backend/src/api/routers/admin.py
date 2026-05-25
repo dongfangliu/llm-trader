@@ -665,12 +665,16 @@ def _build_default_settings() -> dict:
             "basic_features": [],
             "premium_features": [],
         },
+        "methodology": {
+            # 分析方法论：trend=趋势跟随(最新) / legacy=经典四步。仅 admin 可配，用户不可选。
+            "mode": "trend",
+        },
     }
 
 
 async def _overlay_db_settings(db: AsyncSession, result: dict) -> dict:
     """Overlay DB-saved values on top of defaults."""
-    for section in ("llm", "llm_model_review", "afdian", "email", "app", "pricing"):
+    for section in ("llm", "llm_model_review", "afdian", "email", "app", "pricing", "methodology"):
         row = await db.get(SystemSetting, section)
         if not row:
             continue
@@ -691,7 +695,7 @@ async def _overlay_db_settings(db: AsyncSession, result: dict) -> dict:
     return result
 
 
-_ALLOWED_SETTINGS_SECTIONS = {"llm", "llm_model_review", "afdian", "email", "app", "pricing"}
+_ALLOWED_SETTINGS_SECTIONS = {"llm", "llm_model_review", "afdian", "email", "app", "pricing", "methodology"}
 
 
 @router.get("/settings")
