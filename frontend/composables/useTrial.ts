@@ -7,7 +7,12 @@ export function useTrial() {
   const showGuestTrialEndedScreen = ref(false)
   const showProTrialWelcomeModal = ref(false)
   const showProTrialEndedBanner = ref(false)  // registered users who have used their trial
+  const showProTrialNextSteps = ref(false)    // registered: save-to-home → upgrade, shown once after the pro trial
   const trialActivated = ref(false)           // true from modal confirm until result returns
+  // One-shot flag: the result the user is currently viewing IS their trial result.
+  // Set when the trial result returns, consumed when the result sheet closes to drive
+  // the next guidance step (guest → register/save screen, registered → save/upgrade sheet).
+  const postTrialPending = ref(false)
 
   // Called when user confirms the ProTrialWelcomeModal ("立即开始体验")
   function activateTrial() {
@@ -37,15 +42,22 @@ export function useTrial() {
     showProTrialEndedBanner.value = false
   }
 
+  function dismissProTrialNextSteps() {
+    showProTrialNextSteps.value = false
+  }
+
   return {
     showGuestTrialEndedScreen,
     showProTrialWelcomeModal,
     showProTrialEndedBanner,
+    showProTrialNextSteps,
     trialActivated,
+    postTrialPending,
     activateTrial,
     handleGuestTrialExpired,
     handleRegisteredTrialExpired,
     dismissGuestTrialScreen,
     dismissProTrialEndedBanner,
+    dismissProTrialNextSteps,
   }
 }

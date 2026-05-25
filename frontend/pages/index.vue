@@ -34,12 +34,15 @@ const {
   showGuestTrialEndedScreen,
   showProTrialWelcomeModal,
   showProTrialEndedBanner,
+  showProTrialNextSteps,
   trialActivated,
+  postTrialPending,
   activateTrial,
   handleGuestTrialExpired,
   handleRegisteredTrialExpired,
   dismissGuestTrialScreen,
   dismissProTrialEndedBanner,
+  dismissProTrialNextSteps,
 } = useTrial()
 
 // ── Panel state ──
@@ -414,6 +417,11 @@ watch(result, (newResult) => {
     sheetResult.value = newResult
     fetchQuota()
     trialActivated.value = false
+    // If this result is the user's one-time pro trial, arm the post-trial guidance.
+    // Consumed when the result sheet closes (handleResultClose): guest → register/save
+    // screen, registered → save-to-home/upgrade sheet. Tied to the trial result itself
+    // (not the async quota refetch) so it fires exactly once.
+    if (isFirstTrial.value) postTrialPending.value = true
     stopNarrativeLoop()
     clearTimeout(analyzeTimeoutTimer)
 
@@ -546,6 +554,31 @@ function goUpgrade(context = 'analysis_page') {
     tier: tier.value,
   })
   router.push('/upgrade')
+}
+
+// Closing the result sheet is the hand-off point of the onboarding funnel.
+// If the result just viewed was the one-time pro trial, drive the next guidance step.
+function handleResultClose() {
+  resultSheetOpen.value = false
+  if (!postTrialPending.value) return
+  postTrialPending.value = false
+  if (!auth.isLoggedIn) {
+    // Guest → register + save-to-home (GuestTrialEndedScreen covers both)
+    showGuestTrialEndedScreen.value = true
+  } else if (auth.user && (auth.user.tier === 'free' || auth.user.tier === 'basic')) {
+    // Registered free/basic who just used their pro trial → save-to-home → upgrade
+    showProTrialNextSteps.value = true
+  }
+}
+
+// Guest tapped a register CTA inside the result sheet.
+function handleResultRegister() {
+  void trackGrowthEvent('result_register_clicked', {
+    market: market.value,
+    symbol: analysisStore.symbol,
+    context: 'result_sheet_guest',
+  })
+  router.push(registerPath.value)
 }
 
 function openHistoryDetail(item: any) {
@@ -935,9 +968,11 @@ function handleLogout() {
       :selectedHistoryId="selectedHistoryId"
       :isSaved="selectedHistoryId ? (history.find(h => h.id === selectedHistoryId)?.isFavorited ?? false) : false"
       :appName="appName"
-      @close="resultSheetOpen = false"
+      :isGuest="!auth.isLoggedIn"
+      @close="handleResultClose"
       @save="handleToggleFavorite"
       @share="() => {}"
+      @register="handleResultRegister"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
       @upgrade="goUpgrade('result_sheet_desktop_secondary')"
     />
@@ -1397,9 +1432,11 @@ function handleLogout() {
       :selectedHistoryId="selectedHistoryId"
       :isSaved="selectedHistoryId ? (history.find(h => h.id === selectedHistoryId)?.isFavorited ?? false) : false"
       :appName="appName"
-      @close="resultSheetOpen = false"
+      :isGuest="!auth.isLoggedIn"
+      @close="handleResultClose"
       @save="handleToggleFavorite"
       @share="() => {}"
+      @register="handleResultRegister"
       @historySelect="(id: string) => { const item = history.find(h => h.id === id); if (item) { sheetResult = item.detail; selectedHistoryId = item.id; } }"
       @upgrade="goUpgrade('result_sheet_mobile')"
     />
@@ -1446,30 +1483,47 @@ function handleLogout() {
       </div>
     </Teleport>
 
-    <!-- ═══ GUEST TRIAL ENDED ═══ -->
-    <TrialGuestTrialEndedScreen v-if="showGuestTrialEndedScreen" :appName="appName" @dismiss="dismissGuestTrialScreen"/>
-
-    <!-- ═══ PRO TRIAL WELCOME ═══ -->
-    <TrialProTrialWelcomeModal v-if="showProTrialWelcomeModal" :appName="appName" @dismiss="activateTrial"/>
-
-    <!-- ═══ PRO TRIAL IN PROGRESS (floating capsule, layout-agnostic) ═══ -->
-    <TrialProTrialInProgressBanner v-if="showTrialInProgressBanner" />
-
-    <!-- ═══ BACKGROUND ANALYSIS INDICATOR (premium) ═══ -->
-    <AnalysisBackgroundAnalysisIndicator
-      v-model="isBackgroundMode"
-      :symbol="analyzingSymbol"
-      :is-desktop="isDesktop"
-    />
-
-    <!-- ═══ ANALYSIS READY NOTIFICATION (premium) ═══ -->
-    <AnalysisAnalysisReadyNotification
-      v-model="showAnalysisNotification"
-      :symbol="pendingResultSymbol"
-      :is-desktop="isDesktop"
-      @view="handleNotificationView"
-      @dismiss="handleNotificationDismiss"
-    />
-
   </div><!-- end mobile -->
+
+  <!-- ═══════════════════════════════════════════════════
+       SHARED OVERLAYS — render on BOTH desktop & mobile.
+       All are position:fixed / Teleport (layout-agnostic) and
+       gate themselves via their own v-if state. Previously these
+       lived inside the mobile-only block, so desktop never showed
+       the welcome modal, the guest register/save screen, or the
+       background-analysis notification.
+       ═══════════════════════════════════════════════════ -->
+
+  <!-- Guest: register + save-to-home (after trial) -->
+  <TrialGuestTrialEndedScreen v-if="showGuestTrialEndedScreen" :appName="appName" @dismiss="dismissGuestTrialScreen"/>
+
+  <!-- Registered: save-to-home → upgrade (after pro trial) -->
+  <TrialProTrialNextStepsSheet
+    v-if="showProTrialNextSteps"
+    :appName="appName"
+    @dismiss="dismissProTrialNextSteps"
+    @upgrade="goUpgrade('pro_trial_next_steps')"
+  />
+
+  <!-- Pro trial welcome -->
+  <TrialProTrialWelcomeModal v-if="showProTrialWelcomeModal" :appName="appName" @dismiss="activateTrial"/>
+
+  <!-- Pro trial in progress (floating capsule) -->
+  <TrialProTrialInProgressBanner v-if="showTrialInProgressBanner" />
+
+  <!-- Background analysis indicator (premium / trial) -->
+  <AnalysisBackgroundAnalysisIndicator
+    v-model="isBackgroundMode"
+    :symbol="analyzingSymbol"
+    :is-desktop="isDesktop"
+  />
+
+  <!-- Analysis ready notification (premium / trial) -->
+  <AnalysisAnalysisReadyNotification
+    v-model="showAnalysisNotification"
+    :symbol="pendingResultSymbol"
+    :is-desktop="isDesktop"
+    @view="handleNotificationView"
+    @dismiss="handleNotificationDismiss"
+  />
 </template>

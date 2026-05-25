@@ -12,6 +12,7 @@ const props = defineProps<{
   selectedHistoryId?: string
   isSaved?: boolean
   appName?: string
+  isGuest?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   (e: 'save'): void
   (e: 'historySelect', id: string): void
   (e: 'upgrade'): void
+  (e: 'register'): void
 }>()
 
 const closing = ref(false)
@@ -658,6 +660,29 @@ async function handleShare() {
           </button>
         </div>
 
+        <!-- ── GUEST REGISTER CARD (after a guest's pro-trial result) ── -->
+        <div v-if="isGuest" class="rs-section">
+          <div style="position: relative; border-radius: 18px; overflow: hidden; background: linear-gradient(150deg, #1c1c1e 0%, #2a2a32 100%); box-shadow: 0 8px 28px rgba(0,0,0,0.18);">
+            <div style="position: absolute; top: -44px; right: -34px; width: 168px; height: 168px; border-radius: 50%; background: radial-gradient(circle, rgba(0,122,255,0.34) 0%, transparent 70%); pointer-events: none;"/>
+            <div style="position: relative; padding: 20px 20px 18px;">
+              <div style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.1); border-radius: 9999px; padding: 4px 11px; margin-bottom: 12px;">
+                <span style="font-size: 11px;">✦</span>
+                <span style="font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.3px;">专业版体验结果</span>
+              </div>
+              <h3 style="font-size: 18px; font-weight: 700; color: #fff; margin: 0 0 6px; letter-spacing: -0.3px;">注册账号，保存这份报告</h3>
+              <p style="font-size: 13px; color: rgba(255,255,255,0.62); margin: 0 0 16px; line-height: 1.6;">免费注册即可收藏本次分析，并享每日免费深度研判</p>
+              <button
+                @click="emit('register')"
+                style="width: 100%; height: 48px; background: var(--ios-blue); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; box-shadow: 0 4px 16px rgba(0,122,255,0.4); display: flex; align-items: center; justify-content: center; gap: 6px;"
+              >
+                免费注册保存
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </button>
+              <NuxtLink to="/login" style="display: block; text-align: center; margin-top: 10px; font-size: 13px; color: rgba(255,255,255,0.55); text-decoration: none; -webkit-tap-highlight-color: transparent;">已有账号？登录</NuxtLink>
+            </div>
+          </div>
+        </div>
+
         <div style="height: 6px;"/>
       </div>
 
@@ -666,7 +691,7 @@ async function handleShare() {
         <div class="rs-footer-actions">
           <!-- Bookmark button -->
           <button
-            @click="emit('save')"
+            @click="isGuest ? emit('register') : emit('save')"
             :disabled="saveLongLoading"
             class="rs-btn-bookmark"
             :style="{
@@ -678,7 +703,7 @@ async function handleShare() {
             <svg width="18" height="18" viewBox="0 0 24 24" :fill="isSaved ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
             </svg>
-            <span class="rs-bookmark-label">{{ isSaved ? '查看' : '收藏' }}</span>
+            <span class="rs-bookmark-label">{{ isGuest ? '注册保存' : (isSaved ? '查看' : '收藏') }}</span>
           </button>
 
           <!-- Share button -->
