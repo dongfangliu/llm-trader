@@ -7,10 +7,10 @@
 #   ./deploy.sh --no-cache     # 强制完整重新构建（不使用 Docker 缓存）
 #   ./deploy.sh --skip-pull    # 跳过 git pull（仅重建+重启）
 #   ./deploy.sh --configure    # 跳过询问，直接进入交互式配置向导（重写 .env，先备份）
-#   ./deploy.sh --bootstrap    # 强制重跑依赖引导（安装缺失依赖 + 防火墙放行 + 开机自启）
+#   ./deploy.sh --bootstrap    # 强制重跑依赖引导（安装缺失依赖；并打印端口提醒）
 #   ./deploy.sh --no-bootstrap # 跳过自动安装，仅校验依赖（缺失即退出，旧行为）
 #
-# 首次部署到全新 Ubuntu/Debian 服务器：自动安装 git/curl/docker、放行防火墙、设开机自启；
+# 首次部署到全新 Ubuntu/Debian 服务器：自动安装 git/curl/docker（端口放行/开机自启请自行处理，脚本仅提醒）；
 # 若在 .env 配置 CLOUDFLARE_TUNNEL_TOKEN，则自动起 cloudflared 并验证公网 HTTPS 可用。
 # =============================================================================
 
@@ -284,37 +284,12 @@ ensure_docker() {
   log_ok "Docker Compose 就绪"
 }
 
-# 防火墙放行（幂等；不主动 enable，避免 SSH 自锁）
-setup_firewall() {
-  ensure_sudo
-  if ! command -v ufw &>/dev/null; then
-    ensure_apt
-    log_info "安装 ufw..."
-    $SUDO apt-get install -y ufw || { log_warn "ufw 安装失败，跳过防火墙配置"; return; }
-  fi
-  log_info "放行端口 22（SSH，Tunnel 模式下仅此为必需）/ 80 / 443..."
-  $SUDO ufw allow 22  &>/dev/null || true
-  $SUDO ufw allow 80  &>/dev/null || true
-  $SUDO ufw allow 443 &>/dev/null || true
-  log_ok "防火墙规则已放行（未自动启用，如需开启： sudo ufw enable）"
-}
-
-# 开机自启 crontab（幂等）
-setup_autostart_cron() {
-  if ! command -v crontab &>/dev/null; then
-    log_warn "未检测到 crontab，跳过开机自启配置（各服务已 restart: unless-stopped，重启仍会自恢复）"
-    return
-  fi
-  local cron_line="@reboot cd \"$SCRIPT_DIR\" && docker compose up -d >> /var/log/trader-startup.log 2>&1"
-  if crontab -l 2>/dev/null | grep -qF "$SCRIPT_DIR && docker compose up -d"; then
-    log_ok "开机自启 crontab 已存在，跳过"
-    return
-  fi
-  if ( crontab -l 2>/dev/null; echo "$cron_line" ) | crontab -; then
-    log_ok "已添加开机自启 crontab（@reboot docker compose up -d）"
-  else
-    log_warn "添加 crontab 失败，可手动添加： $cron_line"
-  fi
+# 防火墙 / 端口提醒（仅打 log，不自动配置——由用户自行在阿里云安全组/服务器防火墙处理）
+remind_firewall() {
+  log_warn "请自行在【阿里云安全组 + 服务器防火墙】放行所需端口（脚本不代为配置）："
+  echo -e "    · ${BOLD}22${NC}（SSH）—— 必需"
+  echo -e "    · 用 ${BOLD}Cloudflare Tunnel${NC}（推荐）：${GREEN}无需放行 80/443${NC}（cloudflared 主动出站，仅需放行出站 443）"
+  echo -e "    · 用直连/宝塔 Nginx：需放行 ${BOLD}80${NC}、${BOLD}443${NC}"
 }
 
 DEPLOY_START=$(date +%s)
@@ -356,9 +331,8 @@ else
   fi
 
   if [ "$FIRST_TIME" = true ] || [ "$BOOTSTRAP" = true ]; then
-    log_section "服务器初始化（防火墙 / 开机自启）"
-    setup_firewall
-    setup_autostart_cron
+    log_section "端口提醒（不自动配置，请自行处理）"
+    remind_firewall
   fi
 fi
 
