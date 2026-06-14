@@ -17,7 +17,7 @@
             stroke-dasharray="25 13"
           />
         </svg>
-        <span>正在后台分析 {{ symbol }}…</span>
+        <span>{{ (count ?? 0) > 1 ? `正在后台分析 ${count} 个…` : `正在后台分析 ${symbol}…` }}</span>
       </div>
     </Transition>
   </Teleport>
@@ -27,6 +27,7 @@
 defineProps<{
   modelValue: boolean
   symbol: string
+  count?: number
   isDesktop?: boolean
 }>()
 </script>
@@ -34,7 +35,8 @@ defineProps<{
 <style scoped>
 .bg-indicator-pill {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  /* 上移到 FAB(底部主按钮)之上，避免遮挡按钮（FAB 栈约 120px 高） */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 130px);
   left: 50%;
   transform: translateX(-50%);
   display: inline-flex;

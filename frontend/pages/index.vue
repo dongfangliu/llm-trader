@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api from '~/lib/api'
 import { stripClock } from '~/lib/format'
 import { preloadAll, preloadMarket, searchSymbols, getSymbolName } from '~/composables/useSymbolCache'
-import { useAnalysis } from '~/composables/useAnalysis'
+import { useAnalysis, type BgTask } from '~/composables/useAnalysis'
 import { useQuota } from '~/composables/useQuota'
 import { useTrial } from '~/composables/useTrial'
 import { useAuthStore } from '~/stores/auth'
@@ -23,7 +23,8 @@ const { trackGrowthEvent } = useGrowthEvents()
 
 const {
   isAnalyzing, taskId, result, historyId, error, errorCode, progress, statusMessage, isFirstTrial,
-  submitAnalysis, clearState
+  submitAnalysis, clearState,
+  bgTasks, runningCount, submitBackgroundAnalysis,
 } = useAnalysis()
 
 const {
@@ -175,7 +176,9 @@ const isRegisteredProTrial = computed(() =>
   !auth.user.has_had_pro_trial
 )
 const effectiveTier = computed(() => (isGuestTrial.value || isRegisteredProTrial.value) ? 'premium' : tier.value)
-const showTrialInProgressBanner = computed(() => trialActivated.value && isAnalyzing.value)
+const showTrialInProgressBanner = computed(() => trialActivated.value && (isAnalyzing.value || runningCount.value > 0))
+// 后台多任务指示器：取第一条进行中的标的（多于一条时改用计数文案）
+const bgIndicatorSymbol = computed(() => bgTasks.value.find(t => t.status === 'running')?.symbol || '')
 
 // Tier to pass to AnalysisResultSheet: if the selected history item is a pro trial, show as premium
 const sheetTier = computed(() => {
@@ -516,26 +519,97 @@ async function handleToggleFavorite() {
   }
 }
 
-async function handleAnalyze() {
-  if (!symbol.value.trim() || isAnalyzing.value) return
-  clearState()
-  analysisStore.setSymbol(symbol.value.toUpperCase())
+function handleAnalyze() {
+  if (!symbol.value.trim()) return
+  const sym = symbol.value.toUpperCase()
+  analysisStore.setSymbol(sym)
   analysisStore.setMarket(market.value)
   analysisStore.setPeriod(period.value)
-  void trackGrowthEvent('analysis_submitted', {
-    market: market.value,
-    symbol: symbol.value.toUpperCase(),
-    period: period.value,
-    tier: effectiveTier.value,
-    landing_prefilled: landingPrefilled.value,
-  })
-  await submitAnalysis(symbol.value, market.value, period.value, {
+  const opts = {
     holdingQuantity: holdingQuantity.value ? Number(holdingQuantity.value) : undefined,
     costPrice: costPrice.value ? Number(costPrice.value) : undefined,
     maxPosition: maxPosition.value ? Number(maxPosition.value) : undefined,
     multiPeriodEnabled: multiPeriodEnabled.value,
     auxiliaryPeriods: multiPeriodEnabled.value ? auxiliaryPeriods.value : [],
+  }
+  void trackGrowthEvent('analysis_submitted', {
+    market: market.value,
+    symbol: sym,
+    period: period.value,
+    tier: effectiveTier.value,
+    landing_prefilled: landingPrefilled.value,
   })
+
+  if (effectiveTier.value === 'premium') {
+    // 专业版/体验版：后台多任务——不等结果、可连续发起，每条各自返回
+    error.value = null
+    errorCode.value = null
+    submitBackgroundAnalysis(sym, market.value, period.value, opts, {
+      onComplete: onBgComplete,
+      onError: onBgError,
+    })
+    // 清空输入，便于继续输入下一只
+    symbol.value = ''
+    selectedSymbolName.value = ''
+    showSuggestions.value = false
+    return
+  }
+
+  // 免费/标准版：前台单任务，全屏 loading
+  if (isAnalyzing.value) return
+  clearState()
+  void submitAnalysis(sym, market.value, period.value, opts)
+}
+
+function removeBgTask(task: BgTask) {
+  const idx = bgTasks.value.findIndex(t => t.localId === task.localId)
+  if (idx >= 0) bgTasks.value.splice(idx, 1)
+}
+
+// 后台任务完成：写入历史 + 弹"分析就绪"通知（不打断当前界面）
+function onBgComplete(task: BgTask) {
+  const newResult = task.result
+  if (!newResult) { removeBgTask(task); return }
+  void trackGrowthEvent('analysis_completed', {
+    market: task.market,
+    symbol: task.symbol,
+    tier: 'premium',
+    is_pro_trial: task.isFirstTrial,
+    history_id: task.historyId,
+  })
+  const histItem = {
+    id: task.historyId ? String(task.historyId) : `${task.symbol}_${Date.now()}`,
+    symbol: task.symbol,
+    name: newResult?.data?.name || task.symbol,
+    market: task.market,
+    action: newResult?.result?.action,
+    confidence: newResult?.result?.confidence,
+    analyzedAt: new Date().toISOString(),
+    detail: newResult,
+    positionParams: task.positionParams,
+    isProTrial: task.isFirstTrial,
+    isFavorited: false,
+  }
+  history.value = [histItem, ...history.value]
+  selectedHistoryId.value = histItem.id
+  sheetResult.value = newResult
+  fetchQuota()
+  trialActivated.value = false
+  // 若这是用户的一次性专业版体验，置位以驱动体验后引导（结果弹窗关闭时消费）
+  if (task.isFirstTrial) postTrialPending.value = true
+  pendingResult.value = newResult
+  pendingResultSymbol.value = histItem.name
+  showAnalysisNotification.value = true
+  unreadResults.value += 1
+  removeBgTask(task)
+}
+
+// 后台任务失败：行内展示错误，不影响其它进行中的任务
+function onBgError(task: BgTask) {
+  error.value = task.error
+  errorCode.value = task.errorCode
+  if (task.errorCode === 'trial_expired') handleGuestTrialExpired()
+  removeBgTask(task)
 }
 
 function trackRegisterClick() {
@@ -1511,10 +1585,11 @@ function handleLogout() {
   <!-- Pro trial in progress (floating capsule) -->
   <TrialProTrialInProgressBanner v-if="showTrialInProgressBanner" />
 
-  <!-- Background analysis indicator (premium / trial) -->
+  <!-- Background analysis indicator (premium / trial) — 后台多任务 -->
   <AnalysisBackgroundAnalysisIndicator
-    v-model="isBackgroundMode"
-    :symbol="analyzingSymbol"
+    :model-value="runningCount > 0"
+    :symbol="bgIndicatorSymbol"
+    :count="runningCount"
     :is-desktop="isDesktop"
   />
 
