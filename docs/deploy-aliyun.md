@@ -32,6 +32,10 @@
                                 data-collector (Docker 内网)
 ```
 
+> **两种公网接入方式，二选一：**
+> - **推荐（一键）：Cloudflare Tunnel** —— 见 **第七步**。无需公网 IP / 不开 80-443 / 不管证书，宝塔 + Nginx（第三、八步）可整段跳过。架构为 `浏览器 → Cloudflare → cloudflared 容器 → frontend:3000`。
+> - **传统：公网 IP + 宝塔 Nginx**（上图）—— 见第七步 B / 第八步。
+
 ---
 
 ## 第一步：服务器初始化
@@ -72,7 +76,9 @@ docker compose version
 
 ---
 
-## 第三步：安装宝塔面板
+## （可选）第三步：安装宝塔面板
+
+> 仅「传统：公网 IP + Nginx」方案需要宝塔来配反代/证书。若采用 **Cloudflare Tunnel（推荐）**，可跳过本步，直接到第四步。
 
 ```bash
 wget -O install.sh https://download.bt.cn/install/install-ubuntu_6.0.sh
@@ -205,7 +211,62 @@ docker compose logs -f frontend   # 前端日志
 
 ---
 
-## 第七步：配置域名（Cloudflare）
+## 第七步：公网接入 —— 推荐 Cloudflare Tunnel（一键）
+
+> **TL;DR：** 用 `./deploy.sh` 即可一键完成「装依赖 → 起服务 → 公网 HTTPS」。本步只需在 Cloudflare 后台点两下拿一个 token，剩下的脚本全包。
+>
+> Cloudflare Tunnel 让服务器上的 `cloudflared` 容器**主动向外拨号**到 Cloudflare 边缘，因此：
+> - **无需公网 IP、无需开放 80/443**（连入站防火墙都不用动，仅留 22/SSH）
+> - **无需申请/续期 TLS 证书**（TLS 在 Cloudflare 边缘终结）
+> - **DNS 由 Cloudflare 自动创建**（添加 Public Hostname 时自动建 CNAME）
+>
+> 架构变为：`用户浏览器 (HTTPS) → Cloudflare 边缘 → cloudflared(容器) → frontend:3000`，下面的「第八步 宝塔 Nginx」可整段跳过。
+
+### 1. 在 Cloudflare 后台创建 Tunnel（拿 token）
+
+1. 进入 **Cloudflare Dashboard → Zero Trust → Networks → Tunnels → Create a tunnel**
+2. 选择 **Cloudflared** 类型，命名（如 `trader`）→ 创建
+3. 在「Install and run a connector」页面，**复制 token**（形如 `eyJhI...` 的一长串，紧跟在 `--token` 后面的部分）
+
+### 2. 添加 Public Hostname（路由到容器）
+
+在该 tunnel 的 **Public Hostnames → Add a public hostname**：
+
+| 字段 | 填写 |
+|------|------|
+| Subdomain | 留空（用根域）或填子域，如 `app` |
+| Domain | 选择你的域名（须已在 Cloudflare 托管） |
+| Type | `HTTP` |
+| URL | **`frontend:3000`** ← 容器名，**不是** `localhost` |
+
+保存后，Cloudflare 会**自动创建对应的 DNS CNAME 记录**，无需手动加 A 记录。
+
+> WebSocket（结果页实时分析 `/ws`）默认即可工作，无需额外配置。
+
+### 3. 把 token 填入 .env，重新部署
+
+```bash
+cd /opt/trader
+vim .env
+```
+```env
+CLOUDFLARE_TUNNEL_TOKEN=粘贴你复制的 token
+APP_BASE_URL=https://yourdomain.com      # 必须是你的 https 域名
+ALLOWED_ORIGINS=https://yourdomain.com
+```
+```bash
+./deploy.sh --configure   # 或首次直接 ./deploy.sh（向导里会问 token）
+```
+
+`deploy.sh` 检测到 token 后会自动启动 `cloudflared` 容器，并做**端到端验证**：等隧道注册成功 → `curl https://yourdomain.com/api/health` 返回 `{"status":"ok"}` 即大功告成。若验证失败，脚本会打印精准排查清单（多半是 Public Hostname 的 URL 没填成 `frontend:3000`）。
+
+完成后即可跳到 **第九步：验证部署**。下面的「传统方案」仅在你不想用 Tunnel（如直连服务器公网 IP）时才需要。
+
+---
+
+## （可选/传统方案）第七步 B：配置域名（Cloudflare DNS + 直连）
+
+> 仅当**不使用 Cloudflare Tunnel**、而是用公网 IP + 宝塔 Nginx 直连时才需要本节与第八步。使用 Tunnel 的话整段跳过。
 
 ### 1. 添加 DNS A 记录
 
@@ -266,7 +327,9 @@ cd /opt/trader && docker compose restart backend
 
 ---
 
-## 第八步：配置 Nginx 反向代理
+## （可选/传统方案）第八步：配置 Nginx 反向代理
+
+> 仅适用于**不使用 Cloudflare Tunnel** 的直连方案。用 Tunnel 时无需宝塔 Nginx，请跳过本步直接到第九步。
 
 ### 1. 添加站点
 
