@@ -58,6 +58,20 @@ ALLOWED_MARKETS = {
 }
 
 
+def _validate_position_params(req: AnalyzeRequest) -> None:
+    """Validate optional position params as one complete group."""
+    fields = (req.holding_quantity, req.cost_price, req.max_position)
+    provided_count = sum(value is not None for value in fields)
+    if provided_count not in (0, 3):
+        raise HTTPException(status_code=400, detail="持仓参数需同时填写：持有数量、成本价、最大持仓")
+    if req.holding_quantity is not None and req.holding_quantity < 0:
+        raise HTTPException(status_code=400, detail="持有数量不能为负数")
+    if req.cost_price is not None and req.cost_price <= 0:
+        raise HTTPException(status_code=400, detail="成本价必须大于0")
+    if req.max_position is not None and req.max_position <= 0:
+        raise HTTPException(status_code=400, detail="最大持仓必须大于0")
+
+
 async def _get_basic_deep_daily(db: AsyncSession) -> int:
     """Load basic_deep_daily from DB pricing settings, fallback to config."""
     try:
@@ -124,6 +138,8 @@ async def analyze(
 
     if usage_mode == "device" and not device_id:
         raise HTTPException(status_code=400, detail="device_id is required for guest mode")
+
+    _validate_position_params(req)
 
     # Get LLM config from settings
     if not settings.llm_api_key:
@@ -211,14 +227,6 @@ async def analyze(
             status_code=429,
             detail={"code": "quota_exceeded", "message": "今日分析次数已用完，请升级套餐获取更多次数"},
         )
-
-    # Validate numeric inputs when provided
-    if req.holding_quantity is not None and req.holding_quantity < 0:
-        raise HTTPException(status_code=400, detail="持有数量不能为负数")
-    if req.cost_price is not None and req.cost_price <= 0:
-        raise HTTPException(status_code=400, detail="成本价必须大于0")
-    if req.max_position is not None and req.max_position <= 0:
-        raise HTTPException(status_code=400, detail="最大持仓必须大于0")
 
     # Symbol validation
     symbol_clean = req.symbol.strip().upper()

@@ -24,7 +24,7 @@
 | Redis | Redis 容器 | 6379 |
 | Backend | FastAPI | 8000 |
 | Worker | arq LLM Worker | — |
-| Frontend | Next.js | 3000 |
+| Frontend | Nuxt 3 | 3000 |
 
 启动完成后访问：**http://localhost:3000**
 
@@ -95,7 +95,7 @@ SECRET_KEY=local-dev-secret-key
 - **Backend** 标签：API 请求、数据库操作、错误信息
 - **Worker** 标签：LLM 分析任务执行过程、缓存命中情况
 - **Redis** 标签：连接信息
-- **Frontend** 标签：Next.js 编译、HMR 热更新
+- **Frontend** 标签：Nuxt 编译、HMR 热更新
 
 ## 常见问题
 

@@ -210,6 +210,7 @@ const isAnalyzeActive = computed(() =>
         </div>
       </div>
       <button
+        aria-label="打开账户菜单"
         style="width: 36px; height: 36px; border-radius: 50%; background: rgba(0,122,255,0.1); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; -webkit-tap-highlight-color: transparent; transition: background 0.15s;"
         @click="emit('user-menu-open')"
         @mouseenter="(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(0,122,255,0.18)'"

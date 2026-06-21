@@ -18,7 +18,7 @@ LLM 驱动的 A股 / 港股 / 美股 / 期货技术分析 SaaS。
     │
     └── Nginx (80/443)
            │
-           └── frontend:3000  (Next.js)
+           └── frontend:3000  (Nuxt 3)
                     │
                     ├── /api/* 代理 → backend:8000 (FastAPI)
                     └── /ws/*  代理 → backend:8000 (WebSocket)
@@ -34,7 +34,7 @@ LLM 驱动的 A股 / 港股 / 美股 / 期货技术分析 SaaS。
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| `frontend` | 3000 | Next.js，用户界面 |
+| `frontend` | 3000 | Nuxt 3，用户界面 |
 | `backend` | 8000 | FastAPI，REST API + WebSocket |
 | `worker` | — | arq 后台 Worker，执行 LLM 分析 |
 | `redis` | 6379 | 任务队列 + 分析结果缓存 |

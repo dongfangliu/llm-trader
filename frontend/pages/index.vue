@@ -191,6 +191,12 @@ const sheetTier = computed(() => {
 
 const MARKET_LABELS: Record<string, string> = { a: 'A股', hk: '港股', us: '美股', futures: '期货' }
 const VALID_MARKETS = ['a', 'hk', 'us', 'futures']
+const SYMBOL_VALIDATORS: Record<string, { pattern: RegExp; hint: string }> = {
+  a: { pattern: /^\d{6}$/, hint: 'A股代码应为6位数字，如 600519' },
+  hk: { pattern: /^\d{4,5}$/, hint: '港股代码应为4-5位数字，如 00700' },
+  us: { pattern: /^[A-Z]{1,5}$/, hint: '美股代码应为1-5个大写字母，如 AAPL' },
+  futures: { pattern: /^[A-Z]{1,3}$/, hint: '期货代码应为1-3个大写字母，如 MA、SA' },
+}
 const PERIOD_OPTIONS = [
   { value: 'daily', label: '日线' },
   { value: '60', label: '60分' },
@@ -472,6 +478,8 @@ watch(errorCode, (code) => {
 watch(market, () => {
   loadHotStocks()
   selectedSymbolName.value = ''
+  symbolWarning.value = null
+  error.value = null
   suggestions.value = []
   showSuggestions.value = false
 })
@@ -520,15 +528,36 @@ async function handleToggleFavorite() {
 }
 
 function handleAnalyze() {
-  if (!symbol.value.trim()) return
-  const sym = symbol.value.toUpperCase()
+  error.value = null
+  errorCode.value = null
+  symbolWarning.value = null
+
+  const sym = symbol.value.trim().toUpperCase()
+  if (!sym) {
+    symbolWarning.value = '请输入股票或期货代码'
+    symbolInput.value?.focus()
+    return
+  }
+
+  const validator = SYMBOL_VALIDATORS[market.value]
+  if (validator && !validator.pattern.test(sym)) {
+    symbolWarning.value = `代码格式错误：${validator.hint}`
+    symbolInput.value?.focus()
+    return
+  }
+
+  const position = parsePositionParams()
+  if (!position.ok) {
+    error.value = position.message
+    return
+  }
+
+  symbol.value = sym
   analysisStore.setSymbol(sym)
   analysisStore.setMarket(market.value)
   analysisStore.setPeriod(period.value)
   const opts = {
-    holdingQuantity: holdingQuantity.value ? Number(holdingQuantity.value) : undefined,
-    costPrice: costPrice.value ? Number(costPrice.value) : undefined,
-    maxPosition: maxPosition.value ? Number(maxPosition.value) : undefined,
+    ...position.params,
     multiPeriodEnabled: multiPeriodEnabled.value,
     auxiliaryPeriods: multiPeriodEnabled.value ? auxiliaryPeriods.value : [],
   }
@@ -542,15 +571,12 @@ function handleAnalyze() {
 
   if (effectiveTier.value === 'premium') {
     // 专业版/体验版：后台多任务——不等结果、可连续发起，每条各自返回
-    error.value = null
-    errorCode.value = null
     submitBackgroundAnalysis(sym, market.value, period.value, opts, {
       onComplete: onBgComplete,
       onError: onBgError,
     })
-    // 清空输入，便于继续输入下一只
-    symbol.value = ''
-    selectedSymbolName.value = ''
+    // 专业版连续查询：保留输入框内容，按钮保持可点——可立即再次分析或改代码后再分析。
+    // 仅收起联想下拉，避免提交后下拉仍悬浮遮挡。
     showSuggestions.value = false
     return
   }
@@ -610,6 +636,36 @@ function onBgError(task: BgTask) {
   errorCode.value = task.errorCode
   if (task.errorCode === 'trial_expired') handleGuestTrialExpired()
   removeBgTask(task)
+}
+
+function parsePositionParams(): { ok: true; params: { holdingQuantity?: number; costPrice?: number; maxPosition?: number } } | { ok: false; message: string } {
+  const rawHolding = holdingQuantity.value.trim()
+  const rawCost = costPrice.value.trim()
+  const rawMax = maxPosition.value.trim()
+  const filled = [rawHolding, rawCost, rawMax].filter(Boolean).length
+
+  if (filled === 0) return { ok: true, params: {} }
+  if (filled < 3) {
+    return { ok: false, message: '持仓参数需同时填写：持有数量、成本价、最大持仓' }
+  }
+  if (!/^\d+$/.test(rawHolding)) {
+    return { ok: false, message: '持有数量应为非负整数' }
+  }
+  if (!/^\d+(\.\d+)?$/.test(rawCost) || Number(rawCost) <= 0) {
+    return { ok: false, message: '成本价必须大于0' }
+  }
+  if (!/^\d+$/.test(rawMax) || Number(rawMax) <= 0) {
+    return { ok: false, message: '最大持仓必须为正整数' }
+  }
+
+  return {
+    ok: true,
+    params: {
+      holdingQuantity: Number(rawHolding),
+      costPrice: Number(rawCost),
+      maxPosition: Number(rawMax),
+    },
+  }
 }
 
 function trackRegisterClick() {
@@ -675,6 +731,8 @@ function onSymbolInput(e: Event) {
   if (isComposing) return
   const val = (e.target as HTMLInputElement).value.toUpperCase()
   symbol.value = val
+  symbolWarning.value = null
+  error.value = null
   selectedSymbolName.value = ''
   _runSearch(val)
 }
@@ -684,6 +742,8 @@ function onSymbolCompositionEnd(e: Event) {
   isComposing = false
   const val = (e.target as HTMLInputElement).value.toUpperCase()
   symbol.value = val
+  symbolWarning.value = null
+  error.value = null
   selectedSymbolName.value = ''
   _runSearch(val)
 }
@@ -708,6 +768,8 @@ function onSymbolKeydown(e: KeyboardEvent) {
 function selectSuggestion(s: { symbol: string; name: string; market: string }) {
   symbol.value = s.symbol
   market.value = s.market
+  symbolWarning.value = null
+  error.value = null
   selectedSymbolName.value = s.name || ''
   showSuggestions.value = false
   suggestions.value = []
@@ -717,6 +779,8 @@ function selectSuggestion(s: { symbol: string; name: string; market: string }) {
 function selectHotStock(stock: { code: string; name: string; market: string }) {
   symbol.value = stock.code
   market.value = stock.market
+  symbolWarning.value = null
+  error.value = null
   selectedSymbolName.value = stock.name || getSymbolName(stock.code, stock.market)
   showSuggestions.value = false
   activeSuggIdx.value = -1
@@ -802,11 +866,15 @@ function handleLogout() {
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input
+              ref="symbolInput"
               class="symbol-input"
               :value="symbol"
               @input="onSymbolInput"
               :placeholder="market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'"
               @keyup.enter="handleAnalyze"
+              aria-label="标的代码"
+              :aria-invalid="!!symbolWarning"
+              aria-describedby="symbol-warning"
               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
             />
             <!-- Suggestions -->
@@ -819,6 +887,7 @@ function handleLogout() {
                 <span style="font-size: 11px; color: #0071e3; background: rgba(0,122,255,0.1); padding: 2px 8px; border-radius: 9999px; font-weight: 600;">{{ MARKET_LABELS[s.market] || s.market }}</span>
               </button>
             </div>
+            <p v-if="symbolWarning" id="symbol-warning" style="font-size: 12px; color: var(--ios-red); margin: 8px 2px 0; line-height: 1.45;">{{ symbolWarning }}</p>
           </div>
 
           <!-- Hot stocks -->
@@ -849,7 +918,7 @@ function handleLogout() {
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: multiPeriodEnabled ? 10 : 0;">
                 <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">多周期交叉分析</p>
                 <label style="position: relative; display: inline-block; width: 44px; height: 26px; cursor: pointer;">
-                  <input type="checkbox" v-model="multiPeriodEnabled" @change="!multiPeriodEnabled && toggleAuxPeriod('__clear__')" style="opacity: 0; width: 0; height: 0;"/>
+                  <input type="checkbox" v-model="multiPeriodEnabled" aria-label="启用多周期交叉分析" @change="!multiPeriodEnabled && toggleAuxPeriod('__clear__')" style="opacity: 0; width: 0; height: 0;"/>
                   <span :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: multiPeriodEnabled ? 'var(--ios-green)' : 'var(--ios-bg2)', borderRadius: '13px', transition: 'background 0.2s' }">
                     <span :style="{ position: 'absolute', top: '2px', left: multiPeriodEnabled ? '20px' : '2px', width: '22px', height: '22px', background: 'white', borderRadius: '50%', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }"/>
                   </span>
@@ -1087,7 +1156,7 @@ function handleLogout() {
               · 深度 {{ deepRemaining }}/{{ deepDailyLimit }}
             </template>
           </span>
-          <button v-if="auth.isLoggedIn" @click="userMenuOpen = true" style="width: 32px; height: 32px; border-radius: 50%; background: #e9e9eb; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; color: #3c3c43;">
+          <button v-if="auth.isLoggedIn" aria-label="打开账户菜单" @click="userMenuOpen = true" style="width: 32px; height: 32px; border-radius: 50%; background: #e9e9eb; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; color: #3c3c43;">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </button>
           <template v-else>
@@ -1247,7 +1316,7 @@ function handleLogout() {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ios-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; z-index: 1;">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
-            <input ref="symbolInput" class="symbol-input" :value="symbol" @input="onSymbolInput" @keydown="onSymbolKeydown" @compositionstart="onSymbolCompositionStart" @compositionend="onSymbolCompositionEnd" :placeholder="market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'" @keyup.enter="!showSuggestions || activeSuggIdx < 0 ? handleAnalyze() : undefined" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+            <input ref="symbolInput" class="symbol-input" :value="symbol" @input="onSymbolInput" @keydown="onSymbolKeydown" @compositionstart="onSymbolCompositionStart" @compositionend="onSymbolCompositionEnd" :placeholder="market === 'a' ? '输入股票代码，如 600519' : market === 'hk' ? '输入港股代码，如 00700' : market === 'us' ? '输入美股代码，如 AAPL' : '输入期货代码，如 MA'" @keyup.enter="!showSuggestions || activeSuggIdx < 0 ? handleAnalyze() : undefined" aria-label="标的代码" :aria-invalid="!!symbolWarning" aria-describedby="symbol-warning" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
             <div v-if="selectedSymbolName && !showSuggestions" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--ios-secondary); pointer-events: none; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis;">{{ selectedSymbolName }}</div>
           </div>
           <div v-if="showSuggestions && suggestions.length > 0" style="position: absolute; left: 16px; right: 16px; top: calc(100% + 4px); background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12); z-index: 200; overflow: hidden;">
@@ -1266,6 +1335,7 @@ function handleLogout() {
               <span style="font-size: 11px; color: #0071e3; background: rgba(0,122,255,0.1); padding: 2px 8px; border-radius: 9999px; font-weight: 600; flex-shrink: 0;">{{ MARKET_LABELS[s.market] || s.market }}</span>
             </button>
           </div>
+          <p v-if="symbolWarning" id="symbol-warning" style="font-size: 12px; color: var(--ios-red); margin: 8px 2px 0; line-height: 1.45;">{{ symbolWarning }}</p>
         </div>
         <div style="padding: 12px 16px 16px;">
           <div style="display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px;">
@@ -1295,7 +1365,7 @@ function handleLogout() {
               <div style="display: flex; align-items: center; justify-content: space-between;" :style="{ marginBottom: multiPeriodEnabled ? '10px' : 0 }">
                 <p style="font-size: 12px; font-weight: 600; color: var(--ios-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0;">多周期交叉分析</p>
                 <label style="position: relative; display: inline-block; width: 44px; height: 26px; cursor: pointer;">
-                  <input type="checkbox" v-model="multiPeriodEnabled" @change="!multiPeriodEnabled && toggleAuxPeriod('__clear__')" style="opacity: 0; width: 0; height: 0;"/>
+                  <input type="checkbox" v-model="multiPeriodEnabled" aria-label="启用多周期交叉分析" @change="!multiPeriodEnabled && toggleAuxPeriod('__clear__')" style="opacity: 0; width: 0; height: 0;"/>
                   <span :style="{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: multiPeriodEnabled ? 'var(--ios-green)' : 'var(--ios-bg2)', borderRadius: '13px', transition: 'background 0.2s' }">
                     <span :style="{ position: 'absolute', top: '2px', left: multiPeriodEnabled ? '20px' : '2px', width: '22px', height: '22px', background: 'white', borderRadius: '50%', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }"/>
                   </span>

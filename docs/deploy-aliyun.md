@@ -10,7 +10,7 @@
 | 系统 | Ubuntu 22.04 LTS | Ubuntu 22.04 LTS |
 | 带宽 | 1 Mbps | 3 Mbps |
 
-> **内存说明：** PostgreSQL + Redis + 3 个 Python 进程 + Next.js 共需约 3 GB，4 GB 勉强够用，8 GB 有余量。
+> **内存说明：** PostgreSQL + Redis + 3 个 Python 进程 + Nuxt 3 共需约 3 GB，4 GB 勉强够用，8 GB 有余量。
 
 ---
 
@@ -21,7 +21,7 @@
     │
     └── 宝塔 Nginx (80/443) ← Let's Encrypt SSL
            │
-           └── http://127.0.0.1:3000  (frontend - Next.js)
+           └── http://127.0.0.1:3000  (frontend - Nuxt 3)
                     │
                     ├── /api/* → http://backend:8000  (Docker 内网)
                     └── /ws/*  → http://backend:8000  (WebSocket)
@@ -113,7 +113,7 @@ git clone https://your-git-repo-url.git .
 
 在 Windows 本地：
 ```powershell
-# 打包（排除 node_modules、.next、__pycache__ 等）
+# 打包（排除 node_modules、.nuxt、.output、__pycache__ 等）
 Compress-Archive -Path . -DestinationPath trader.zip -Force
 ```
 
@@ -375,7 +375,7 @@ server {
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-Content-Type-Options nosniff;
 
-    # 所有请求转发给 Next.js（Next.js 内部代理 /api/* 和 /ws/* 到 backend）
+    # 所有请求转发给 Nuxt 3（Nuxt server middleware 代理 /api/* 到 backend）
     location / {
         proxy_pass         http://127.0.0.1:3000;
         proxy_http_version 1.1;

@@ -36,6 +36,46 @@ async def test_analyze_returns_task_id_and_queued_status():
 
 
 @pytest.mark.asyncio
+async def test_analyze_rejects_partial_position_params():
+    """Position params must be omitted entirely or submitted as a complete group."""
+    from httpx import AsyncClient, ASGITransport
+    from src.api.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/api/analyze", json={
+            "symbol": "600519",
+            "market": "a",
+            "period": "daily",
+            "device_id": "test-device-position-partial",
+            "holding_quantity": 100,
+        })
+
+    assert resp.status_code == 400
+    assert "持仓参数需同时填写" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_rejects_invalid_complete_position_params():
+    """Complete position params still need valid numeric values."""
+    from httpx import AsyncClient, ASGITransport
+    from src.api.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/api/analyze", json={
+            "symbol": "600519",
+            "market": "a",
+            "period": "daily",
+            "device_id": "test-device-position-invalid",
+            "holding_quantity": 100,
+            "cost_price": 0,
+            "max_position": 500,
+        })
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "成本价必须大于0"
+
+
+@pytest.mark.asyncio
 async def test_get_task_status_404_for_unknown():
     """GET /api/task/nonexistent should return 404."""
     from httpx import AsyncClient, ASGITransport

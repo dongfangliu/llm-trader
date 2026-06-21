@@ -8,7 +8,7 @@
 #   POSTGRES_PASSWORD → 数据库密码
 #
 # LLM provider/model、爱发电套餐、定价等配置在 backend/initial_settings.json（首次启动写入DB）。
-# 无需单独配置 API 地址 —— 前端构建时通过 build arg NUXT_PUBLIC_API_BASE 注入，指向 backend 容器
+# 无需单独配置浏览器端 API 地址 —— Nuxt server middleware 运行时读取 BACKEND_URL，代理 /api/** 到 backend 容器
 
 version: '3.8'
 
@@ -91,7 +91,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      # 运行时注入：Nuxt server routeRules 在启动时读取此变量，代理 /api/** → backend
+      # 运行时注入：Nuxt server middleware 读取此变量，代理 /api/** → backend
       - BACKEND_URL=http://backend:8000
       # 站点公网域名，用于 sitemap.xml / robots.txt 生成绝对 URL（避免被 nginx 探针改成 127.0.0.1）
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
