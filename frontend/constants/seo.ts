@@ -1,5 +1,5 @@
 export const SITE_NAME = 'K线AI分析助手'
-export const SITE_DESCRIPTION = '面向 A股、港股、美股和期货的 AI K线分析工具，基于趋势跟随方法论（时钟方向趋势、均线排列、抵扣价、密集成交区、多周期协同），结合 MACD、RSI、ATR 与风险控制生成研究参考。'
+export const SITE_DESCRIPTION = '面向 A股、港股、美股和期货的 AI 交易计划工具：基于趋势跟随方法论（时钟方向趋势、均线排列、抵扣价、密集成交区、多周期协同），为每个标的生成可执行的交易计划——入场区间、止损位、目标位、仓位建议与最大亏损测算，帮你按系统执行、控制风险，而不是预测涨跌。'
 export const DEFAULT_OG_IMAGE = '/icons/icon-512.png'
 
 export const MARKET_LABELS: Record<string, string> = {

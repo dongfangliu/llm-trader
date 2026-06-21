@@ -37,7 +37,7 @@ const { data: discoverData } = await useAsyncData(`research-detail-discover-${ma
   $fetch<any>('/api/public/predictions', { query: { limit: 12 } }).catch(() => ({ predictions: [] })),
 )
 
-const dir = computed(() => record.value?.predicted_direction === 'up' ? '看涨' : record.value?.predicted_direction === 'down' ? '看跌' : '震荡')
+const dir = computed(() => record.value?.predicted_direction === 'up' ? '做多' : record.value?.predicted_direction === 'down' ? '做空' : '观望')
 const signedPct = computed(() => {
   const value = record.value?.actual_change_pct
   if (value == null) return '待结算'
@@ -46,14 +46,20 @@ const signedPct = computed(() => {
 const marketLabel = computed(() => MARKET_LABELS[market.value] || market.value)
 const awaitingResult = computed(() => ['approved', 'posted'].includes(record.value?.status) && record.value?.actual_change_pct == null && record.value?.is_correct == null)
 const resultLabel = computed(() => {
-  if (awaitingResult.value) return '待验证'
-  if (record.value?.settlement_verdict_label) return record.value.settlement_verdict_label
-  if (record.value?.is_correct === true) return '命中'
-  if (record.value?.is_correct === false) return '未命中'
+  if (awaitingResult.value) return '待复盘'
+  if (record.value?.plan_outcome_label) return record.value.plan_outcome_label
+  if (record.value?.plan_effective === true) return '有效'
+  if (record.value?.plan_effective === false) return '破位'
+  if (record.value?.is_correct === true) return '有效'
+  if (record.value?.is_correct === false) return '破位'
   return '已结算'
 })
 const resultTone = computed(() => {
-  if (awaitingResult.value) return 'pending'
+  if (awaitingResult.value) return 'awaiting'
+  const tone = record.value?.plan_outcome_tone
+  if (tone === 'success') return 'hit'
+  if (tone === 'neutral') return 'inplan'
+  if (tone === 'warn') return 'miss'
   if (record.value?.is_correct === true) return 'hit'
   if (record.value?.is_correct === false) return 'miss'
   return 'settled'
@@ -81,11 +87,11 @@ const cardVersion = computed(() => encodeURIComponent(record.value?.updated_at |
 const cardPath = computed(() => `/api/public/research/${market.value}/${symbol.value}/${date.value}/card?variant=${cardVariant.value}&v=${cardVersion.value}`)
 const cardUrl = computed(() => `${requestUrl.origin}${cardPath.value}`)
 
-const pageModeLabel = computed(() => awaitingResult.value ? '待验证 AI K线预测' : '已结算AI K线分析复盘')
+const pageModeLabel = computed(() => awaitingResult.value ? '待复盘 AI 交易计划' : '已结算 AI 交易计划复盘')
 const title = computed(() => `${record.value?.symbol_name || symbol.value} ${date.value} ${pageModeLabel.value}`)
 const description = computed(() => awaitingResult.value
-  ? `${record.value?.symbol_name || symbol.value} 的待验证AI K线预测：技术面方向 ${dir.value}，目标日 ${record.value?.target_date || '-'}，展示原始判断和关键价格，仅供研究参考。`
-  : `${record.value?.symbol_name || symbol.value} 的AI K线分析历史复盘：当时技术面方向 ${dir.value}，实际涨跌 ${signedPct.value}，记录命中或失误，仅供研究参考。`
+  ? `${record.value?.symbol_name || symbol.value} 的待复盘 AI 交易计划：计划方向 ${dir.value}，目标日 ${record.value?.target_date || '-'}，展示入场/止损/目标等原始计划，仅供研究参考。`
+  : `${record.value?.symbol_name || symbol.value} 的 AI 交易计划复盘：计划方向 ${dir.value}，实际涨跌 ${signedPct.value}，记录达标/计划内/破位结果，仅供研究参考。`
 )
 
 usePublicSeo({
@@ -119,9 +125,9 @@ const articleJsonLd = computed(() => ({
 useJsonLd('research-detail-jsonld', () => [
   breadcrumbJsonLd(requestUrl.origin, [
     { name: SITE_NAME, path: '/' },
-    { name: '模型复盘档案', path: '/research' },
+    { name: '交易计划复盘档案', path: '/research' },
     { name: `${record.value?.symbol_name || symbol.value} ${symbol.value}`, path: `/research/${market.value}/${symbol.value}` },
-    { name: `${date.value} ${awaitingResult.value ? '预测' : '复盘'}`, path: `/research/${market.value}/${symbol.value}/${date.value}` },
+    { name: `${date.value} ${awaitingResult.value ? '计划' : '复盘'}`, path: `/research/${market.value}/${symbol.value}/${date.value}` },
   ]),
   articleJsonLd.value,
 ])
@@ -150,21 +156,34 @@ const otherPicks = computed(() => {
 function isAwaitingResultRow(p: any) {
   return ['approved', 'posted'].includes(p?.status) && p?.actual_change_pct == null && p?.is_correct == null
 }
+function isEffectiveRow(p: any): boolean | null {
+  if (isAwaitingResultRow(p)) return null
+  if (typeof p?.plan_effective === 'boolean') return p.plan_effective
+  if (p?.is_correct === true) return true
+  if (p?.is_correct === false) return false
+  return null
+}
 function statusLabelRow(p: any) {
-  if (isAwaitingResultRow(p)) return '待验证'
-  if (p?.settlement_verdict_label) return p.settlement_verdict_label
-  if (p?.is_correct === true) return '命中'
-  if (p?.is_correct === false) return '未命中'
+  if (isAwaitingResultRow(p)) return '待复盘'
+  if (p?.plan_outcome_label) return p.plan_outcome_label
+  const eff = isEffectiveRow(p)
+  if (eff === true) return '有效'
+  if (eff === false) return '破位'
   return '已结算'
 }
 function statusClassRow(p: any) {
-  if (isAwaitingResultRow(p)) return 'pending'
-  if (p?.is_correct === true) return 'hit'
-  if (p?.is_correct === false) return 'miss'
+  if (isAwaitingResultRow(p)) return 'awaiting'
+  const tone = p?.plan_outcome_tone
+  if (tone === 'success') return 'hit'
+  if (tone === 'neutral') return 'inplan'
+  if (tone === 'warn') return 'miss'
+  const eff = isEffectiveRow(p)
+  if (eff === true) return 'hit'
+  if (eff === false) return 'miss'
   return 'settled'
 }
 function directionLabelRow(value: string) {
-  return value === 'up' ? '看涨' : value === 'down' ? '看跌' : '震荡'
+  return value === 'up' ? '做多' : value === 'down' ? '做空' : '观望'
 }
 
 // ── 分享 / 下载 ──────────────────────────────────────────────────
@@ -190,7 +209,7 @@ const proofShare = useShareCard({
   title: () => shareTitle.value,
   text: () => shareText.value,
   shareUrl: () => shareCanonical.value,
-  onSuccess: () => showShareToast('已保存兑现卡', 'ok'),
+  onSuccess: () => showShareToast('已保存复盘卡', 'ok'),
   onCancel: () => showShareToast('已取消', 'info'),
   onError: () => showShareToast('保存失败，稍后重试', 'err'),
 })
@@ -201,7 +220,7 @@ const promiseShare = useShareCard({
   title: () => shareTitle.value,
   text: () => shareText.value,
   shareUrl: () => shareCanonical.value,
-  onSuccess: () => showShareToast('已保存预测卡', 'ok'),
+  onSuccess: () => showShareToast('已保存计划卡', 'ok'),
   onCancel: () => showShareToast('已取消', 'info'),
   onError: () => showShareToast('保存失败，稍后重试', 'err'),
 })
@@ -242,9 +261,9 @@ async function copyLink() {
             <PhTarget :size="16" weight="bold" />
             {{ marketLabel }} / {{ symbol }} / {{ record.prediction_date }}
           </div>
-          <h1 class="mr-title">{{ record.symbol_name }} {{ awaitingResult ? '待验证 AI K线预测' : `AI K线分析复盘：${resultLabel}` }}</h1>
+          <h1 class="mr-title">{{ record.symbol_name }} {{ awaitingResult ? '待复盘 AI 交易计划' : `AI 交易计划复盘：${resultLabel}` }}</h1>
           <p class="mr-lead">
-            {{ awaitingResult ? `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 技术面预测，目标日 ${record.target_date || '-'} 尚待结算。本页展示原始判断、方向、置信度和关键价格，结算后会自动更新为复盘记录。` : `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 技术面预测，目标日 ${record.target_date || '-'} 已完成结算。本页保留原始判断、关键价格和实际结果，作为可追溯的历史复盘。` }}
+            {{ awaitingResult ? `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 交易计划，目标日 ${record.target_date || '-'} 尚待复盘。本页展示原始入场、止损、目标与计划方向，结算后会自动更新为复盘记录。` : `${record.symbol_name} 在 ${record.prediction_date} 生成的 AI 交易计划，目标日 ${record.target_date || '-'} 已完成结算。本页保留原始计划、关键价格和实际结果，作为可追溯的复盘。` }}
           </p>
           <div class="mr-toolbar mr-toolbar-desktop" style="margin: 20px 0 0">
             <NuxtLink class="mr-btn mr-btn-primary" :to="analyzePath(market, symbol, 'seo_research_detail')">自己分析该标的</NuxtLink>
@@ -253,7 +272,7 @@ async function copyLink() {
         </div>
         <figure class="mr-public-figure">
           <img :src="cardPath" :alt="`${record.symbol_name} ${record.prediction_date} AI K线分析卡片`" loading="eager" decoding="async">
-          <figcaption>{{ awaitingResult ? '审核时生成的原始预测卡片' : '结算后的兑现裁决卡' }}</figcaption>
+          <figcaption>{{ awaitingResult ? '原始交易计划卡' : '结算后的计划复盘卡' }}</figcaption>
 
           <div class="mr-share-cluster" role="group" aria-label="分享或保存卡片">
             <button
@@ -265,7 +284,7 @@ async function copyLink() {
             >
               <PhShareNetwork v-if="!proofShare.downloading.value" :size="16" weight="bold" />
               <span v-else class="mr-share-spinner" aria-hidden="true" />
-              <span>{{ proofShare.downloading.value ? '生成中…' : '保存兑现卡' }}</span>
+              <span>{{ proofShare.downloading.value ? '生成中…' : '保存复盘卡' }}</span>
             </button>
 
             <button
@@ -276,7 +295,7 @@ async function copyLink() {
             >
               <PhDownloadSimple v-if="!promiseShare.downloading.value" :size="15" weight="bold" />
               <span v-else class="mr-share-spinner" aria-hidden="true" />
-              <span>{{ awaitingResult ? '保存预测卡' : '保存原始预测' }}</span>
+              <span>{{ awaitingResult ? '保存计划卡' : '保存原始计划' }}</span>
             </button>
 
             <button
@@ -303,7 +322,7 @@ async function copyLink() {
         <div class="mr-result-cell">
           <span>{{ awaitingResult ? '验证状态' : '结算结果' }}</span>
           <strong>{{ resultLabel }}</strong>
-          <p>{{ record.settlement_explanation || (awaitingResult ? `预测方向 ${dir}，目标日 ${record.target_date || '-'}` : `预测方向 ${dir}，实际涨跌 ${signedPct}`) }}</p>
+          <p>{{ record.settlement_explanation || (awaitingResult ? `计划方向 ${dir}，目标日 ${record.target_date || '-'}` : `计划方向 ${dir}，实际涨跌 ${signedPct}`) }}</p>
         </div>
         <div class="mr-result-cell"><span>实际涨跌</span><strong>{{ signedPct }}</strong></div>
         <div class="mr-result-cell"><span>目标日</span><strong>{{ record.target_date || '-' }}</strong></div>
@@ -327,8 +346,8 @@ async function copyLink() {
       <section class="mr-content-section">
         <div class="mr-panel-header">
           <div>
-            <h2 class="mr-panel-title">{{ record.symbol_name }} AI K线分析四步记录</h2>
-            <p class="mr-panel-sub">保留预测当时的完整判断，结算后不改写原始分析。</p>
+            <h2 class="mr-panel-title">{{ record.symbol_name }} AI 交易计划四步记录</h2>
+            <p class="mr-panel-sub">保留制定计划当时的完整判断，结算后不改写原始分析。</p>
           </div>
         </div>
         <div class="mr-analysis-list">
@@ -340,8 +359,8 @@ async function copyLink() {
       </section>
 
       <section v-if="symbolNeighbours.prev || symbolNeighbours.next || otherPicks.length" class="mr-related-section" aria-labelledby="related-title">
-        <h2 id="related-title" class="mr-panel-title">相关预测</h2>
-        <p class="mr-panel-sub">同标的的前后预测和近期热门记录。</p>
+        <h2 id="related-title" class="mr-panel-title">相关计划</h2>
+        <p class="mr-panel-sub">同标的的前后计划和近期热门记录。</p>
         <div class="mr-related-grid">
           <NuxtLink
             v-if="symbolNeighbours.prev"
@@ -378,7 +397,7 @@ async function copyLink() {
               <MrStatusBadge :status="statusClassRow(p)" :label="statusLabelRow(p)" />
             </div>
             <strong class="mr-related-name">{{ p.symbol_name || p.symbol }}</strong>
-            <span class="mr-related-date">预测 {{ p.prediction_date }}</span>
+            <span class="mr-related-date">计划 {{ p.prediction_date }}</span>
           </NuxtLink>
         </div>
       </section>

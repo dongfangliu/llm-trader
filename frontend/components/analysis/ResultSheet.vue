@@ -98,6 +98,38 @@ const latest = computed<number | null>(() => props.result?.data?.latest_price ??
 const target = computed<number | null>(() => props.result?.result?.target_price ?? null)
 const stopLoss = computed<number | null>(() => props.result?.result?.stop_loss ?? null)
 
+// ── 执行计划要素（入场区间 / 离场条件 / 最大亏损 / 仓位建议）──
+const entryLow = computed<number | null>(() => props.result?.result?.entry_low ?? null)
+const entryHigh = computed<number | null>(() => props.result?.result?.entry_high ?? null)
+const maxLossPct = computed<number | null>(() => props.result?.result?.max_loss_pct ?? null)
+const exitConditions = computed<string[]>(() => {
+  const e = props.result?.result?.exit_conditions
+  return Array.isArray(e) ? e.filter(Boolean).map((x: any) => stripClock(String(x))) : []
+})
+const entryText = computed<string>(() => {
+  const lo = entryLow.value, hi = entryHigh.value
+  if (lo == null && hi == null) return ''
+  if (lo != null && hi != null) return lo === hi ? lo.toFixed(2) : `${lo.toFixed(2)} ~ ${hi.toFixed(2)}`
+  return (lo ?? hi)!.toFixed(2)
+})
+const positionAdvice = computed<any>(() => props.result?.result?.position_advice ?? null)
+const hasPositionAdvice = computed<boolean>(() => {
+  const p = positionAdvice.value
+  return !!p && (Number(p.current_holding) > 0 || Number(p.suggested_quantity) > 0)
+})
+const POS_ACTION_LABELS: Record<string, string> = { buy: '加仓', sell: '减仓', hold: '持有观望' }
+const positionAdviceText = computed<string>(() => {
+  const p = positionAdvice.value
+  if (!p) return ''
+  const act = POS_ACTION_LABELS[p.suggested_action] || ''
+  const qty = Number(p.suggested_quantity)
+  return act && qty > 0 ? `${act} ${qty}` : (act || '')
+})
+// 执行计划卡是否有内容可展示（premium）
+const hasPlan = computed<boolean>(() =>
+  !isFree.value && (stopLoss.value != null || !!entryText.value || exitConditions.value.length > 0 || hasPositionAdvice.value)
+)
+
 // ── 趋势诊断（趋势跟随方法论特征；前端自算 / 后端透传，存于 result.result.trend）──
 const trend = computed<any>(() => props.result?.result?.trend ?? null)
 const trendHigher = computed<any>(() => props.result?.result?.trend_higher ?? null)
@@ -143,7 +175,7 @@ const reasonText = computed<string>(() => stripClock(props.result?.result?.reaso
 
 const ACTION_CONFIG: Record<string, any> = {
   buy: {
-    text: '看涨', color: '#dc2626', dimColor: 'rgba(220,38,38,0.55)',
+    text: '买入', color: '#dc2626', dimColor: 'rgba(220,38,38,0.55)',
     heroBg: 'linear-gradient(160deg, #5a0a0a 0%, #991b1b 52%, #ef4444 100%)',
     glow: 'radial-gradient(ellipse at 75% 20%, rgba(239,68,68,0.75) 0%, transparent 60%)',
     shine: 'linear-gradient(125deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0) 52%)',
@@ -152,7 +184,7 @@ const ACTION_CONFIG: Record<string, any> = {
     dark: true,
   },
   sell: {
-    text: '看跌', color: '#16a34a', dimColor: 'rgba(22,163,74,0.55)',
+    text: '卖出', color: '#16a34a', dimColor: 'rgba(22,163,74,0.55)',
     heroBg: 'linear-gradient(160deg, #052e16 0%, #065f46 52%, #059669 100%)',
     glow: 'radial-gradient(ellipse at 75% 20%, rgba(16,185,129,0.65) 0%, transparent 60%)',
     shine: 'linear-gradient(125deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0) 52%)',
@@ -180,12 +212,13 @@ const PERIOD_LABELS: Record<string, string> = {
   daily: '日线', '60': '60分', '30': '30分', '15': '15分', '5': '5分', '1': '1分',
 }
 
+// execution_plan 已上移为顶部"执行计划"卡，深度研判保留三段分析理由
 const NARRATIVE_SECTIONS = [
   { key: 'market_diagnosis',       icon: '诊', title: '市场诊断', tint: '#0071e3' },
   { key: 'opportunity_assessment', icon: '机', title: '机会评估', tint: '#f59e0b' },
   { key: 'risk_analysis',          icon: '险', title: '风险收益', tint: '#ef4444' },
-  { key: 'execution_plan',         icon: '行', title: '执行方案', tint: '#10b981' },
 ]
+const execPlanText = computed<string>(() => stripClock(props.result?.result?.execution_plan || ''))
 
 const KEYWORDS = ['RSI', 'MACD', 'MA10', 'MA20', 'MA30', 'MA60', 'MA120', 'KDJ', 'EMA', 'ATR',
   '均线', '金叉', '死叉', '支撑', '阻力', '超买', '超卖', '成交量', '换手率', '布林',
@@ -366,6 +399,7 @@ async function handleShare() {
           <!-- Verdict row -->
           <div class="rs-verdict-row">
             <div :style="{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: isFree ? 'center' : 'flex-start' }">
+              <span class="rs-action-eyebrow">操作建议</span>
               <div
                 class="rs-action-text"
                 :style="{
@@ -381,9 +415,10 @@ async function handleShare() {
               </div>
             </div>
 
-            <!-- Confidence ring (premium) -->
+            <!-- Confidence ring (premium) — 标注为"信号强度"，避免被读成预测准确率 -->
             <div v-if="!isFree && confidence != null" style="flex-shrink: 0;">
               <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                <span style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 0.6px;">信号强度</span>
                 <div :style="{ position: 'relative', width: `${ringSize}px`, height: `${ringSize}px`, flexShrink: 0 }">
                   <svg :width="ringSize" :height="ringSize" style="transform: rotate(-90deg); overflow: visible;">
                     <!-- Track -->
@@ -407,6 +442,9 @@ async function handleShare() {
               {{ oq }}
             </div>
           </div>
+
+          <!-- 诚实声明：不预测，只给带止损保护的执行计划 -->
+          <div class="rs-hero-note">市场无法被预测 · 这是一份带止损保护的交易计划，跌破止损即离场</div>
         </div>
 
         <!-- ── PRICE STRIP ── -->
@@ -471,6 +509,57 @@ async function handleShare() {
           <div class="rs-profit-item rs-profit-down">
             <span>{{ profitData.riskArrow }} {{ profitData.riskPct.toFixed(1) }}%</span>
             <span class="rs-profit-label">{{ profitData.riskLabel }}</span>
+          </div>
+        </div>
+
+        <!-- ── 执行计划卡 (premium) ── -->
+        <div v-if="hasPlan" class="rs-section rs-plan">
+          <div class="rs-plan-head">
+            <span class="rs-section-label" style="margin-bottom: 0;">执行计划</span>
+            <span class="rs-plan-tag" :style="{ color: info.color, background: `${info.color}14` }">{{ info.text }}</span>
+          </div>
+
+          <div class="rs-plan-grid">
+            <div v-if="entryText" class="rs-plan-cell">
+              <span class="rs-plan-k">入场区间</span>
+              <span class="rs-plan-v">{{ entryText }}</span>
+            </div>
+            <div class="rs-plan-cell">
+              <span class="rs-plan-k">止损位</span>
+              <span class="rs-plan-v" style="color: #b45309;">
+                {{ stopLoss != null ? stopLoss.toFixed(2) : '—' }}
+                <span v-if="maxLossPct != null" class="rs-plan-loss">最多亏 {{ maxLossPct.toFixed(1) }}%</span>
+              </span>
+            </div>
+            <div class="rs-plan-cell">
+              <span class="rs-plan-k">目标位</span>
+              <span class="rs-plan-v" :style="{ color: info.color }">{{ target != null ? target.toFixed(2) : '—' }}</span>
+            </div>
+            <div v-if="hasPositionAdvice" class="rs-plan-cell">
+              <span class="rs-plan-k">仓位建议</span>
+              <span class="rs-plan-v">{{ positionAdviceText || '—' }}</span>
+            </div>
+          </div>
+
+          <!-- 持仓建议理由（结合成本价，worker 已计算）-->
+          <div v-if="hasPositionAdvice && positionAdvice?.reason" class="rs-plan-pos-reason">
+            {{ positionAdvice.reason }}
+          </div>
+
+          <!-- 执行方案描述（LLM execution_plan）-->
+          <div v-if="execPlanText" class="rs-plan-lead" :style="{ borderLeft: `3px solid ${info.color}` }">
+            {{ execPlanText }}
+          </div>
+
+          <!-- 离场条件 -->
+          <div v-if="exitConditions.length" class="rs-plan-exits">
+            <span class="rs-plan-exits-label">满足以下任一即离场</span>
+            <div class="rs-plan-exit-list">
+              <div v-for="(c, i) in exitConditions" :key="i" class="rs-plan-exit-item">
+                <span class="rs-plan-exit-dot"/>
+                <span>{{ c }}</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -652,8 +741,8 @@ async function handleShare() {
             <div class="rs-upgrade-content">
               <div class="rs-upgrade-icon">✦</div>
               <div>
-                <div class="rs-upgrade-title">解锁完整分析</div>
-                <div class="rs-upgrade-features">目标价 · 止损 · 深度研判 · 风险评估 · 多周期对比</div>
+                <div class="rs-upgrade-title">解锁完整交易计划</div>
+                <div class="rs-upgrade-features">入场区间 · 止损 · 最大亏损 · 仓位建议 · 离场条件</div>
               </div>
               <div class="rs-upgrade-caret">›</div>
             </div>
@@ -726,7 +815,7 @@ async function handleShare() {
               <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
-              <span>{{ shareCopied ? '已复制' : '分享预判' }}</span>
+              <span>{{ shareCopied ? '已复制' : '分享计划' }}</span>
             </template>
           </button>
         </div>

@@ -21,12 +21,13 @@ export function renderProof(p: CardPayload): any {
   const dir       = getDir(p)
   const correct   = p.is_correct === true
   const isHold    = dir === 'hold'
-  const verdictCn = isHold
-    ? (p.settlement_verdict_label || (correct ? '区间命中' : '区间失效'))
-    : (correct ? '兑现' : '失效')
+  // 计划结果口径：达标 / 计划内(止损保护) / 破位；后端已通过 settlement_verdict_label 提供
+  const verdictCn = p.settlement_verdict_label || (correct ? '达标' : '破位')
+  // 有效 = 非破位（达标 / 计划内 / 区间内）。优先用后端 plan_effective。
+  const effective = typeof p.plan_effective === 'boolean' ? p.plan_effective : (verdictCn !== '破位')
   // 注意：✗ (U+2717) 在很多 CJK 字体里没有 glyph，会显示成 [x] 框；
   // 改用 × (U+00D7 multiplication sign)，NotoSansSC 等字体都覆盖。
-  const vGlyph    = correct ? '✓' : '×'
+  const vGlyph    = effective ? '✓' : '×'
 
   // 印章颜色：跟随实际涨跌方向（CN 习惯）
   const stampColor = pctTone(p.actual_change_pct ?? null, true)
@@ -114,7 +115,7 @@ export function renderProof(p: CardPayload): any {
         ),
       ),
       pct30 != null ? h('div', { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' },
-        h('div', { fontSize: '17px', letterSpacing: '5px', color: dimColor, fontWeight: '500' }, txt('累计胜率')),
+        h('div', { fontSize: '17px', letterSpacing: '3px', color: dimColor, fontWeight: '500' }, txt('有效计划率')),
         h('div', { display: 'flex', alignItems: 'baseline', gap: '2px' },
           h('div', { fontSize: '80px', fontWeight: '800', lineHeight: '1', letterSpacing: '-4px', color: sigColor }, txt(String(pct30))),
           h('div', { fontSize: '38px', fontWeight: '700', color: sigColor }, txt('%')),

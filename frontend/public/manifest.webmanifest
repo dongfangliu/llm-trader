@@ -1,7 +1,7 @@
 {
   "name": "K线AI分析助手",
   "short_name": "K线AI",
-  "description": "AI 驱动的专业技术分析平台",
+  "description": "AI 交易计划工具 · 入场、止损、目标、仓位一步到位",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

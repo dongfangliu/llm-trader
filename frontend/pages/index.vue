@@ -109,7 +109,7 @@ const NARRATIVE_TEXTS = [
   '识别时钟方向与趋势类型…',
   '校验 MA/EMA 20/60/120 均线排列…',
   '计算抵扣价、扫描密集成交区…',
-  '多周期协同，生成研判建议…',
+  '多周期协同，生成入场/止损/目标执行计划…',
 ]
 const narrativeIdx = ref(0)
 const analyzingSymbol = ref('')
@@ -1021,9 +1021,9 @@ function handleLogout() {
             <path d="M7 40L18 24L26 32L36 16L49 21" stroke="var(--ios-label)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="49" cy="21" r="3.5" fill="var(--ios-label)"/>
           </svg>
-          <div style="font-size: 18px; font-weight: 700; color: var(--ios-label);">尚无分析结果</div>
-          <div style="font-size: 14px; line-height: 1.6; text-align: center;">输入股票代码，AI 将生成买卖建议和深度研判</div>
-          <button @click="activePanel = 'analyze'" style="margin-top: 8px; padding: 12px 28px; background: var(--ios-blue); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;">开始分析</button>
+          <div style="font-size: 18px; font-weight: 700; color: var(--ios-label);">尚无交易计划</div>
+          <div style="font-size: 14px; line-height: 1.6; text-align: center;">输入股票代码，AI 为你生成可执行的交易计划：入场、止损、目标、仓位一步到位</div>
+          <button @click="activePanel = 'analyze'" style="margin-top: 8px; padding: 12px 28px; background: var(--ios-blue); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer;">生成计划</button>
         </div>
 
         <!-- Result content -->
@@ -1480,9 +1480,9 @@ function handleLogout() {
               <circle cx="38" cy="16" r="3" fill="white"/>
             </svg>
           </div>
-          <p class="rg-empty-title">开始你的第一次研判</p>
-          <p class="rg-empty-sub">输入股票或期货代码，AI 将生成<br/>专业的买卖建议和深度分析报告</p>
-          <button class="rg-empty-cta" @click="setActivePanel('analyze')">开始分析</button>
+          <p class="rg-empty-title">生成你的第一份交易计划</p>
+          <p class="rg-empty-sub">输入股票或期货代码，AI 将生成<br/>入场、止损、目标、仓位一步到位的执行计划</p>
+          <button class="rg-empty-cta" @click="setActivePanel('analyze')">生成计划</button>
           <p class="rg-empty-hint">支持 A股 · 港股 · 美股 · 期货</p>
         </div>
         <div v-else class="rg-list">

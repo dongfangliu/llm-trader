@@ -121,18 +121,18 @@ const statusLabel: Record<string, string> = {
   rejected: '已拒绝',
   settled: '已结算复盘',
 }
-const directionLabel: Record<string, string> = { up: '看涨', down: '看跌', hold: '震荡' }
+const directionLabel: Record<string, string> = { up: '做多', down: '做空', hold: '观望' }
 
 const accuracyLabel = computed(() => {
   const all = dashboard.value?.accuracy?.all
   if (!all) return '0%'
-  return all.label || `${all.pct ?? 0}%`
+  return `${all.effective_rate ?? all.pct ?? 0}%`
 })
 
 const highConfAccuracyLabel = computed(() => {
   const hc = dashboard.value?.accuracy?.high_conf
   if (!hc) return '—'
-  return hc.label || `${hc.pct ?? 0}%`
+  return `${hc.effective_rate ?? hc.pct ?? 0}%`
 })
 
 const highConfSettledCount = computed(() => {
@@ -793,10 +793,10 @@ onMounted(async () => {
         <MrMetric label="已通过待结算" :value="approvedPreds.length" sub="目标日后结算">
           <template #icon><PhCheckCircle :size="18" weight="bold" /></template>
         </MrMetric>
-        <MrMetric label="累计命中率" :value="accuracyLabel" :sub="`${dashboard?.totals?.settled ?? 0} 条已结算`">
+        <MrMetric label="有效计划率" :value="accuracyLabel" :sub="`${dashboard?.totals?.settled ?? 0} 条已结算`">
           <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
         </MrMetric>
-        <MrMetric label="高置信命中率" :value="highConfAccuracyLabel" :sub="`${highConfSettledCount} 条达门槛`">
+        <MrMetric label="高置信有效率" :value="highConfAccuracyLabel" :sub="`${highConfSettledCount} 条达门槛`">
           <template #icon><PhChartLineUp :size="18" weight="bold" /></template>
         </MrMetric>
       </div>

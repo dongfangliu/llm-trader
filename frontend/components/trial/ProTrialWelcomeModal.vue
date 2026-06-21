@@ -10,9 +10,9 @@ const emit = defineEmits<{
 }>()
 
 const DEFAULT_PERKS = [
-  { text: '完整深度研判报告' },
-  { text: '多周期联合分析' },
-  { text: 'AI 买卖点精准定位' },
+  { text: '完整可执行交易计划' },
+  { text: '入场 · 止损 · 目标 · 仓位' },
+  { text: '最大亏损测算与离场条件' },
 ]
 </script>
 
@@ -25,7 +25,7 @@ const DEFAULT_PERKS = [
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m8 15 3.5-4 3 2.5L20 7"/></svg>
       </div>
       <h1 style="font-size: 28px; font-weight: 700; letter-spacing: 0; color: var(--ios-label); margin: 0 0 6px;">{{ props.appName || DEFAULT_APP_NAME }}</h1>
-      <p style="font-size: 15px; color: var(--ios-secondary); margin: 0;">AI 驱动的专业技术分析平台</p>
+      <p style="font-size: 15px; color: var(--ios-secondary); margin: 0;">不预测涨跌 · 给你可执行的交易计划</p>
     </div>
 
     <!-- Card -->

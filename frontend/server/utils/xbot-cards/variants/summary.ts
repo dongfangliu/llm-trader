@@ -59,10 +59,11 @@ export function renderSummary(p: CardPayload): any {
   const stamp = (item: SummaryItem) => {
     const correct = item.is_correct === true
     const isHold = item.predicted_direction === 'hold'
-    const color = correct ? CL.UP : CL.DOWN    // 命中=红（涨色），未中=绿（跌色）
-    const label = item.settlement_verdict_label || (isHold
-      ? (correct ? '区间命中' : '区间失效')
-      : (correct ? '命中 ✓' : '未中 ×'))
+    // 计划口径：达标/计划内/区间内=有效，破位=无效（后端已通过 settlement_verdict_label 提供）
+    const label0 = item.settlement_verdict_label || (correct ? '达标' : '破位')
+    const effective = !(label0 === '破位' || label0 === '区间失效')
+    const color = effective ? CL.UP : CL.DOWN    // 有效=红（涨色），破位=绿（跌色）
+    const label = `${label0} ${effective ? '✓' : '×'}`
     return h('div', {
       display: 'flex',
       alignItems: 'center',

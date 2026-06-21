@@ -72,7 +72,7 @@ onUnmounted(() => {
 // ── Computed ───────────────────────────────────────────────────────────────
 const action = computed<'buy' | 'sell' | 'hold'>(() => props.result?.result?.action || 'hold')
 const actionLabel = computed(() =>
-  action.value === 'buy' ? '看涨' : action.value === 'sell' ? '看跌' : '观望'
+  action.value === 'buy' ? '买入' : action.value === 'sell' ? '卖出' : '观望'
 )
 const actionColor = computed(() =>
   action.value === 'buy' ? '#EF4444' : action.value === 'sell' ? '#22C55E' : '#60A5FA'

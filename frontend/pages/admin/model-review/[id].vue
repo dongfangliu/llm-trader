@@ -276,7 +276,7 @@ const marketLabel = computed(() => {
 })
 const directionText = computed(() => {
   const d = pred.value?.predicted_direction
-  return d === 'up' ? '看涨' : d === 'down' ? '看跌' : '震荡'
+  return d === 'up' ? '做多' : d === 'down' ? '做空' : '观望'
 })
 const statusText = computed(() => {
   const s = pred.value?.status
@@ -287,39 +287,44 @@ const statusText = computed(() => {
     : s === 'rejected' ? '已拒绝'
     : s || '-'
 })
-const previewVariantText = computed(() => hasCompleteSettlement(pred.value) ? 'Proof 结算卡' : 'Promise 预测卡')
+const previewVariantText = computed(() => hasCompleteSettlement(pred.value) ? 'Proof 复盘卡' : 'Promise 计划卡')
 const resultStatusText = computed(() => {
   if (!pred.value) return '-'
   if (pred.value.status === 'pending') return '待审核'
   if (pred.value.status === 'rejected') return '已拒绝'
-  if (isAwaitingResult(pred.value)) return '待验证'
+  if (isAwaitingResult(pred.value)) return '待复盘'
+  if (pred.value.plan_outcome_label) return pred.value.plan_outcome_label
   if (pred.value.settlement_verdict_label) return pred.value.settlement_verdict_label
-  if (pred.value.is_correct === true) return '命中'
-  if (pred.value.is_correct === false) return '未命中'
+  if (pred.value.is_correct === true) return '有效'
+  if (pred.value.is_correct === false) return '破位'
   return pred.value.status === 'settled' ? '已结算' : '-'
 })
 const settlementText = computed(() => pctText(pred.value?.actual_change_pct))
 const publicPreviewTitle = computed(() => {
   if (!pred.value) return ''
   if (isDraftStatus.value) return `${pred.value.symbol_name} 审核草稿预览`
-  return isAwaitingResult(pred.value) ? `${pred.value.symbol_name} 待验证 AI K线预测` : `${pred.value.symbol_name} AI K线分析复盘`
+  return isAwaitingResult(pred.value) ? `${pred.value.symbol_name} 待复盘 AI 交易计划` : `${pred.value.symbol_name} AI 交易计划复盘`
 })
 const seoTitle = computed(() => {
   if (!pred.value) return ''
   if (isDraftStatus.value) return `${pred.value.symbol_name} ${pred.value.prediction_date} 审核草稿预览`
   return isAwaitingResult(pred.value)
-    ? `${pred.value.symbol_name} ${pred.value.prediction_date} 待验证 AI K线预测`
-    : `${pred.value.symbol_name} ${pred.value.prediction_date} AI K线分析复盘`
+    ? `${pred.value.symbol_name} ${pred.value.prediction_date} 待复盘 AI 交易计划`
+    : `${pred.value.symbol_name} ${pred.value.prediction_date} AI 交易计划复盘`
 })
 const seoDescription = computed(() => {
   if (!pred.value) return ''
-  if (isDraftStatus.value) return `${pred.value.symbol_name} 的模型复盘记录仍在审核中：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，通过审核后才会公开。`
+  if (isDraftStatus.value) return `${pred.value.symbol_name} 的模型复盘记录仍在审核中：计划方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，通过审核后才会公开。`
   return isAwaitingResult(pred.value)
-    ? `${pred.value.symbol_name} 的待验证 AI K线预测：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌待结算。`
-    : `${pred.value.symbol_name} 的 AI K线分析历史复盘：当时方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌 ${settlementText.value}。`
+    ? `${pred.value.symbol_name} 的待复盘 AI 交易计划：计划方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌待结算。`
+    : `${pred.value.symbol_name} 的 AI 交易计划历史复盘：计划方向 ${directionText.value}，目标日 ${pred.value.target_date || '-'}，实际涨跌 ${settlementText.value}。`
 })
 const resultTone = computed(() => {
-  if (!pred.value || isAwaitingResult(pred.value)) return 'pending'
+  if (!pred.value || isAwaitingResult(pred.value)) return 'awaiting'
+  const tone = pred.value.plan_outcome_tone
+  if (tone === 'success') return 'hit'
+  if (tone === 'neutral') return 'inplan'
+  if (tone === 'warn') return 'miss'
   if (pred.value.is_correct === true) return 'hit'
   if (pred.value.is_correct === false) return 'miss'
   return 'settled'
@@ -345,7 +350,7 @@ const publicLead = computed(() => {
 const priceMetrics = computed(() => {
   if (!pred.value) return []
   return [
-    { label: '当时方向', value: directionText.value },
+    { label: '计划方向', value: directionText.value },
     { label: '置信度', value: pred.value.confidence == null ? '-' : Math.round(pred.value.confidence) + '%' },
     { label: '基准收盘', value: formatPrice(pred.value.close_price) },
     { label: '目标价', value: formatPrice(pred.value.target_price) },
@@ -514,7 +519,7 @@ onUnmounted(() => {
           <div class="mr-price-row"><span>目标价</span><strong>{{ formatPrice(pred.target_price) }}</strong></div>
           <div class="mr-price-row"><span>止损价</span><strong>{{ formatPrice(pred.stop_loss) }}</strong></div>
           <div class="mr-price-row"><span>目标日</span><strong>{{ pred.target_date || '-' }}</strong></div>
-          <div class="mr-price-row"><span>验证状态</span><strong>{{ resultStatusText }}</strong></div>
+          <div class="mr-price-row"><span>复盘状态</span><strong>{{ resultStatusText }}</strong></div>
           <div v-if="settlementBandText" class="mr-price-row"><span>震荡区间</span><strong>{{ settlementBandText }}</strong></div>
           <div class="mr-price-row"><span>结算涨跌</span><strong>{{ settlementText }}</strong></div>
 
@@ -588,15 +593,15 @@ onUnmounted(() => {
               <figure class="mr-public-figure">
                 <img v-if="previewUrl" :src="previewUrl" alt="公开页卡图预览">
                 <div v-else class="mr-skeleton-card" aria-hidden="true" />
-                <figcaption>{{ hasCompleteSettlement(pred) ? '结算卡片预览' : '预测卡片预览' }}</figcaption>
+                <figcaption>{{ hasCompleteSettlement(pred) ? '结算卡片预览' : '计划卡片预览' }}</figcaption>
               </figure>
             </header>
 
             <section :class="['mr-result-grid', `mr-result-tone-${resultTone}`]">
               <div class="mr-result-cell">
-                <span>{{ isAwaitingResult(pred) ? '验证状态' : '结算结果' }}</span>
+                <span>{{ isAwaitingResult(pred) ? '复盘状态' : '结算结果' }}</span>
                 <strong>{{ resultStatusText }}</strong>
-                <p>{{ settlementExplanation || (isDraftStatus ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : isAwaitingResult(pred) ? `预测方向 ${directionText}，目标日 ${pred.target_date || '-'}` : `预测方向 ${directionText}，实际涨跌 ${settlementText}`) }}</p>
+                <p>{{ settlementExplanation || (isDraftStatus ? `计划方向 ${directionText}，目标日 ${pred.target_date || '-'}` : isAwaitingResult(pred) ? `计划方向 ${directionText}，目标日 ${pred.target_date || '-'}` : `计划方向 ${directionText}，实际涨跌 ${settlementText}`) }}</p>
               </div>
               <div class="mr-result-cell"><span>实际涨跌</span><strong>{{ settlementText }}</strong></div>
               <div class="mr-result-cell"><span>目标日</span><strong>{{ pred.target_date || '-' }}</strong></div>

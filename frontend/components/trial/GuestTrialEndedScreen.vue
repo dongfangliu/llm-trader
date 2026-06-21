@@ -18,7 +18,7 @@ const PERK_BG = [
 ]
 
 const DEFAULT_PERKS = [
-  { text: '每天 1 次免费深度研判' },
+  { text: '每天 1 份免费交易计划' },
   { text: '跨设备同步，数据不丢失' },
   { text: '邀请好友获得额外永久额度' },
 ]
@@ -41,7 +41,7 @@ function trackUpgradeClick() {
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m8 15 3.5-4 3 2.5L20 7"/></svg>
       </div>
       <h1 style="font-size: 28px; font-weight: 700; letter-spacing: 0; color: var(--ios-label); margin: 0 0 6px;">{{ props.appName || DEFAULT_APP_NAME }}</h1>
-      <p style="font-size: 15px; color: var(--ios-secondary); margin: 0;">AI 驱动的专业技术分析平台</p>
+      <p style="font-size: 15px; color: var(--ios-secondary); margin: 0;">不预测涨跌 · 给你可执行的交易计划</p>
     </div>
 
     <div style="width: 100%; max-width: 480px; padding: 0 16px; display: flex; flex-direction: column; gap: 12px;">

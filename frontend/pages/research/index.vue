@@ -10,12 +10,12 @@ const { data } = await useAsyncData('research-index', () =>
 )
 
 const requestUrl = useRequestURL()
-const title = 'AI K线预测与复盘档案 - 公开技术面历史记录'
-const description = '查看已通过的AI K线预测和已结算复盘记录，包含技术面方向、目标日、实际涨跌、命中和失误情况，可从公开记录进入AI分析工具自行研究。'
+const title = 'AI 交易计划复盘档案 - 公开止损保护历史记录'
+const description = '查看公开的 AI 交易计划与已结算复盘：入场、止损、目标、计划方向，以及计划结果（达标/计划内/破位）和有效计划率，可进入 AI 工具自行研究。'
 usePublicSeo({ title, description, path: '/research' })
 
 const marketFilter = ref<'all' | 'a' | 'hk' | 'us'>('all')
-const statusFilter = ref<'all' | 'pending' | 'hit' | 'miss'>('all')
+const statusFilter = ref<'all' | 'pending' | 'effective' | 'breached'>('all')
 const search = ref('')
 
 function isAwaitingResult(p: Prediction) {
@@ -23,25 +23,40 @@ function isAwaitingResult(p: Prediction) {
 }
 
 function directionLabel(value: string) {
-  return value === 'up' ? '看涨' : value === 'down' ? '看跌' : '震荡'
+  return value === 'up' ? '做多' : value === 'down' ? '做空' : '观望'
 }
 
 function confidenceLabel(value: number | null | undefined) {
   return value == null ? '-' : `${Math.round(Number(value))}%`
 }
 
+// 计划是否有效（达标或计划内/止损保护）——优先用后端 plan_effective，回退 is_correct
+function isEffective(p: Prediction): boolean | null {
+  if (isAwaitingResult(p)) return null
+  if (typeof p?.plan_effective === 'boolean') return p.plan_effective
+  if (p?.is_correct === true) return true
+  if (p?.is_correct === false) return false
+  return null
+}
+
 function statusLabel(p: Prediction) {
-  if (isAwaitingResult(p)) return '待验证'
-  if (p?.settlement_verdict_label) return p.settlement_verdict_label
-  if (p?.is_correct === true) return '命中'
-  if (p?.is_correct === false) return '未命中'
+  if (isAwaitingResult(p)) return '待复盘'
+  if (p?.plan_outcome_label) return p.plan_outcome_label
+  const eff = isEffective(p)
+  if (eff === true) return '有效'
+  if (eff === false) return '破位'
   return '已结算'
 }
 
-function statusVariant(p: Prediction): 'orange' | 'green' | 'red' | 'gray' {
+function statusVariant(p: Prediction): 'orange' | 'green' | 'red' | 'blue' | 'gray' {
   if (isAwaitingResult(p)) return 'orange'
-  if (p?.is_correct === true) return 'green'
-  if (p?.is_correct === false) return 'red'
+  const tone = p?.plan_outcome_tone
+  if (tone === 'success') return 'green'
+  if (tone === 'neutral') return 'blue'
+  if (tone === 'warn') return 'red'
+  const eff = isEffective(p)
+  if (eff === true) return 'green'
+  if (eff === false) return 'red'
   return 'gray'
 }
 
@@ -64,8 +79,8 @@ const records = computed<Prediction[]>(() => {
   return baseRecords.value.filter(p => {
     if (marketFilter.value !== 'all' && p.market !== marketFilter.value) return false
     if (statusFilter.value === 'pending' && !isAwaitingResult(p)) return false
-    if (statusFilter.value === 'hit' && p.is_correct !== true) return false
-    if (statusFilter.value === 'miss' && p.is_correct !== false) return false
+    if (statusFilter.value === 'effective' && isEffective(p) !== true) return false
+    if (statusFilter.value === 'breached' && isEffective(p) !== false) return false
     if (term) {
       const pool = `${p.symbol || ''} ${p.symbol_name || ''}`.toLowerCase()
       if (!pool.includes(term)) return false
@@ -81,8 +96,8 @@ interface StockGroup {
   symbol_name: string
   records: Prediction[]
   latestDate: string
-  hitCount: number
-  missCount: number
+  effectiveCount: number
+  breachedCount: number
   awaitingCount: number
 }
 
@@ -99,8 +114,8 @@ const groups = computed<StockGroup[]>(() => {
         symbol_name: p.symbol_name || p.symbol,
         records: [],
         latestDate: '',
-        hitCount: 0,
-        missCount: 0,
+        effectiveCount: 0,
+        breachedCount: 0,
         awaitingCount: 0,
       }
       map.set(key, g)
@@ -109,8 +124,8 @@ const groups = computed<StockGroup[]>(() => {
     const d = String(p.prediction_date || '')
     if (d > g.latestDate) g.latestDate = d
     if (isAwaitingResult(p)) g.awaitingCount += 1
-    else if (p.is_correct === true) g.hitCount += 1
-    else if (p.is_correct === false) g.missCount += 1
+    else if (isEffective(p) === true) g.effectiveCount += 1
+    else if (isEffective(p) === false) g.breachedCount += 1
   }
   const list = [...map.values()]
   for (const g of list) {
@@ -151,9 +166,9 @@ const marketCounts = computed(() => ({
 
 const awaitingCount = computed(() => baseRecords.value.filter(isAwaitingResult).length)
 const settledCount = computed(() => baseRecords.value.filter(r => !isAwaitingResult(r)).length)
-const hitCount = computed(() => baseRecords.value.filter(r => r.is_correct === true).length)
-const missCount = computed(() => baseRecords.value.filter(r => r.is_correct === false).length)
-const accuracyLabel = computed(() => data.value?.accuracy?.total ? `${data.value.accuracy.pct}%` : '待统计')
+const effectiveCount = computed(() => baseRecords.value.filter(r => isEffective(r) === true).length)
+const breachedCount = computed(() => baseRecords.value.filter(r => isEffective(r) === false).length)
+const accuracyLabel = computed(() => data.value?.accuracy?.total ? `${data.value.accuracy.effective_rate ?? data.value.accuracy.pct}%` : '待统计')
 
 const itemListJsonLd = computed(() => ({
   '@context': 'https://schema.org',
@@ -169,7 +184,7 @@ const itemListJsonLd = computed(() => ({
 useJsonLd('research-index-jsonld', () => [
   breadcrumbJsonLd(requestUrl.origin, [
     { name: SITE_NAME, path: '/' },
-    { name: '模型复盘档案', path: '/research' },
+    { name: '交易计划复盘档案', path: '/research' },
   ]),
   itemListJsonLd.value,
 ])
@@ -188,30 +203,30 @@ const marketChips = [
 
 const statusChips = [
   { key: 'all', label: '全部状态' },
-  { key: 'pending', label: '待验证' },
-  { key: 'hit', label: '命中' },
-  { key: 'miss', label: '未中' },
+  { key: 'pending', label: '待复盘' },
+  { key: 'effective', label: '有效' },
+  { key: 'breached', label: '破位' },
 ] as const
 
 const metrics = computed(() => [
-  { label: '公开记录', value: baseRecords.value.length, sub: '按最新预测日排序', icon: PhGlobeHemisphereEast },
-  { label: '待验证', value: awaitingCount.value, sub: '目标日后自动复盘', icon: PhTarget },
-  { label: '已结算', value: settledCount.value, sub: `命中 ${hitCount.value} · 未中 ${missCount.value}`, icon: PhChartLineUp },
-  { label: '命中率', value: accuracyLabel.value, sub: '公开样本', icon: PhArchive },
+  { label: '公开记录', value: baseRecords.value.length, sub: '按最新计划日排序', icon: PhGlobeHemisphereEast },
+  { label: '待复盘', value: awaitingCount.value, sub: '目标日后自动复盘', icon: PhTarget },
+  { label: '已结算', value: settledCount.value, sub: `有效 ${effectiveCount.value} · 破位 ${breachedCount.value}`, icon: PhChartLineUp },
+  { label: '有效计划率', value: accuracyLabel.value, sub: '达标+止损保护', icon: PhArchive },
 ])
 </script>
 
 <template>
   <main class="min-h-[100dvh] bg-ios-bg">
-    <IosNavBar title="复盘档案" back="/" />
+    <IosNavBar title="计划复盘" back="/" />
 
     <div class="max-w-[680px] mx-auto px-4 pb-12">
       <!-- Hero -->
       <header class="pt-6 pb-1" data-reveal>
-        <p class="text-xs font-semibold uppercase tracking-wide text-ios-secondary mb-2">公开技术面档案</p>
-        <h1 class="text-[28px] font-extrabold text-ios-label tracking-ios-tight leading-tight">模型复盘档案</h1>
+        <p class="text-xs font-semibold uppercase tracking-wide text-ios-secondary mb-2">公开交易计划档案</p>
+        <h1 class="text-[28px] font-extrabold text-ios-label tracking-ios-tight leading-tight">交易计划复盘档案</h1>
         <p class="mt-2 text-sm text-ios-label2 leading-relaxed">
-          已通过预测会先进入待验证状态，结算后同一路径自动变成复盘记录，保留原始方向、关键价格和实际结果。
+          每份计划先进入待复盘状态，结算后自动复盘：达标、计划内（止损保护住）或破位，原始入场/止损/目标全程保留，连破位也透明公开。
         </p>
         <div class="flex flex-wrap gap-2.5 mt-4">
           <NuxtLink to="/?src=seo_research_index"><IosButton size="md">打开 AI 分析工具</IosButton></NuxtLink>
@@ -311,13 +326,13 @@ const metrics = computed(() => [
               />
             </div>
             <div
-              v-if="g.awaitingCount || g.hitCount || g.missCount"
+              v-if="g.awaitingCount || g.effectiveCount || g.breachedCount"
               class="research-result-row"
             >
               <div class="flex items-center gap-1.5 flex-wrap min-w-0">
-                <IosBadge v-if="g.awaitingCount" variant="orange">待验证 {{ g.awaitingCount }}</IosBadge>
-                <IosBadge v-if="g.hitCount" variant="green">命中 {{ g.hitCount }}</IosBadge>
-                <IosBadge v-if="g.missCount" variant="red">未中 {{ g.missCount }}</IosBadge>
+                <IosBadge v-if="g.awaitingCount" variant="orange">待复盘 {{ g.awaitingCount }}</IosBadge>
+                <IosBadge v-if="g.effectiveCount" variant="green">有效 {{ g.effectiveCount }}</IosBadge>
+                <IosBadge v-if="g.breachedCount" variant="red">破位 {{ g.breachedCount }}</IosBadge>
               </div>
             </div>
           </button>
@@ -332,7 +347,7 @@ const metrics = computed(() => [
                   class="research-record-link"
                 >
                   <div class="flex-1 min-w-0">
-                    <strong class="text-sm font-semibold text-ios-label">预测 {{ p.prediction_date }}</strong>
+                    <strong class="text-sm font-semibold text-ios-label">计划 {{ p.prediction_date }}</strong>
                     <div class="text-xs text-ios-secondary mt-0.5">
                       目标 {{ p.target_date || '-' }} · 置信 {{ confidenceLabel(p.confidence) }}
                     </div>

@@ -129,7 +129,7 @@ export async function generateStatementCardBlob(p: PredictionCardParams): Promis
   const bgTop  = isBuy ? '#EF4444' : isSell ? '#16A34A' : '#64748B'
   const bgBot  = isBuy ? '#991B1B' : isSell ? '#14532D' : '#334155'
   const accent = bgTop
-  const actionCN = isBuy ? '看涨' : isSell ? '看跌' : '观望'
+  const actionCN = isBuy ? '买入' : isSell ? '卖出' : '观望'
 
   const impliedReturn: number | null =
     targetPrice != null && latestPrice != null && latestPrice > 0
@@ -462,7 +462,7 @@ export async function generatePredictionCardBlob(p: PredictionCardParams): Promi
 
   const heroColor  = isBuy ? '#FF3B30' : isSell ? '#34C759' : '#6B7280'
   const accentText = heroColor
-  const actionCN   = isBuy ? '看好' : isSell ? '看空' : '观望'
+  const actionCN   = isBuy ? '买入' : isSell ? '卖出' : '观望'
   const isFree     = tier === 'free'
   const finalHeroStr   = isFree ? actionCN : heroStr
   const finalHeroLabel = isFree ? 'AI研判' : heroLabel
