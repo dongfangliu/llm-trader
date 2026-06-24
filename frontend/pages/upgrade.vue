@@ -132,15 +132,15 @@ const SUBSCRIBE_STEPS = [
 ]
 
 const PREMIUM_COPY = [
-  '每天更多AI分析次数，适合连续跟踪多个标的',
-  '完整趋势跟随方法论研判：时钟方向、均线排列、抵扣价、密集成交区与多周期协同',
-  '持仓智能分析可结合持仓数量、成本价和最大仓位生成参考',
-  '高级周期和多结果保存帮助复盘同一标的的历史判断',
+  '每天更多次数，连续跟踪多个标的的交易计划',
+  '完整趋势跟随方法论：时钟方向、均线排列、抵扣价、密集成交区与多周期协同',
+  '持仓智能：结合持仓与成本，给出加/减/止损建议与最大亏损测算',
+  '多结果保存，复盘同一标的的历次计划与执行',
 ]
 
 const requestUrl = useRequestURL()
-const seoTitle = 'K线AI分析助手专业版 - 深度分析与高级功能'
-const seoDescription = '了解K线AI分析助手标准版和专业版权益，包含更多每日分析次数、深度研判、持仓智能分析、高级周期、多结果保存和后台分析能力。'
+const seoTitle = 'K线AI分析助手专业版 - 完整交易计划与风险控制'
+const seoDescription = '了解K线AI分析助手标准版和专业版权益：可执行的交易计划（入场区间、止损、目标、仓位、最大亏损）、持仓智能分析、高级周期、多结果保存与后台分析能力。'
 usePublicSeo({ title: seoTitle, description: seoDescription, path: '/upgrade' })
 useJsonLd('upgrade-offer-jsonld', () => [
   {
@@ -230,10 +230,10 @@ useGsapReveal()
             </div>
           </div>
           <h1 class="text-[26px] font-extrabold text-white tracking-ios-tight">
-            {{ tier === 'basic' ? '升级专业版' : '解锁专业研判' }}
+            {{ tier === 'basic' ? '升级专业版' : '解锁完整交易计划' }}
           </h1>
           <p class="mt-2 text-sm text-white/55 leading-relaxed max-w-[300px] mx-auto">
-            AI 驱动 · 全市场覆盖<br />每天最多 {{ premiumLimit }} 次深度研判
+            入场 · 止损 · 目标 · 仓位<br />每天最多 {{ premiumLimit }} 份完整交易计划
           </p>
           <div
             v-if="!auth.isLoggedIn"
@@ -467,7 +467,7 @@ useGsapReveal()
           <div class="flex flex-col gap-4">
             <div>
               <h3 class="text-[15px] font-bold text-ios-label mb-1.5">专业版和标准版有什么区别？</h3>
-              <p class="text-sm text-ios-label2 leading-relaxed">专业版拥有更高的每日分析次数，并开放深度研判、持仓智能分析、高级周期、多结果保存和后台分析等高级能力。</p>
+              <p class="text-sm text-ios-label2 leading-relaxed">专业版拥有更高的每日次数，并开放完整交易计划（入场区间、止损、目标、仓位、最大亏损）、持仓智能分析、高级周期、多结果保存和后台分析等能力。</p>
             </div>
             <div>
               <h3 class="text-[15px] font-bold text-ios-label mb-1.5">订阅后如何激活？</h3>

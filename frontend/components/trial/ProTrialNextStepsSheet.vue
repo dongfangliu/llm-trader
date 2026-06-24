@@ -39,7 +39,7 @@ function onUpgrade() {
       </div>
       <h1 style="font-size: 24px; font-weight: 700; color: var(--ios-label); margin: 0 0 6px; letter-spacing: -0.3px;">专业版体验结束</h1>
       <p style="font-size: 15px; color: var(--ios-secondary); margin: 0; line-height: 1.5;">
-        {{ showInstallStep ? '再完成两步，把高效研判留在身边' : '升级专业版，保留完整深度研判' }}
+        {{ showInstallStep ? '再完成两步，把完整交易计划留在身边' : '升级专业版，保留完整交易计划' }}
       </p>
     </div>
 
@@ -63,7 +63,7 @@ function onUpgrade() {
             <span class="pns-step-num pns-step-num-glass">{{ showInstallStep ? '2' : '✦' }}</span>
             <h2 class="pns-step-title" style="color: #fff;">升级专业版</h2>
           </div>
-          <p class="pns-step-desc" style="color: rgba(255,255,255,0.62);">每天 15 次完整深度研判 · 持仓智能分析 · 多周期对比</p>
+          <p class="pns-step-desc" style="color: rgba(255,255,255,0.62);">每天 15 份完整交易计划 · 持仓智能分析 · 多周期对比</p>
           <button class="pns-cta" @click="onUpgrade">
             查看专业版套餐
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>

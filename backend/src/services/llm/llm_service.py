@@ -595,9 +595,10 @@ def _build_methodology_prompt(df, symbol: str = "", market: str = "a", user_cont
 - 目标=突破量度幅度（"横有多长、竖有多高"）或趋势延续目标。
 - 风险收益比是否合适？主要风险因素（技术/消息/流动性）？
 
-## 第四步：执行方案制定
+## 第四步：执行方案制定（落地为可执行的交易计划）
 - 只在"关键性波动"（可能改变均线运行方向的位置）上动手，而非随意位置。
-- 具体操作、仓位建议（单位：{position_unit}）、入场时机、止损价位、止盈价位。
+- 给出可执行计划：入场区间（entry_low~entry_high）、仓位建议（单位：{position_unit}）、止损价位、目标价位，以及明确的离场条件（满足哪些信号就离场）。
+- execution_plan 摘要须落到"在什么价位做什么、跌破/升破什么就离场"，避免空泛的方向判断。
 
 ---
 
@@ -607,21 +608,26 @@ def _build_methodology_prompt(df, symbol: str = "", market: str = "a", user_cont
   "action": "{action_enum}",
   "target_position": <int, 目标总持仓（仅用于adjust_position，必须>=0）>,
   "position_size": <int, 本次操作数量（单位：{position_unit}）>,
+  "entry_low": <float, 建议入场区间下沿；若为单点可与 entry_high 相等>,
+  "entry_high": <float, 建议入场区间上沿>,
   "target_price": <float, 【必填，非null非0】根据技术分析推算的目标价格>,
   "stop_loss": <float, 【必填，非null非0】止损价格>,
   "take_profit": <float, 止盈价格>,
+  "max_loss_pct": <float, 严格按止损执行时本单最大亏损百分比（正数，如 5 表示 -5%）>,
+  "exit_conditions": ["离场条件1（如：跌破MA20）", "离场条件2"],
   "confidence": <float 0.0-1.0 或 0-100>,
   "summary": "<必填，1句可读中文摘要，概括方向、核心理由和主要风险>",
   "reasons": ["关键理由1", "关键理由2", "关键理由3"],
   "market_diagnosis": "<第一步摘要>",
   "opportunity_assessment": "<第二步摘要>",
   "risk_analysis": "<第三步摘要>",
-  "execution_plan": "<第四步摘要>",
+  "execution_plan": "<第四步摘要：可执行计划，含价位与离场动作>",
   "risk_factors": ["风险1", "风险2"],
   "opportunity_quality": "A|B|C|D"
 }}
 
-重要：每步摘要≤2句、reasons/risk_factors 数组≤3项，控制长度避免截断。target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
+重要：每步摘要≤2句、reasons/risk_factors/exit_conditions 数组≤3项，控制长度避免截断。target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
+entry_low/entry_high/max_loss_pct/exit_conditions 尽量给出；若确实无法判断可省略（系统会兜底），但不要填 null 占位。
 hold 操作时 target_price 填写当前价格附近的关键支撑或压力位。
 """
 
@@ -765,11 +771,11 @@ def _build_legacy_prompt(df, symbol: str = "", market: str = "a", user_context: 
 - 风险收益比是否合适？当前应该激进、稳健还是保守？
 - 主要风险因素有哪些？（技术风险/消息风险/流动性风险）
 
-## 第四步：执行方案制定
+## 第四步：执行方案制定（落地为可执行的交易计划）
 - 具体操作：开多/平多/开空/平空/观望
+- 入场计划：入场区间（entry_low~entry_high）与时机（立即还是等待确认）
 - 仓位建议：建议仓位（单位：{position_unit}）与风险敞口
-- 入场时机：立即还是等待确认
-- 出场计划：止损价位、止盈价位
+- 出场计划：止损价位、止盈价位，以及明确的离场条件（满足哪些信号就离场）
 
 ---
 
@@ -779,21 +785,26 @@ def _build_legacy_prompt(df, symbol: str = "", market: str = "a", user_context: 
   "action": "{action_enum}",
   "target_position": <int, 目标总持仓（仅用于adjust_position，必须>=0）>,
   "position_size": <int, 本次操作数量（单位：{position_unit}）>,
+  "entry_low": <float, 建议入场区间下沿；若为单点可与 entry_high 相等>,
+  "entry_high": <float, 建议入场区间上沿>,
   "target_price": <float, 【必填，非null非0】根据技术分析推算的目标价格>,
   "stop_loss": <float, 【必填，非null非0】止损价格>,
   "take_profit": <float, 止盈价格>,
+  "max_loss_pct": <float, 严格按止损执行时本单最大亏损百分比（正数，如 5 表示 -5%）>,
+  "exit_conditions": ["离场条件1（如：跌破MA20）", "离场条件2"],
   "confidence": <float 0.0-1.0 或 0-100>,
   "summary": "<必填，1句可读中文摘要，概括方向、核心理由和主要风险>",
   "reasons": ["关键理由1", "关键理由2", "关键理由3"],
   "market_diagnosis": "<第一步摘要>",
   "opportunity_assessment": "<第二步摘要>",
   "risk_analysis": "<第三步摘要>",
-  "execution_plan": "<第四步摘要>",
+  "execution_plan": "<第四步摘要：可执行计划，含价位与离场动作>",
   "risk_factors": ["风险1", "风险2"],
   "opportunity_quality": "A|B|C|D"
 }}
 
 重要：target_price 和 stop_loss 必须是有意义的正数，绝对不能为 null 或 0。
+entry_low/entry_high/max_loss_pct/exit_conditions 尽量给出；若确实无法判断可省略（系统会兜底），但不要填 null 占位。
 hold 操作时 target_price 填写当前价格附近的关键支撑或压力位。
 """
 

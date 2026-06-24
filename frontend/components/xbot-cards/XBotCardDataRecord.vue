@@ -37,14 +37,14 @@ const dots    = computed(() => {
     </div>
     <div class="rule" />
 
-    <!-- 胜率英雄区 -->
+    <!-- 有效计划率英雄区 -->
     <div class="hero-wrap">
-      <div class="wr-label">累计胜率</div>
+      <div class="wr-label">有效计划率</div>
       <div class="wr-num" :style="{ color: wrColor }">
         {{ pct30 != null ? pct30 + '%' : '—' }}
       </div>
       <div class="wr-count" v-if="stats30">
-        {{ stats30.hit }}胜 / {{ stats30.total }}场
+        {{ stats30.hit }}有效 / {{ stats30.total }}单
       </div>
     </div>
 

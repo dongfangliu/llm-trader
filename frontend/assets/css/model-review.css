@@ -480,7 +480,8 @@
 
   .mr-status-approved,
   .mr-status-posted,
-  .mr-status-info {
+  .mr-status-info,
+  .mr-status-inplan {
     background: var(--mr-info-soft);
     color: var(--mr-info);
   }
@@ -840,13 +841,18 @@
     word-break: break-word;
   }
 
-  .mr-result-tone-pending .mr-result-cell:first-child {
+  .mr-result-tone-pending .mr-result-cell:first-child,
+  .mr-result-tone-awaiting .mr-result-cell:first-child {
     background: var(--mr-warn-soft);
   }
 
   .mr-result-tone-hit .mr-result-cell:first-child,
   .mr-result-tone-settled .mr-result-cell:first-child {
     background: var(--mr-good-soft);
+  }
+
+  .mr-result-tone-inplan .mr-result-cell:first-child {
+    background: var(--mr-info-soft);
   }
 
   .mr-result-tone-miss .mr-result-cell:first-child {

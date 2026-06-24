@@ -64,7 +64,7 @@ const downside = computed(() => {
         </div>
       </div>
       <div class="tk-right" v-if="pct30 != null">
-        <div class="wr-label">累计胜率</div>
+        <div class="wr-label">有效计划率</div>
         <div class="wr-val" :style="{ color: wrColor }">{{ pct30 }}<span class="wr-unit">%</span></div>
       </div>
     </div>

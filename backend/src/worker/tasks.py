@@ -140,12 +140,41 @@ def _normalize_result(
     if (raw_result or {}).get("execution_plan"):
         reasons.append((raw_result or {}).get("execution_plan"))
     position_advice = _build_position_advice(action, current_price, holding_quantity, cost_price, max_position)
+
+    # --- 可执行计划要素：入场区间 / 离场条件 / 最大亏损（缺失时优雅降级，绝不报错）---
+    entry_low = _first_positive((raw_result or {}).get("entry_low"))
+    entry_high = _first_positive((raw_result or {}).get("entry_high"))
+    # 单点入场或只给一侧时，另一侧用现价兜底，保证区间成立
+    if entry_low is None and entry_high is not None:
+        entry_low = entry_high
+    if entry_high is None and entry_low is not None:
+        entry_high = entry_low
+    if entry_low is not None and entry_high is not None and entry_low > entry_high:
+        entry_low, entry_high = entry_high, entry_low
+
+    exit_conditions = [str(x) for x in ((raw_result or {}).get("exit_conditions") or []) if x][:3]
+
+    # 入场基准价：优先入场区间中点，否则现价
+    entry_ref = (
+        (entry_low + entry_high) / 2
+        if (entry_low is not None and entry_high is not None)
+        else current_price
+    )
+    max_loss_pct = _first_positive((raw_result or {}).get("max_loss_pct"))
+    if max_loss_pct is None and stop_loss is not None and entry_ref and entry_ref > 0:
+        # 由止损相对入场价兜底计算（多空皆用绝对差，方向无关）
+        max_loss_pct = round(abs(entry_ref - float(stop_loss)) / entry_ref * 100, 2)
+
     return {
         "action": action,
         "signal": signal,
         "confidence": confidence,
+        "entry_low": float(entry_low) if entry_low is not None else None,
+        "entry_high": float(entry_high) if entry_high is not None else None,
         "target_price": float(target_price) if target_price is not None else None,
         "stop_loss": float(stop_loss) if stop_loss is not None else None,
+        "max_loss_pct": float(max_loss_pct) if max_loss_pct is not None else None,
+        "exit_conditions": exit_conditions,
         "reason": reasons[0] if reasons else "基于技术指标综合判断",
         "reasons": reasons[:6] if reasons else ["基于技术指标综合判断"],
         "market_diagnosis": str((raw_result or {}).get("market_diagnosis", "") or ""),
@@ -170,6 +199,9 @@ def _mask_result_for_free_tier(result: dict) -> dict:
     masked["target_price"] = None
     masked["stop_loss"] = None
     masked["confidence"] = None
+    masked["entry_low"] = None
+    masked["entry_high"] = None
+    masked["max_loss_pct"] = None
     masked["risk_analysis"] = mask_prices(masked.get("risk_analysis", ""))
     masked["execution_plan"] = mask_prices(masked.get("execution_plan", ""))
     reasons = masked.get("reasons", [])

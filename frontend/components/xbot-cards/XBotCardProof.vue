@@ -11,8 +11,12 @@ const props = defineProps<{ payload: CardPayload }>()
 const mkt       = computed(() => marketMeta(props.payload.market))
 const dir       = computed(() => (props.payload.predicted_direction ?? props.payload.direction) as any)
 const correct   = computed(() => props.payload.is_correct ?? false)
-const verdictCn = computed(() => correct.value ? '兑  现' : '失  效')
-const verdictGlyph = computed(() => correct.value ? '✓' : '✗')
+const planLabel = computed(() => props.payload.plan_outcome_label || props.payload.settlement_verdict_label || (correct.value ? '达标' : '破位'))
+const effective = computed(() => typeof props.payload.plan_effective === 'boolean'
+  ? props.payload.plan_effective
+  : (planLabel.value !== '破位' && planLabel.value !== '区间失效'))
+const verdictCn = computed(() => planLabel.value)
+const verdictGlyph = computed(() => effective.value ? '✓' : '✗')
 const verdictColor = computed(() => {
   const d = dir.value
   // correct → actual matches prediction direction; wrong → opposite direction
@@ -28,7 +32,7 @@ const wrColor   = computed(() => pctColor(pct30.value))
 </script>
 
 <template>
-  <div class="card" :class="correct ? 'verdict-correct' : 'verdict-wrong'">
+  <div class="card" :class="effective ? 'verdict-correct' : 'verdict-wrong'">
 
     <!-- 单行报头 -->
     <div class="header">
@@ -45,11 +49,11 @@ const wrColor   = computed(() => pctColor(pct30.value))
       <span class="tk-mkt">{{ mkt.cn }}</span>
     </div>
 
-    <!-- 三栏：预测 | 实际 | 胜率 -->
+    <!-- 三栏：计划 | 实际 | 有效计划率 -->
     <div class="three-col">
-      <!-- 预测 -->
+      <!-- 计划 -->
       <div class="col">
-        <div class="col-hd">预  测</div>
+        <div class="col-hd">计  划</div>
         <div class="col-main" :style="{ color: dirColor(dir) }">
           <span>{{ dirShort(dir) }}</span>
           <span v-if="dir === 'hold'" class="hold-mark" :style="{ background: dirColor(dir) }" />
@@ -70,9 +74,9 @@ const wrColor   = computed(() => pctColor(pct30.value))
 
       <div class="col-divider" />
 
-      <!-- 累计胜率 -->
+      <!-- 有效计划率 -->
       <div class="col">
-        <div class="col-hd">累计胜率</div>
+        <div class="col-hd">有效计划率</div>
         <div class="col-main" :style="{ color: wrColor }">
           {{ pct30 != null ? pct30 + '%' : '—' }}
         </div>

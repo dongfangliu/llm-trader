@@ -11,6 +11,8 @@ export interface SummaryItem {
   is_correct: boolean | null
   settlement_verdict_label?: string | null
   settlement_rule_label?: string | null
+  plan_outcome_label?: string | null
+  plan_effective?: boolean | null
 }
 
 export interface CardPayload {
@@ -42,6 +44,10 @@ export interface CardPayload {
   settlement_explanation?: string | null
   settlement_band_low?: number | null
   settlement_band_high?: number | null
+  plan_outcome?: string | null
+  plan_outcome_label?: string | null
+  plan_outcome_tone?: string | null
+  plan_effective?: boolean | null
   brand_name?: string
   /** Summary-card specific */
   summary_items?: SummaryItem[]

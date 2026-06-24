@@ -60,15 +60,18 @@ function stockCode(item: SummaryItem) {
   const suffix = item.symbol.startsWith('6') ? 'SH' : 'SZ'
   return `${item.symbol} · ${suffix}`
 }
+function planEffective(item: SummaryItem) {
+  if (typeof item.plan_effective === 'boolean') return item.plan_effective
+  const label = item.settlement_verdict_label
+  if (label) return label !== '破位' && label !== '区间失效'
+  return item.is_correct === true
+}
 function stampLabel(item: SummaryItem) {
-  if (item.settlement_verdict_label) return item.settlement_verdict_label
-  if (item.predicted_direction === 'hold') {
-    return item.is_correct === true ? '区间命中' : '区间失效'
-  }
-  return item.is_correct === true ? '命中 ✓' : '未中 ×'
+  const base = item.settlement_verdict_label || (item.is_correct === true ? '达标' : '破位')
+  return `${base} ${planEffective(item) ? '✓' : '×'}`
 }
 function stampClass(item: SummaryItem) {
-  return item.is_correct === true ? 'stamp-hit' : 'stamp-miss'
+  return planEffective(item) ? 'stamp-hit' : 'stamp-miss'
 }
 </script>
 
@@ -131,7 +134,7 @@ function stampClass(item: SummaryItem) {
 
     <!-- ── Win rate row ── -->
     <div class="wr-section">
-      <span class="wr-label">累 计 胜 率</span>
+      <span class="wr-label">有效计划率</span>
       <div class="wr-right">
         <span class="wr-num">{{ pct != null ? pct : '—' }}</span>
         <span class="wr-unit" v-if="pct != null">%</span>

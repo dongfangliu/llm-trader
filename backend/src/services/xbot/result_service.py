@@ -270,17 +270,92 @@ def get_hold_settlement_band(pred: XBotPrediction) -> Optional[tuple[float, floa
     return float(lower), float(upper)
 
 
+def _valid_price(v) -> bool:
+    try:
+        return v is not None and float(v) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+# 计划结果三态（重定位核心）：把二元"命中/未中"换成"达标 / 计划内(止损保护) / 破位"。
+# 方向虽走反，只要没破止损，就算"计划内·止损保护住了"，而不是"未命中"。
+# 全部由现有存量字段实时派生：close_price(入场E)/target_price(T)/stop_loss(S)/actual_close(C)。
+PLAN_OUTCOME_META = {
+    "target_hit": {"label": "达标", "tone": "success"},
+    "in_plan": {"label": "计划内", "tone": "neutral"},
+    "stop_breached": {"label": "破位", "tone": "warn"},
+    "hold_in_band": {"label": "区间内", "tone": "success"},
+    "hold_breached": {"label": "破位", "tone": "warn"},
+}
+
+# 计入"有效计划"的结果（有效计划率分子）
+EFFECTIVE_OUTCOMES = ("target_hit", "in_plan", "hold_in_band")
+
+
+def classify_plan_outcome(pred: XBotPrediction) -> Optional[str]:
+    """把已结算预测分类为计划结果三态；未结算或数据不足返回 None。"""
+    entry = pred.close_price
+    actual = pred.actual_close
+    if actual is None or entry is None or entry <= 0:
+        return None
+
+    direction = pred.predicted_direction
+    target = pred.target_price
+    stop = pred.stop_loss
+    c = float(actual)
+    e = float(entry)
+
+    if direction == "hold":
+        band = get_hold_settlement_band(pred)
+        if not band:
+            return None
+        lo, hi = band
+        return "hold_in_band" if lo <= c <= hi else "hold_breached"
+
+    if direction == "up":
+        if _valid_price(target) and float(target) > e and c >= float(target):
+            return "target_hit"
+        if _valid_price(stop) and float(stop) < e and c < float(stop):
+            return "stop_breached"
+        # 止损价缺失时，用方向判定兜底：明显走反才算破位，否则给"计划内"
+        if not _valid_price(stop) and pred.is_correct is False and c < e:
+            return "stop_breached"
+        return "in_plan"
+
+    if direction == "down":
+        if _valid_price(target) and float(target) < e and c <= float(target):
+            return "target_hit"
+        if _valid_price(stop) and float(stop) > e and c > float(stop):
+            return "stop_breached"
+        if not _valid_price(stop) and pred.is_correct is False and c > e:
+            return "stop_breached"
+        return "in_plan"
+
+    return None
+
+
+def plan_outcome_fields(pred: XBotPrediction) -> dict:
+    """对外暴露的计划结果字段（label/tone），未结算时为 None。"""
+    outcome = classify_plan_outcome(pred)
+    meta = PLAN_OUTCOME_META.get(outcome) if outcome else None
+    return {
+        "plan_outcome": outcome,
+        "plan_outcome_label": meta["label"] if meta else None,
+        "plan_outcome_tone": meta["tone"] if meta else None,
+        "plan_effective": (outcome in EFFECTIVE_OUTCOMES) if outcome else None,
+    }
+
+
 def settlement_display_fields(pred: XBotPrediction) -> dict:
     """Derived copy/metadata used by admin UI, public pages, and cards."""
     is_hold = pred.predicted_direction == "hold"
     is_settled = pred.actual_close is not None and pred.actual_change_pct is not None and pred.is_correct is not None
+    plan_fields = plan_outcome_fields(pred)
 
     if is_hold:
         band = get_hold_settlement_band(pred)
-        verdict = None
-        if is_settled:
-            verdict = "区间命中" if pred.is_correct is True else "区间失效"
-        explanation = "目标日收盘价留在目标价与止损价形成的区间" if pred.is_correct is True else "目标日收盘价离开目标价与止损价形成的区间"
+        verdict = plan_fields["plan_outcome_label"] if is_settled else None
+        explanation = "目标日收盘价留在目标价与止损价形成的区间内（计划有效）" if pred.is_correct is True else "目标日收盘价离开计划区间（破位）"
         if not is_settled:
             explanation = "目标日收盘价将按目标价与止损价形成的区间验证"
         return {
@@ -289,62 +364,73 @@ def settlement_display_fields(pred: XBotPrediction) -> dict:
             "settlement_explanation": explanation,
             "settlement_band_low": round(band[0], 4) if band else None,
             "settlement_band_high": round(band[1], 4) if band else None,
+            **plan_fields,
         }
 
-    verdict = None
-    if is_settled:
-        verdict = "命中" if pred.is_correct is True else "未命中"
-    direction = "上涨" if pred.predicted_direction == "up" else "下跌" if pred.predicted_direction == "down" else "方向"
+    verdict = plan_fields["plan_outcome_label"] if is_settled else None
     return {
-        "settlement_rule_label": "方向命中",
+        "settlement_rule_label": "计划结果",
         "settlement_verdict_label": verdict,
-        "settlement_explanation": f"目标日收盘价相对基准收盘价{direction}即为命中",
+        "settlement_explanation": "达标=收盘达到目标价；计划内=未达标但未破止损（止损保护住）；破位=收盘越过止损价",
         "settlement_band_low": None,
         "settlement_band_high": None,
+        **plan_fields,
     }
 
 
 async def get_accuracy_stats(db: AsyncSession) -> dict:
-    """Compute accuracy stats for 7d, 30d, all time, and high-confidence-only."""
+    """Compute plan-outcome stats for 7d, 30d, all time, and high-confidence-only.
+
+    在保留旧字段(correct/total/pct/label，向后兼容)的同时，新增计划口径指标:
+    - effective_rate(有效计划率) = (达标 + 计划内 + 区间内) / 总数
+    - target_rate(达标率)        = 达标 / 总数
+    计划结果由 classify_plan_outcome 用存量字段实时派生，历史记录无需迁移即生效。
+    """
     from datetime import timedelta
     today = date.today()
 
-    async def _count(days: Optional[int], high_conf_only: bool = False) -> Tuple[int, int]:
-        q = select(func.count()).where(
-            XBotPrediction.status == "settled",
-            XBotPrediction.is_correct.is_not(None),
-        )
+    # 一次加载全部已结算记录，按窗口在 Python 侧聚合（日频量级，开销可忽略）
+    q = select(XBotPrediction).where(
+        XBotPrediction.status == "settled",
+        XBotPrediction.is_correct.is_not(None),
+    )
+    rows = (await db.execute(q)).scalars().all()
+
+    def _subset(days: Optional[int], high_conf_only: bool = False):
+        subset = rows
         if days:
             since = today - timedelta(days=days)
-            q = q.where(XBotPrediction.prediction_date >= since)
+            subset = [p for p in subset if p.prediction_date and p.prediction_date >= since]
         if high_conf_only:
-            q = q.where(XBotPrediction.met_confidence.is_(True))
+            subset = [p for p in subset if p.met_confidence is True]
+        return subset
 
-        total_q = q
-        correct_q = q.where(XBotPrediction.is_correct.is_(True))
-
-        total = (await db.execute(total_q)).scalar() or 0
-        correct = (await db.execute(correct_q)).scalar() or 0
-        return correct, total
-
-    c7, t7 = await _count(7)
-    c30, t30 = await _count(30)
-    call, tall = await _count(None)
-    chc, thc = await _count(None, high_conf_only=True)
-
-    def _bucket(correct: int, total: int) -> dict:
+    def _bucket(subset) -> dict:
+        total = len(subset)
+        correct = sum(1 for p in subset if p.is_correct is True)
+        outcomes = [classify_plan_outcome(p) for p in subset]
+        effective = sum(1 for o in outcomes if o in EFFECTIVE_OUTCOMES)
+        target = sum(1 for o in outcomes if o == "target_hit")
+        breached = sum(1 for o in outcomes if o in ("stop_breached", "hold_breached"))
         return {
+            # 旧字段（向后兼容）
             "correct": correct,
             "total": total,
             "pct": round(correct / total * 100) if total else 0,
             "label": f"{correct}/{total}",
+            # 新计划口径字段
+            "effective": effective,
+            "effective_rate": round(effective / total * 100) if total else 0,
+            "target": target,
+            "target_rate": round(target / total * 100) if total else 0,
+            "breached": breached,
         }
 
     return {
-        "7d": _bucket(c7, t7),
-        "30d": _bucket(c30, t30),
-        "all": _bucket(call, tall),
-        "high_conf": _bucket(chc, thc),
+        "7d": _bucket(_subset(7)),
+        "30d": _bucket(_subset(30)),
+        "all": _bucket(_subset(None)),
+        "high_conf": _bucket(_subset(None, high_conf_only=True)),
     }
 
 

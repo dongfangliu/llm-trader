@@ -225,7 +225,7 @@ const sectionSummary = computed(() => slots.filter((s) => s.key.startsWith('summ
         <div class="mr-card-section-header">
           <div>
             <h2>主张卡 Promise（方向变体）</h2>
-            <p class="mr-dark-muted">同时审阅看涨 / 看跌 / 震荡三种方向的预测卡</p>
+            <p class="mr-dark-muted">同时审阅做多 / 做空 / 观望三种方向的计划卡</p>
           </div>
           <button
             type="button"
@@ -262,7 +262,7 @@ const sectionSummary = computed(() => slots.filter((s) => s.key.startsWith('summ
       <section>
         <div class="mr-card-section-header">
           <div>
-            <h2>预测分析卡</h2>
+            <h2>交易计划卡</h2>
             <p class="mr-dark-muted">主张卡与依据卡</p>
           </div>
           <PhStack :size="20" weight="bold" />
@@ -307,7 +307,7 @@ const sectionSummary = computed(() => slots.filter((s) => s.key.startsWith('summ
         <div class="mr-card-section-header">
           <div>
             <h2>结算复盘卡</h2>
-            <p class="mr-dark-muted">兑现的预测书 + 战绩卡</p>
+            <p class="mr-dark-muted">计划复盘书 + 战绩卡</p>
           </div>
           <PhStack :size="20" weight="bold" />
         </div>
@@ -350,8 +350,8 @@ const sectionSummary = computed(() => slots.filter((s) => s.key.startsWith('summ
       <section>
         <div class="mr-card-section-header">
           <div>
-            <h2>未命中场景</h2>
-            <p class="mr-dark-muted">检查失误印章颜色与 vs 目标参考</p>
+            <h2>破位场景</h2>
+            <p class="mr-dark-muted">检查破位印章颜色与 vs 目标参考</p>
           </div>
           <PhStack :size="20" weight="bold" />
         </div>

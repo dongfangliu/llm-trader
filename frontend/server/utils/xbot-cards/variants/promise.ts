@@ -82,7 +82,7 @@ export function renderPromise(p: CardPayload): any {
       ),
       // 右：胜率（字距收敛到 -4，与 Promise 信号词一致）
       pct30 != null ? h('div', { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' },
-        h('div', { fontSize: '17px', letterSpacing: '5px', color: dimColor, fontWeight: '500' }, txt('累计胜率')),
+        h('div', { fontSize: '17px', letterSpacing: '3px', color: dimColor, fontWeight: '500' }, txt('有效计划率')),
         h('div', { display: 'flex', alignItems: 'baseline', gap: '2px' },
           h('div', { fontSize: '80px', fontWeight: '800', lineHeight: '1', letterSpacing: '-4px', color: sigColor }, txt(String(pct30))),
           h('div', { fontSize: '38px', fontWeight: '700', color: sigColor }, txt('%')),

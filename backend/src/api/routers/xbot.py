@@ -145,13 +145,19 @@ async def public_research_card(
 
     stats = await get_accuracy_stats(db)
     acc_all = stats.get("all", {})
+    # 卡片展示"有效计划率"口径（达标+计划内+区间内）/ 总数，而非旧的方向命中数
+    acc_label = (
+        f"{acc_all.get('effective', 0)}/{acc_all.get('total', 0)}"
+        if acc_all.get("total")
+        else "—"
+    )
     product_url = await _get_public_base_url(db, config)
     brand_name = await _get_app_name(db)
 
     if variant == "proof":
         cards = await generate_result_card_set(
             pred,
-            accuracy_all=acc_all.get("label", "—"),
+            accuracy_all=acc_label,
             product_url=product_url,
             brand_name=brand_name,
         )
@@ -160,7 +166,7 @@ async def public_research_card(
             pred,
             product_url=product_url,
             brand_name=brand_name,
-            accuracy_all=acc_all.get("label", "—"),
+            accuracy_all=acc_label,
         )
 
     png = cards.get(variant)
@@ -391,12 +397,17 @@ async def preview_card(
     product_url = await _get_public_base_url(db, config)
     brand_name = await _get_app_name(db)
     acc_all = stats.get("all", {})
+    acc_label = (
+        f"{acc_all.get('effective', 0)}/{acc_all.get('total', 0)}"
+        if acc_all.get("total")
+        else "—"
+    )
 
     result_variants = {"proof", "data_record"}
     if variant in result_variants and _has_settlement_result(pred):
         cards = await generate_result_card_set(
             pred,
-            accuracy_all=acc_all.get("label", "—"),
+            accuracy_all=acc_label,
             product_url=product_url,
             brand_name=brand_name,
         )
@@ -405,7 +416,7 @@ async def preview_card(
             pred,
             product_url=product_url,
             brand_name=brand_name,
-            accuracy_all=acc_all.get("label", "—"),
+            accuracy_all=acc_label,
         )
 
     png = cards.get(variant)
